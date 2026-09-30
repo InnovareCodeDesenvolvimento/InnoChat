@@ -1,7 +1,17 @@
 // Mini-executor do workflow n8n `innochat-bot.json`: roda o JS EXATO dos Code nodes, avalia as
 // expressões `={{ ... }}`, segue as conexões do JSON e chama a API interna REAL do painel.
-// A Evolution é falsa: `sendText` só captura a mensagem. Não reproduz: timeout do n8n, Wait real
-// (pula o sleep), credenciais; retry só simples de 5xx nos nós com retryOnFail.
+// A Evolution DO WORKFLOW é falsa: `sendText` só captura a mensagem (o que o PAINEL envia, no release,
+// vai para `fake-evolution.mjs`). Não reproduz: timeout real do n8n (simula por falha injetada), credenciais;
+// retry só simples de 5xx nos nós com retryOnFail.
+//
+// Injeção de falhas (I-0), por execução: `engine.run(webhook, { faults })` (ou `chat.say(txt, { faults })`)
+//   { urlRe: /availability\/slots/, status: 500 }         o painel "responde" 500 (não chega a chamar o painel)
+//   { urlRe: /availability\/slots/, status: "timeout" }   o nó HTTP estoura o timeout
+//   { node: "Montar mensagem", crash: true }              o nó lança erro ao executar (a execução morre)
+//   opcionais: method: "GET", times: N (só as N primeiras vezes; `used` conta; padrão: sempre)
+//
+// Tipos de nó suportados (contrato do plano §3.7): webhook, set, switch, if, code, httpRequest, wait, noOp,
+// splitOut, stopAndError, stickyNote. Operadores: string.equals/notEquals, boolean.true, number.equals/gte.
 import { readFileSync } from "node:fs";
 
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
@@ -31,12 +41,13 @@ export class Engine {
     });
   }
 
-  async run(webhook /* { token, body } */) {
+  async run(webhook /* { token, body } */, opts = {}) {
+    const faults = opts.faults || []; // objetos do chamador: `used` conta os usos de `times`
     const nodeOut = new Map(); // nome -> items
     const outbox = []; // mensagens que iriam para a Evolution nesta execução
     const runCount = new Map();
     const trace = [];
-    const state = { error: null };
+    const state = { error: null, release: null };
     const $ = (name) => {
       const items = nodeOut.get(name);
       if (!items) throw new Error(`Node '${name}' não executou`);
@@ -50,10 +61,12 @@ export class Engine {
         if (++guard > 300) throw new Error("loop guard");
         const { node: name, items } = queue.shift();
         const node = this.byName.get(name);
+        if (!node) throw new Error(`conexão para nó inexistente: ${name}`);
         const runIndex = runCount.get(name) || 0;
         runCount.set(name, runIndex + 1);
         trace.push(name);
-        const outs = await this.exec(node, items, { $, runIndex, outbox });
+        if (faults.some((f) => f.node === name && f.crash)) throw new Error(`falha injetada: ${name} morreu`);
+        const outs = await this.exec(node, items, { $, runIndex, outbox, faults });
         const flat = outs.flat();
         nodeOut.set(name, flat.length ? flat : nodeOut.get(name) || []);
         const c = conns[name]?.main || [];
@@ -63,16 +76,18 @@ export class Engine {
       }
     } catch (e) {
       state.error = e;
-      // "error workflow" (innochat-erros): libera a trava da sessão
+      // "error workflow" (innochat-erros): lê session.id / session.lockToken do nó `Claim` e o token do `Config`
+      // (é o que o "Extrair trava" do innochat-erros faz) e chama o release. Sem falha injetada.
       try {
         const claim = nodeOut.get("Claim")?.[0]?.json;
-        const inter = nodeOut.get("Interpretar")?.[0]?.json;
-        if (claim?.session && inter?.bot?.session?.id) {
-          await this.http("POST", `${this.painelUrl}/sessions/${inter.bot.session.id}/release`, { "x-innochat-instance": webhook.token }, JSON.stringify({ lockToken: claim.session.lockToken }));
+        const cfg = nodeOut.get("Config")?.[0]?.json;
+        if (claim?.action === "process" && claim.session?.id && claim.session?.lockToken && cfg?.token) {
+          const rel = await this.http("POST", `${this.painelUrl}/sessions/${encodeURIComponent(claim.session.id)}/release`, { "x-innochat-instance": cfg.token }, JSON.stringify({ lockToken: claim.session.lockToken }));
+          state.release = { status: rel.statusCode, body: rel.body };
         }
       } catch {}
     }
-    return { trace, outbox, error: state.error ? String(state.error.message || state.error) : null, nodeOut };
+    return { trace, outbox, error: state.error ? String(state.error.message || state.error) : null, nodeOut, release: state.release };
   }
 
   async http(method, url, headers, body, timeout = 10000) {
@@ -85,7 +100,7 @@ export class Engine {
     const txt = await res.text();
     let json;
     try { json = txt ? JSON.parse(txt) : {}; } catch { json = txt; }
-    this.httpLog.push({ method, url: url.replace(this.painelUrl, ""), status: res.status });
+    this.httpLog.push({ method, url: url.replace(this.painelUrl, ""), status: res.status, flow: headers["x-innochat-flow"] ?? null });
     return { statusCode: res.status, headers: Object.fromEntries(res.headers), body: json };
   }
 
@@ -145,8 +160,10 @@ export class Engine {
       const r = x.rightValue;
       const { type, operation } = x.operator;
       if (type === "string" && operation === "equals") return String(l) === String(r);
+      if (type === "string" && operation === "notEquals") return String(l) !== String(r);
       if (type === "boolean" && operation === "true") return l === true || l === "true";
       if (type === "number" && operation === "equals") return Number(l) === Number(r);
+      if (type === "number" && operation === "gte") return Number(l) >= Number(r);
       throw new Error(`operador não suportado ${type}.${operation}`);
     });
     return c.combinator === "or" ? results.some(Boolean) : results.every(Boolean);
@@ -154,6 +171,7 @@ export class Engine {
 
   async httpNode(node, p, items, ctxFor, rt) {
     const outs = [];
+    const cont = node.onError === "continueRegularOutput";
     for (const item of items) {
       const ctx = ctxFor(item);
       const url = this.ev(p.url, ctx);
@@ -174,13 +192,37 @@ export class Engine {
       }
       const respOpt = p.options?.response?.response || {};
       const tries = node.retryOnFail ? node.maxTries || 3 : 1;
+      const path = full.replace(this.painelUrl, "");
       let r;
+      let netErr = null;
       for (let t = 0; t < tries; t++) {
-        r = await this.http(p.method, full, headers, body, p.options?.timeout || 10000);
+        netErr = null;
+        const fault = (rt.faults || []).find((f) => f.urlRe && f.urlRe.test(path) && (!f.method || f.method === p.method) && (f.times == null || (f.used || 0) < f.times));
+        if (fault) {
+          fault.used = (fault.used || 0) + 1;
+          if (fault.status === "timeout") {
+            netErr = new Error("The operation was aborted due to timeout");
+            this.httpLog.push({ method: p.method, url: path, status: "timeout", fault: true });
+            continue;
+          }
+          r = { statusCode: fault.status, headers: {}, body: { error: { code: "FAULT", message: "falha injetada" } } };
+          this.httpLog.push({ method: p.method, url: path, status: fault.status, fault: true, flow: headers["x-innochat-flow"] ?? null });
+        } else {
+          try { r = await this.http(p.method, full, headers, body, p.options?.timeout || 10000); }
+          catch (e) { netErr = e; continue; }
+        }
         if (r.statusCode < 500) break;
       }
+      if (netErr) {
+        // timeout / rede: com onError=continueRegularOutput vira item { error }; senão a execução morre (como no n8n)
+        if (cont) { outs.push({ json: { error: { message: String(netErr.message || netErr), name: netErr.name } } }); continue; }
+        throw new Error(`${node.name}: ${netErr.message || netErr}`);
+      }
+      if (!respOpt.neverError && r.statusCode >= 400) {
+        if (cont) { outs.push({ json: { error: { message: `HTTP ${r.statusCode}`, httpCode: r.statusCode } } }); continue; }
+        throw new Error(`${node.name}: HTTP ${r.statusCode} ${JSON.stringify(r.body).slice(0, 200)}`);
+      }
       if (respOpt.fullResponse) { outs.push({ json: { statusCode: r.statusCode, headers: r.headers, body: r.body } }); continue; }
-      if (r.statusCode >= 400) throw new Error(`${node.name}: HTTP ${r.statusCode} ${JSON.stringify(r.body).slice(0, 200)}`);
       if (Array.isArray(r.body)) r.body.forEach((b) => outs.push({ json: b }));
       else outs.push({ json: r.body });
     }

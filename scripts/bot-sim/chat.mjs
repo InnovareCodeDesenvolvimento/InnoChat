@@ -30,10 +30,10 @@ export class Chat {
     };
   }
 
-  /** Envia uma mensagem e devolve { msgs, error, trace, claim, id }. Opções: kind, id, ts, fromMe. */
+  /** Envia uma mensagem e devolve { msgs, error, trace, claim, id, res }. Opções: kind, id, ts, fromMe, faults (injeção de falha, ver engine.mjs). `res.release` = resposta do release quando a execução morreu. */
   async say(text, o = {}) {
     const id = o.id || `SIM${Date.now().toString(36)}${++this.world.seq}`;
-    const res = await this.world.engine.run({ token: this.token, body: this.payload(o.kind || "text", text, id, o.ts || Date.now(), o.fromMe) });
+    const res = await this.world.engine.run({ token: this.token, body: this.payload(o.kind || "text", text, id, o.ts || Date.now(), o.fromMe) }, { faults: o.faults });
     const msgs = res.outbox.map((b) => b.text);
     const claim = res.nodeOut.get("Claim")?.[0]?.json;
     this.log.push({ in: o.kind && o.kind !== "text" ? `[${o.kind}]` : text, msgs, error: res.error, claim: claim && claim.action, reason: claim && claim.reason });

@@ -10,7 +10,7 @@ import { World, Chat } from "./chat.mjs";
 const here = dirname(fileURLToPath(import.meta.url));
 const seed = JSON.parse(readFileSync(join(here, ".seed.json"), "utf8"));
 const [, , tenantKey, phone, ...msgs] = process.argv;
-const engine = new Engine({ workflowPath: join(here, "../../n8n/innochat-bot.json"), painelUrl: `${process.env.BOTSIM_PANEL || "http://localhost:3900"}/api/internal/v1`, secret: seed.secret });
+const engine = new Engine({ workflowPath: process.env.BOTSIM_WORKFLOW || join(here, "../../n8n/innochat-bot.json"), painelUrl: `${process.env.BOTSIM_PANEL || "http://localhost:3900"}/api/internal/v1`, secret: seed.secret });
 const world = new World(engine);
 const chat = new Chat(world, seed.tenants[tenantKey].token, phone);
 for (const m of msgs) {

@@ -1,0 +1,2692 @@
+{
+  "id": "levHnMSXf1dOR3gS",
+  "name": "innochat-bot",
+  "active": false,
+  "isArchived": false,
+  "versionId": "8706fb61-fd2a-4b45-bb69-994a2c7f1e50",
+  "activeVersionId": null,
+  "triggerCount": 0,
+  "createdAt": "2026-09-28T20:01:09.159Z",
+  "updatedAt": "2026-09-28T21:18:49.305Z",
+  "settings": {
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "all",
+    "saveManualExecutions": false,
+    "saveExecutionProgress": false,
+    "timezone": "America/Sao_Paulo",
+    "executionOrder": "v1",
+    "executionTimeout": 120,
+    "errorWorkflow": "GZSwTNgvVt4LYnwW",
+    "availableInMCP": true,
+    "binaryMode": "separate"
+  },
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Filtrar evento",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filtrar evento": {
+      "main": [
+        [
+          {
+            "node": "Claim",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Registrar conexão",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claim": {
+      "main": [
+        [
+          {
+            "node": "Roteia claim",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Roteia claim": {
+      "main": [
+        [
+          {
+            "node": "Interpretar",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Tentar de novo?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ignorar (claim)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Interpretar": {
+      "main": [
+        [
+          {
+            "node": "Switch por passo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tentar de novo?": {
+      "main": [
+        [
+          {
+            "node": "Esperar",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Desistir (ocupado)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Esperar": {
+      "main": [
+        [
+          {
+            "node": "Claim",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch por passo": {
+      "main": [
+        [
+          {
+            "node": "Montar mensagem",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Opção do menu",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Buscar profissionais",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Profissional escolhido",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Dia escolhido",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Horário escolhido",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Salvar nome",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Confirmação",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Agendamento escolhido",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ação escolhida",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Confirmou cancelamento?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar mensagem": {
+      "main": [
+        [
+          {
+            "node": "Salvar sessão",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Opção do menu": {
+      "main": [
+        [
+          {
+            "node": "Buscar serviços",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Buscar meus agendamentos",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Pedir atendente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar serviços": {
+      "main": [
+        [
+          {
+            "node": "Resultado serviços",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resultado serviços": {
+      "main": [
+        [
+          {
+            "node": "Montar mensagem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar meus agendamentos": {
+      "main": [
+        [
+          {
+            "node": "Resultado meus agendamentos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resultado meus agendamentos": {
+      "main": [
+        [
+          {
+            "node": "Montar mensagem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pedir atendente": {
+      "main": [
+        [
+          {
+            "node": "Montar mensagem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar profissionais": {
+      "main": [
+        [
+          {
+            "node": "Resultado profissionais",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resultado profissionais": {
+      "main": [
+        [
+          {
+            "node": "Pular profissional?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pular profissional?": {
+      "main": [
+        [
+          {
+            "node": "Preparar dias",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Montar mensagem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar dias": {
+      "main": [
+        [
+          {
+            "node": "Buscar dias",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Profissional escolhido": {
+      "main": [
+        [
+          {
+            "node": "Preparar dias",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dia escolhido": {
+      "main": [
+        [
+          {
+            "node": "Ver mais datas?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ver mais datas?": {
+      "main": [
+        [
+          {
+            "node": "Preparar dias",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Preparar horários",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar horários": {
+      "main": [
+        [
+          {
+            "node": "Buscar horários",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Horário escolhido": {
+      "main": [
+        [
+          {
+            "node": "Mais horários?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mais horários?": {
+      "main": [
+        [
+          {
+            "node": "Preparar horários",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Montar mensagem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Salvar nome": {
+      "main": [
+        [
+          {
+            "node": "Resultado nome",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resultado nome": {
+      "main": [
+        [
+          {
+            "node": "Montar mensagem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confirmação": {
+      "main": [
+        [
+          {
+            "node": "Rota da confirmação",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rota da confirmação": {
+      "main": [
+        [
+          {
+            "node": "Reservar horário",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Preparar horários",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Preparar dias",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Remarcar agendamento",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reservar horário": {
+      "main": [
+        [
+          {
+            "node": "Resultado reserva",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resultado reserva": {
+      "main": [
+        [
+          {
+            "node": "Montar mensagem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Remarcar agendamento": {
+      "main": [
+        [
+          {
+            "node": "Resultado remarcação",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resultado remarcação": {
+      "main": [
+        [
+          {
+            "node": "Montar mensagem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agendamento escolhido": {
+      "main": [
+        [
+          {
+            "node": "Montar mensagem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ação escolhida": {
+      "main": [
+        [
+          {
+            "node": "Remarcar?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Remarcar?": {
+      "main": [
+        [
+          {
+            "node": "Preparar dias",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Montar mensagem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confirmou cancelamento?": {
+      "main": [
+        [
+          {
+            "node": "Cancelar agendamento",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Manter agendamento",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cancelar agendamento": {
+      "main": [
+        [
+          {
+            "node": "Resultado cancelamento",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resultado cancelamento": {
+      "main": [
+        [
+          {
+            "node": "Montar mensagem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manter agendamento": {
+      "main": [
+        [
+          {
+            "node": "Montar mensagem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar dias": {
+      "main": [
+        [
+          {
+            "node": "Resultado dias",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resultado dias": {
+      "main": [
+        [
+          {
+            "node": "Montar mensagem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar horários": {
+      "main": [
+        [
+          {
+            "node": "Resultado horários",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resultado horários": {
+      "main": [
+        [
+          {
+            "node": "Montar mensagem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Salvar sessão": {
+      "main": [
+        [
+          {
+            "node": "Resultado da gravação",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resultado da gravação": {
+      "main": [
+        [
+          {
+            "node": "Sandbox?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Descartar (LOCK_LOST)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Falha ao salvar sessão",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sandbox?": {
+      "main": [
+        [
+          {
+            "node": "Enviar para sandbox",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Preparar envio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar envio": {
+      "main": [
+        [
+          {
+            "node": "Separar mensagens",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Separar mensagens": {
+      "main": [
+        [
+          {
+            "node": "Enviar pela Evolution",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "nodes": [
+    {
+      "id": "f9efa564-b3ad-4a09-9e18-387c898afd6d",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        400
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "innochat/evolution/:token",
+        "authentication": "none",
+        "responseMode": "onReceived",
+        "options": {
+          "noResponseBody": true
+        }
+      },
+      "webhookId": "b12d5bcf-6ca4-4d91-b0d7-d255d196cfd5"
+    },
+    {
+      "id": "236e424b-5335-4a03-a314-da2a4810b225",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        400
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "painelUrl",
+              "name": "painelUrl",
+              "value": "https://PAINEL_A_DEFINIR/api/internal/v1",
+              "type": "string"
+            },
+            {
+              "id": "evolutionUrl",
+              "name": "evolutionUrl",
+              "value": "https://EVOLUTION_A_DEFINIR",
+              "type": "string"
+            },
+            {
+              "id": "n8nApiUrl",
+              "name": "n8nApiUrl",
+              "value": "https://N8N_A_DEFINIR/api/v1",
+              "type": "string"
+            },
+            {
+              "id": "token",
+              "name": "token",
+              "value": "={{ $json.params?.token ?? \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "event",
+              "name": "event",
+              "value": "={{ $json.body?.event ?? \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "payload",
+              "name": "payload",
+              "value": "={{ $json.body ?? {} }}",
+              "type": "object"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "f7116fa9-9a4d-4dee-8674-f64842521ceb",
+      "name": "Filtrar evento",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        440,
+        400
+      ],
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.event }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "messages.upsert"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "mensagem"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.event }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "connection.update"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "conexão"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "d927b08e-75d6-4cda-83d9-5d260c5d6de4",
+      "name": "Claim",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        660,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.painelUrl }}/messages/claim",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-InnoChat-Instance",
+              "value": "={{ $('Config').first().json.token }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ payload: $('Config').first().json.payload }) }}"
+      },
+      "retryOnFail": true
+    },
+    {
+      "id": "073b03f1-4afc-4cf8-a570-812169479cc1",
+      "name": "Registrar conexão",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        660,
+        600
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.painelUrl }}/connection-events",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-InnoChat-Instance",
+              "value": "={{ $('Config').first().json.token }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ payload: $('Config').first().json.payload }) }}"
+      },
+      "retryOnFail": true
+    },
+    {
+      "id": "94d48d05-a66d-4818-a1b5-b2d6ccdecf32",
+      "name": "Roteia claim",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        880,
+        300
+      ],
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "process"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "processar"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "busy"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "ocupado"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "ignore"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "ignorar"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "5218cec0-5904-4187-afe4-2bc1b6d2fbdc",
+      "name": "Interpretar",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const claim = $input.first().json;\nconst s = claim.session || {};\nconst ctx = (s.context && typeof s.context === 'object' && !Array.isArray(s.context)) ? s.context : {};\nconst KNOWN = ['MAIN_MENU', 'SELECT_SERVICE', 'SELECT_PROFESSIONAL', 'SELECT_DAY', 'SELECT_TIME', 'ASK_NAME', 'CONFIRM', 'MY_APPOINTMENTS', 'APPOINTMENT_ACTION', 'CONFIRM_CANCEL'];\nconst invalidCount = Number(s.invalidCount) || 0;\nconst bot = {\n  inboundEventId: claim.inboundEventId,\n  instance: claim.instance || {},\n  to: claim.to,\n  contact: claim.contact || {},\n  session: { id: s.id, state: s.state, version: s.version, lockToken: s.lockToken, invalidCount, expired: !!s.expired },\n  context: ctx,\n  tenant: claim.tenant || {},\n  texts: claim.texts || {},\n};\nconst norm = (t) => String(t == null ? '' : t).normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase().replace(/\\s+/g, ' ').trim();\nconst base = { nextState: s.state, contextPatch: {}, resetContext: false, keepPage: false, textKey: null, vars: {}, options: null, handoff: false, prefixKey: null, repeatPrompt: false, invalidCount: 0, end: false };\nconst pronto = (r) => [{ json: { step: 'PRONTO', bot, choice: null, result: Object.assign({}, base, r) } }];\nconst siga = (choice) => [{ json: { step: s.state, bot, choice } }];\n\nconst isText = !!claim.message && claim.message.type === 'text';\nconst text = isText ? String(claim.message.text || '').trim() : '';\nconst options = Array.isArray(ctx.options) ? ctx.options : [];\n\nconst fresh = bot.session.expired || !KNOWN.includes(s.state) || (s.state === 'MAIN_MENU' && options.length === 0);\nif (fresh) {\n  return pronto({ nextState: 'MAIN_MENU', resetContext: true, prefixKey: bot.session.expired ? 'SESSION_EXPIRED' : 'GREETING', textKey: isText ? null : 'ONLY_TEXT' });\n}\nif (!isText) return pronto({ textKey: 'ONLY_TEXT', repeatPrompt: true, invalidCount });\n\nconst t = norm(text);\nif (t === '0' || t === 'menu') return pronto({ nextState: 'MAIN_MENU', resetContext: true });\nif (t === 'sair') return pronto({ nextState: 'MAIN_MENU', resetContext: true, textKey: 'GOODBYE', end: true });\n\nif (s.state === 'ASK_NAME') {\n  const name = text.replace(/\\s+/g, ' ');\n  if (name.length >= 2 && name.length <= 60 && !/^[0-9]+$/.test(name)) return siga({ id: name, label: name });\n} else {\n  let found = null;\n  if (/^[0-9]+$/.test(t)) {\n    found = options.find((o) => Number(o.n) === parseInt(t, 10)) || null;\n  } else if (t.length > 0) {\n    const exact = options.filter((o) => norm(o.label) === t);\n    const prefix = options.filter((o) => norm(o.label).startsWith(t));\n    found = exact.length === 1 ? exact[0] : (prefix.length === 1 ? prefix[0] : null);\n  }\n  if (found && found.id === '__page_next') {\n    return pronto({ options: Array.isArray(ctx.allOptions) ? ctx.allOptions : options, keepPage: true, contextPatch: { page: (Number(ctx.page) || 0) + 1 }, textKey: ctx.lastTextKey || null, vars: ctx.lastVars || {} });\n  }\n  if (found) return siga({ id: found.id, label: found.label });\n}\n\nconst count = invalidCount + 1;\nif (count >= 3) return pronto({ nextState: 'HUMAN', resetContext: true, textKey: 'TOO_MANY_INVALID', handoff: true });\nreturn pronto({ textKey: 'INVALID_OPTION', repeatPrompt: true, invalidCount: count });"
+      }
+    },
+    {
+      "id": "63042a04-6b18-4107-8afa-f31e3e3fa799",
+      "name": "Tentar de novo?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1100,
+        500
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $runIndex < 6 }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              },
+              "rightValue": ""
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "36a2754b-a9df-4306-8a4f-a1ebe34d3227",
+      "name": "Esperar",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1320,
+        500
+      ],
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": "={{ ($json.retryAfterMs || 1500) / 1000 }}",
+        "unit": "seconds"
+      },
+      "webhookId": "73c95f8e-01e9-4be4-b95c-1cb83314ed02"
+    },
+    {
+      "id": "76d45ea2-074f-4c1c-b47b-0838422ab5fe",
+      "name": "Desistir (ocupado)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1320,
+        650
+      ]
+    },
+    {
+      "id": "2ce693f0-eea6-4c9c-99c6-96262ce09fd6",
+      "name": "Ignorar (claim)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1100,
+        700
+      ]
+    },
+    {
+      "id": "fa1abfaa-165c-4a43-828d-c803899150d4",
+      "name": "Switch por passo",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1320,
+        300
+      ],
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.step }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "PRONTO"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "PRONTO"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.step }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "MAIN_MENU"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "MAIN_MENU"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.step }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "SELECT_SERVICE"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "SELECT_SERVICE"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.step }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "SELECT_PROFESSIONAL"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "SELECT_PROFESSIONAL"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.step }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "SELECT_DAY"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "SELECT_DAY"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.step }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "SELECT_TIME"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "SELECT_TIME"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.step }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "ASK_NAME"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "ASK_NAME"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.step }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "CONFIRM"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "CONFIRM"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.step }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "MY_APPOINTMENTS"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "MY_APPOINTMENTS"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.step }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "APPOINTMENT_ACTION"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "APPOINTMENT_ACTION"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.step }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "CONFIRM_CANCEL"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "CONFIRM_CANCEL"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "e0563728-430a-4d44-a485-aacee5d72b8d",
+      "name": "Montar mensagem",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2900,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const I = $('Interpretar').first().json;\nconst bot = I.bot;\nconst r = Object.assign({ contextPatch: {}, vars: {}, invalidCount: 0 }, ($input.first().json || {}).result || {});\nconst texts = bot.texts || {};\nconst oldCtx = bot.context || {};\nconst L = (key, fallback) => (typeof texts[key] === 'string' && texts[key].trim()) ? texts[key].trim() : fallback;\nconst SPECIAL_LABELS = { __more_days: L('LABEL_MORE_DAYS', 'Ver mais datas'), __more_times: L('LABEL_MORE_TIMES', 'Mais horários'), __page_next: L('LABEL_MORE', 'Ver mais') };\nconst MENUS = {\n  MAIN_MENU: { render: false, footer: false, options: [{ id: 'agendar', label: 'Agendar horário' }, { id: 'meus', label: 'Meus agendamentos' }, { id: 'atendente', label: 'Falar com atendente' }] },\n  APPOINTMENT_ACTION: { render: false, footer: true, options: [{ id: 'cancelar', label: 'Cancelar' }, { id: 'remarcar', label: 'Remarcar' }] },\n  CONFIRM: { render: true, footer: true, options: [{ id: 'confirmar', label: L('LABEL_CONFIRM', 'Confirmar') }, { id: 'outro', label: L('LABEL_OTHER_TIME', 'Escolher outro horário') }] },\n  CONFIRM_CANCEL: { render: true, footer: true, options: [{ id: 'sim', label: L('LABEL_CANCEL_YES', 'Sim, cancelar') }, { id: 'nao', label: L('LABEL_CANCEL_NO', 'Não, manter') }] },\n};\nconst vars = Object.assign({ nome: bot.contact.name || bot.contact.pushName || '', empresa: bot.tenant.name || '' }, r.vars || {});\nconst render = (key) => {\n  if (!key || typeof texts[key] !== 'string') return '';\n  return texts[key].replace(/\\{(\\w+)\\}/g, (m, k) => (vars[k] === undefined || vars[k] === null) ? m : String(vars[k])).trim();\n};\n\nlet nextState = r.nextState || bot.session.state;\nlet ctx;\nlet message;\nif (r.repeatPrompt && oldCtx.lastPrompt) {\n  ctx = Object.assign({}, oldCtx);\n  message = [render(r.textKey), oldCtx.lastPrompt].filter(Boolean).join('\\n\\n');\n} else {\n  let resetContext = !!r.resetContext;\n  if (r.repeatPrompt) { nextState = 'MAIN_MENU'; resetContext = true; }\n  ctx = resetContext ? {} : Object.assign({}, oldCtx);\n  Object.assign(ctx, r.contextPatch || {});\n  const closing = !!r.end || !!r.handoff || nextState === 'HUMAN';\n  const menu = MENUS[nextState];\n  const blocks = [];\n  if (r.prefixKey) blocks.push(render(r.prefixKey));\n  let heading = '';\n  let opts = Array.isArray(r.options) ? r.options : [];\n  let renderOpts = true;\n  let footer = true;\n  if (closing) {\n    blocks.push(render(r.textKey));\n    opts = []; renderOpts = false; footer = false;\n  } else if (nextState === 'MAIN_MENU') {\n    blocks.push(render(r.textKey));\n    heading = render('MAIN_MENU');\n    opts = menu.options; renderOpts = false; footer = false;\n  } else if (menu && opts.length === 0) {\n    heading = render(r.textKey);\n    opts = menu.options; renderOpts = menu.render; footer = menu.footer;\n  } else {\n    heading = render(r.textKey);\n  }\n  const regular = opts.filter((o) => !String(o.id).startsWith('__'));\n  const special = opts.filter((o) => String(o.id).startsWith('__') && o.id !== '__page_next');\n  let shown;\n  if (regular.length + special.length > 9) {\n    const pages = Math.ceil(regular.length / 8);\n    const page = r.keepPage ? ((Number(ctx.page) || 0) % pages) : 0;\n    shown = regular.slice(page * 8, page * 8 + 8).map((o, i) => ({ n: i + 1, id: o.id, label: o.label }));\n    shown.push({ n: 9, id: '__page_next', label: SPECIAL_LABELS.__page_next });\n    ctx.allOptions = opts;\n    ctx.page = page;\n  } else {\n    shown = regular.map((o, i) => ({ n: i + 1, id: o.id, label: o.label })).concat(special.map((o) => ({ n: Number(o.n), id: o.id, label: SPECIAL_LABELS[o.id] || o.label })));\n    delete ctx.allOptions;\n    delete ctx.page;\n  }\n  const lines = [];\n  if (heading) lines.push(heading);\n  if (renderOpts && shown.length) lines.push(shown.map((o) => o.n + '. ' + o.label).join('\\n'));\n  if (footer) lines.push(L('LABEL_BACK_TO_MENU', '0. Menu principal'));\n  const prompt = lines.join('\\n');\n  if (prompt) blocks.push(prompt);\n  message = blocks.filter(Boolean).join('\\n\\n');\n  if (closing) {\n    ctx = {};\n  } else {\n    ctx.options = shown;\n    ctx.lastPrompt = prompt;\n    ctx.lastTextKey = r.textKey || null;\n    ctx.lastVars = r.vars || {};\n  }\n}\nif (!message) message = render('MAIN_MENU') || '0. Menu principal';\n\nreturn [{ json: {\n  sessionId: bot.session.id,\n  sandbox: !!(bot.instance && bot.instance.sandbox),\n  instanceName: bot.instance ? bot.instance.name : '',\n  save: { lockToken: bot.session.lockToken, version: bot.session.version, state: nextState, context: ctx, invalidCount: Number(r.invalidCount) || 0, outbound: [message], handoff: !!r.handoff },\n  messages: [{ number: bot.to, text: message }],\n} }];"
+      }
+    },
+    {
+      "id": "c745c531-a7f9-4b11-8001-aa291a710b8b",
+      "name": "Opção do menu",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1540,
+        100
+      ],
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.choice.id }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "agendar"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "agendar"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.choice.id }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "meus"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "meus agendamentos"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.choice.id }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "atendente"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "atendente"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "7fe5c12d-51d0-45b0-946e-90fcddc42d25",
+      "name": "Buscar serviços",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1760,
+        0
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Config').first().json.painelUrl }}/catalog/services",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-InnoChat-Instance",
+              "value": "={{ $('Config').first().json.token }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "retryOnFail": true
+    },
+    {
+      "id": "b102b551-e864-47a5-b941-4468b3bf512e",
+      "name": "Resultado serviços",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1980,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const I = $('Interpretar').first().json;\nconst bot = I.bot;\nconst ctx = bot.context || {};\nconst choice = I.choice || {};\nconst R = (result) => [{ json: { result } }];\nconst opts = ($input.first().json.options || []).map((o) => ({ id: o.id, label: o.label }));\nif (!opts.length) return R({ nextState: 'MAIN_MENU', resetContext: true, textKey: 'NO_AVAILABILITY' });\nreturn R({ nextState: 'SELECT_SERVICE', resetContext: true, contextPatch: { mode: 'BOOK' }, textKey: 'CHOOSE_SERVICE', options: opts });"
+      }
+    },
+    {
+      "id": "01ada398-ea8c-43c3-bfa2-6d30b6822ed6",
+      "name": "Buscar meus agendamentos",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1760,
+        150
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Config').first().json.painelUrl }}/contacts/{{ encodeURIComponent($('Interpretar').first().json.bot.contact.id) }}/appointments",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-InnoChat-Instance",
+              "value": "={{ $('Config').first().json.token }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        },
+        "sendQuery": true,
+        "specifyQuery": "json",
+        "jsonQuery": "={{ JSON.stringify({ upcoming: \"true\" }) }}"
+      },
+      "retryOnFail": true
+    },
+    {
+      "id": "8c188646-6daf-46eb-af82-af12a2fc1831",
+      "name": "Resultado meus agendamentos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1980,
+        150
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const I = $('Interpretar').first().json;\nconst bot = I.bot;\nconst ctx = bot.context || {};\nconst choice = I.choice || {};\nconst R = (result) => [{ json: { result } }];\nconst itens = $input.first().json.options || [];\nconst opts = itens.map((o) => ({ id: o.id, label: o.label }));\nif (!opts.length) return R({ nextState: 'MAIN_MENU', resetContext: true, textKey: 'NO_APPOINTMENTS' });\nconst appointments = {};\nfor (const o of itens) appointments[o.id] = { serviceId: o.serviceId, professionalId: o.professionalId ?? null, servico: o.servico, profissional: o.profissional, data: o.data, hora: o.hora, startsAt: o.startsAt };\nreturn R({ nextState: 'MY_APPOINTMENTS', resetContext: true, contextPatch: { appointments }, textKey: 'MY_APPOINTMENTS', options: opts });"
+      }
+    },
+    {
+      "id": "7fdbedfb-ca8b-4ad4-b5d2-30a7ea513016",
+      "name": "Pedir atendente",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const I = $('Interpretar').first().json;\nconst bot = I.bot;\nconst ctx = bot.context || {};\nconst choice = I.choice || {};\nconst R = (result) => [{ json: { result } }];\nreturn R({ nextState: 'HUMAN', resetContext: true, textKey: 'HUMAN_HANDOFF', handoff: true });"
+      }
+    },
+    {
+      "id": "5a783478-9615-4507-9fa4-ebddffd100a2",
+      "name": "Buscar profissionais",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1540,
+        500
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Config').first().json.painelUrl }}/catalog/services/{{ encodeURIComponent($json.choice.id) }}/professionals",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-InnoChat-Instance",
+              "value": "={{ $('Config').first().json.token }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "retryOnFail": true
+    },
+    {
+      "id": "9d8b398c-7ae5-450a-8aa1-54ca344d1293",
+      "name": "Resultado profissionais",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        500
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const I = $('Interpretar').first().json;\nconst bot = I.bot;\nconst ctx = bot.context || {};\nconst choice = I.choice || {};\nconst R = (result) => [{ json: { result } }];\nconst resumo = (c) => { const p = String(c.serviceLabel || '').split(' — '); return { servico: p[0] || '', preco: p.slice(1).join(' — '), profissional: c.professionalLabel || 'Qualquer profissional', data: c.dayLabel || '', hora: c.timeLabel || '' }; };\nconst r = $input.first().json;\nconst opts = (r.options || []).map((o) => ({ id: o.id, label: o.label }));\nconst svc = { serviceId: choice.id, serviceLabel: choice.label };\nif (r.skip === true || opts.length <= 1) {\n  const p = opts[0];\n  const professionalId = (!p || p.id === 'any') ? null : p.id;\n  return [{ json: { rota: 'dias', req: { serviceId: choice.id, professionalId }, patch: Object.assign({}, svc, { professionalId, professionalLabel: p ? p.label : '' }) } }];\n}\nreturn [{ json: { rota: 'escolher', result: { nextState: 'SELECT_PROFESSIONAL', resetContext: true, contextPatch: Object.assign({ mode: 'BOOK' }, svc), textKey: 'CHOOSE_PROFESSIONAL', vars: resumo(svc), options: opts } } }];"
+      }
+    },
+    {
+      "id": "d20752a9-fb29-44e7-b00e-a0fb04a2bb1d",
+      "name": "Pular profissional?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1980,
+        500
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.rota }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "rightValue": "dias"
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "ee5d4acd-dba5-41dd-98b9-ce7664df7f2a",
+      "name": "Preparar dias",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        700
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const I = $('Interpretar').first().json;\nconst bot = I.bot;\nconst ctx = bot.context || {};\nconst choice = I.choice || {};\nconst R = (result) => [{ json: { result } }];\nconst j = $input.first().json;\nconst req = j.req || {};\nconst serviceId = req.serviceId || ctx.serviceId;\nconst professionalId = req.professionalId === undefined ? (ctx.professionalId ?? null) : req.professionalId;\nconst query = { serviceId, limit: '7' };\nif (req.from) query.from = req.from;\nif (professionalId) query.professionalId = professionalId;\nreturn [{ json: { query, professionalId, patch: j.patch || {} } }];"
+      }
+    },
+    {
+      "id": "73a412ca-336b-4370-a828-98f8683a2ae9",
+      "name": "Profissional escolhido",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        700
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const I = $('Interpretar').first().json;\nconst bot = I.bot;\nconst ctx = bot.context || {};\nconst choice = I.choice || {};\nconst R = (result) => [{ json: { result } }];\nconst professionalId = choice.id === 'any' ? null : choice.id;\nreturn [{ json: { req: { serviceId: ctx.serviceId, professionalId }, patch: { professionalId, professionalLabel: choice.label } } }];"
+      }
+    },
+    {
+      "id": "fb07b018-73ea-4ef9-91fd-a1abc0754289",
+      "name": "Dia escolhido",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        900
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const I = $('Interpretar').first().json;\nconst bot = I.bot;\nconst ctx = bot.context || {};\nconst choice = I.choice || {};\nconst R = (result) => [{ json: { result } }];\nif (choice.id === '__more_days') {\n  return [{ json: { rota: 'dias', req: { serviceId: ctx.serviceId, professionalId: ctx.professionalId ?? null, from: ctx.nextFrom }, patch: {} } }];\n}\nreturn [{ json: { rota: 'horarios', req: { date: choice.id, offset: 0 }, patch: { date: choice.id, dayLabel: choice.label } } }];"
+      }
+    },
+    {
+      "id": "b2c7d7e7-210b-4cc2-a3da-fd90bc9b56de",
+      "name": "Ver mais datas?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1760,
+        900
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.rota }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "rightValue": "dias"
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "62287357-f3dc-4af6-9e11-54b727981aa2",
+      "name": "Preparar horários",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        1000
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const I = $('Interpretar').first().json;\nconst bot = I.bot;\nconst ctx = bot.context || {};\nconst choice = I.choice || {};\nconst R = (result) => [{ json: { result } }];\nconst j = $input.first().json;\nconst req = j.req || {};\nconst professionalId = ctx.professionalId ?? null;\nconst offset = Number(req.offset) || 0;\nconst query = { serviceId: ctx.serviceId, date: req.date || ctx.date, offset: String(offset), limit: '8' };\nif (professionalId) query.professionalId = professionalId;\nreturn [{ json: { query, offset, patch: j.patch || {} } }];"
+      }
+    },
+    {
+      "id": "290a6e65-95e4-4448-afe8-704621c87006",
+      "name": "Horário escolhido",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        1100
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const I = $('Interpretar').first().json;\nconst bot = I.bot;\nconst ctx = bot.context || {};\nconst choice = I.choice || {};\nconst R = (result) => [{ json: { result } }];\nconst resumo = (c) => { const p = String(c.serviceLabel || '').split(' — '); return { servico: p[0] || '', preco: p.slice(1).join(' — '), profissional: c.professionalLabel || 'Qualquer profissional', data: c.dayLabel || '', hora: c.timeLabel || '' }; };\nif (choice.id === '__more_times') {\n  return [{ json: { rota: 'horarios', req: { date: ctx.date, offset: (Number(ctx.slotOffset) || 0) + 8 }, patch: {} } }];\n}\nconst patch = { startsAt: choice.id, timeLabel: choice.label };\nif (!bot.contact.name && ctx.mode !== 'RESCHEDULE') return [{ json: { rota: 'pronto', result: { nextState: 'ASK_NAME', contextPatch: patch, textKey: 'ASK_NAME', options: [] } } }];\nreturn [{ json: { rota: 'pronto', result: { nextState: 'CONFIRM', contextPatch: patch, textKey: 'CONFIRM_SUMMARY', vars: resumo(Object.assign({}, ctx, patch)), options: [] } } }];"
+      }
+    },
+    {
+      "id": "5446e37d-6775-4def-8c5e-a5d0b5a0a8cc",
+      "name": "Mais horários?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1760,
+        1100
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.rota }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "rightValue": "horarios"
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "3a374306-24b4-4cd6-bca0-9e027d610beb",
+      "name": "Salvar nome",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1540,
+        1300
+      ],
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $('Config').first().json.painelUrl }}/contacts/{{ encodeURIComponent($json.bot.contact.id) }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-InnoChat-Instance",
+              "value": "={{ $('Config').first().json.token }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ name: $json.choice.id }) }}"
+      },
+      "retryOnFail": true
+    },
+    {
+      "id": "68768f54-6252-467f-a7ee-174efbf15c61",
+      "name": "Resultado nome",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        1300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const I = $('Interpretar').first().json;\nconst bot = I.bot;\nconst ctx = bot.context || {};\nconst choice = I.choice || {};\nconst R = (result) => [{ json: { result } }];\nconst resumo = (c) => { const p = String(c.serviceLabel || '').split(' — '); return { servico: p[0] || '', preco: p.slice(1).join(' — '), profissional: c.professionalLabel || 'Qualquer profissional', data: c.dayLabel || '', hora: c.timeLabel || '' }; };\nconst res = $input.first().json;\nconst status = Number(res.statusCode);\nif (status >= 200 && status < 300) {\n  return R({ nextState: 'CONFIRM', textKey: 'CONFIRM_SUMMARY', vars: Object.assign(resumo(ctx), { nome: choice.id }), options: [] });\n}\nif (status === 422) {\n  return R({ nextState: 'ASK_NAME', textKey: 'ASK_NAME', prefixKey: 'INVALID_OPTION', options: [], invalidCount: (bot.session.invalidCount || 0) + 1 });\n}\nthrow new Error('PATCH /contacts respondeu HTTP ' + status);"
+      }
+    },
+    {
+      "id": "79fb5916-49cd-48b8-8ec4-10b59e681646",
+      "name": "Confirmação",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        1500
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const I = $('Interpretar').first().json;\nconst bot = I.bot;\nconst ctx = bot.context || {};\nconst choice = I.choice || {};\nconst R = (result) => [{ json: { result } }];\nif (choice.id === 'confirmar' && ctx.mode === 'RESCHEDULE') {\n  return [{ json: { rota: 'remarcar', appointmentId: ctx.appointmentId, body: { contactId: bot.contact.id, startsAt: ctx.startsAt, idempotencyKey: bot.inboundEventId } } }];\n}\nif (choice.id === 'confirmar') {\n  return [{ json: { rota: 'reservar', body: { contactId: bot.contact.id, serviceId: ctx.serviceId, professionalId: ctx.professionalId ?? null, startsAt: ctx.startsAt, idempotencyKey: bot.inboundEventId, instanceName: bot.instance.name } } }];\n}\nif (ctx.date) return [{ json: { rota: 'horarios', req: { date: ctx.date, offset: 0 }, patch: {} } }];\nreturn [{ json: { rota: 'dias', req: {}, patch: {} } }];"
+      }
+    },
+    {
+      "id": "0a9522d5-349f-4de0-a14d-c6711d501913",
+      "name": "Rota da confirmação",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1760,
+        1500
+      ],
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.rota }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "reservar"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "reservar"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.rota }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "horarios"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "outro horário"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.rota }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "dias"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "outro dia"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.rota }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "remarcar"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "remarcar"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "e9c9e318-5400-4353-8646-512647f0951c",
+      "name": "Reservar horário",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1980,
+        1450
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.painelUrl }}/appointments",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-InnoChat-Instance",
+              "value": "={{ $('Config').first().json.token }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}"
+      },
+      "retryOnFail": true
+    },
+    {
+      "id": "6dd2dba2-5e2f-4568-a3a7-07f0116116cb",
+      "name": "Resultado reserva",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        1450
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const I = $('Interpretar').first().json;\nconst bot = I.bot;\nconst ctx = bot.context || {};\nconst choice = I.choice || {};\nconst R = (result) => [{ json: { result } }];\nconst res = $input.first().json;\nconst status = Number(res.statusCode);\nconst body = res.body || {};\nif ((status === 200 || status === 201) && body.appointment) {\n  const s = body.appointment.summary || {};\n  return R({ nextState: 'MAIN_MENU', resetContext: true, textKey: 'BOOKED', vars: { servico: s.servico, profissional: s.profissional, data: s.data, hora: s.hora } });\n}\nconst err = body.error || {};\nif (status === 409 && err.code === 'SLOT_TAKEN') {\n  const alt = (err.details && err.details.alternatives) || {};\n  const opts = (alt.options || []).map((o) => ({ id: o.id, label: o.label }));\n  if (!opts.length) return R({ nextState: 'MAIN_MENU', resetContext: true, textKey: 'NO_AVAILABILITY' });\n  return R({ nextState: 'SELECT_TIME', contextPatch: { date: null, dayLabel: alt.date || '', slotOffset: 0 }, textKey: 'SLOT_TAKEN', options: opts });\n}\nif (status === 422 || status === 403) return R({ nextState: 'MAIN_MENU', resetContext: true, textKey: 'NO_AVAILABILITY' });\nif (status === 404) return R({ nextState: 'MAIN_MENU', resetContext: true });\nthrow new Error('POST /appointments respondeu HTTP ' + status + (err.code ? ' ' + err.code : ''));"
+      }
+    },
+    {
+      "id": "2030068a-9cb6-4007-8790-33c862f203ee",
+      "name": "Remarcar agendamento",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1980,
+        1600
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.painelUrl }}/appointments/{{ encodeURIComponent($json.appointmentId) }}/reschedule",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-InnoChat-Instance",
+              "value": "={{ $('Config').first().json.token }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}"
+      },
+      "retryOnFail": true
+    },
+    {
+      "id": "fb064480-877e-442a-b57c-cf023d984cf8",
+      "name": "Resultado remarcação",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        1600
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const I = $('Interpretar').first().json;\nconst bot = I.bot;\nconst ctx = bot.context || {};\nconst choice = I.choice || {};\nconst R = (result) => [{ json: { result } }];\nconst res = $input.first().json;\nconst status = Number(res.statusCode);\nconst body = res.body || {};\nconst err = body.error || {};\nif (status >= 200 && status < 300) {\n  return R({ nextState: 'MAIN_MENU', resetContext: true, textKey: 'RESCHEDULED', vars: { data: ctx.dayLabel || '', hora: ctx.timeLabel || '', servico: (ctx.appointment && ctx.appointment.servico) || '', profissional: ctx.professionalLabel || '' } });\n}\nif (status === 409 && err.code === 'SLOT_TAKEN') {\n  const alt = (err.details && err.details.alternatives) || {};\n  const opts = (alt.options || []).map((o) => ({ id: o.id, label: o.label }));\n  if (!opts.length) return R({ nextState: 'MAIN_MENU', resetContext: true, textKey: 'NO_AVAILABILITY' });\n  return R({ nextState: 'SELECT_TIME', contextPatch: { date: null, dayLabel: alt.date || '', slotOffset: 0 }, textKey: 'SLOT_TAKEN', options: opts });\n}\nif (status === 409) return R({ nextState: 'MAIN_MENU', resetContext: true, textKey: 'TOO_LATE' });\nif (status === 422 || status === 403) return R({ nextState: 'MAIN_MENU', resetContext: true, textKey: 'NO_AVAILABILITY' });\nif (status === 404) return R({ nextState: 'MAIN_MENU', resetContext: true, textKey: 'NO_APPOINTMENTS' });\nthrow new Error('POST /appointments/{id}/reschedule respondeu HTTP ' + status + (err.code ? ' ' + err.code : ''));"
+      }
+    },
+    {
+      "id": "6ec73725-e871-4cb9-9677-167050d438a5",
+      "name": "Agendamento escolhido",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        1700
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const I = $('Interpretar').first().json;\nconst bot = I.bot;\nconst ctx = bot.context || {};\nconst choice = I.choice || {};\nconst R = (result) => [{ json: { result } }];\nconst appointment = (ctx.appointments && ctx.appointments[choice.id]) || null;\nreturn R({ nextState: 'APPOINTMENT_ACTION', contextPatch: { appointmentId: choice.id, appointmentLabel: choice.label, appointment, appointments: null }, textKey: 'APPOINTMENT_ACTIONS', options: [] });"
+      }
+    },
+    {
+      "id": "e8d3765d-f4f6-47ee-ac4b-4548d5e2b11e",
+      "name": "Ação escolhida",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        1850
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const I = $('Interpretar').first().json;\nconst bot = I.bot;\nconst ctx = bot.context || {};\nconst choice = I.choice || {};\nconst R = (result) => [{ json: { result } }];\nconst a = ctx.appointment || {};\nif (choice.id === 'cancelar') {\n  const vars = { servico: a.servico || '', profissional: a.profissional || '', data: a.data || '', hora: a.hora || '' };\n  return [{ json: { rota: 'pronto', result: { nextState: 'CONFIRM_CANCEL', textKey: 'CONFIRM_CANCEL', vars, options: [] } } }];\n}\nif (!a.serviceId) {\n  return [{ json: { rota: 'pronto', result: { nextState: 'HUMAN', resetContext: true, textKey: 'HUMAN_HANDOFF', handoff: true } } }];\n}\nconst professionalId = a.professionalId ?? null;\nreturn [{ json: { rota: 'dias', req: { serviceId: a.serviceId, professionalId }, patch: { mode: 'RESCHEDULE', serviceId: a.serviceId, serviceLabel: a.servico || '', professionalId, professionalLabel: a.profissional || '' } } }];"
+      }
+    },
+    {
+      "id": "f58cbd4d-d104-43d8-82ae-244086e3a13d",
+      "name": "Remarcar?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1760,
+        1850
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.rota }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "rightValue": "dias"
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "7fe2c227-3477-4609-b31e-f00dd28491f3",
+      "name": "Confirmou cancelamento?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1540,
+        2000
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.choice.id }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "rightValue": "sim"
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "8eb8fb5b-7f54-40cf-84f5-05ae04de68ed",
+      "name": "Cancelar agendamento",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1760,
+        1950
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.painelUrl }}/appointments/{{ encodeURIComponent($json.bot.context.appointmentId) }}/cancel",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-InnoChat-Instance",
+              "value": "={{ $('Config').first().json.token }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ contactId: $json.bot.contact.id, idempotencyKey: $json.bot.inboundEventId }) }}"
+      },
+      "retryOnFail": true
+    },
+    {
+      "id": "35a62de7-89d8-4b94-9293-ee10565b852d",
+      "name": "Resultado cancelamento",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1980,
+        1950
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const I = $('Interpretar').first().json;\nconst bot = I.bot;\nconst ctx = bot.context || {};\nconst choice = I.choice || {};\nconst R = (result) => [{ json: { result } }];\nconst res = $input.first().json;\nconst status = Number(res.statusCode);\nconst err = (res.body && res.body.error) || {};\nif (status >= 200 && status < 300) return R({ nextState: 'MAIN_MENU', resetContext: true, textKey: 'CANCELED' });\nif (status === 409) return R({ nextState: 'MAIN_MENU', resetContext: true, textKey: 'TOO_LATE' });\nif (status === 404) return R({ nextState: 'MAIN_MENU', resetContext: true, textKey: 'NO_APPOINTMENTS' });\nthrow new Error('POST /appointments/{id}/cancel respondeu HTTP ' + status + (err.code ? ' ' + err.code : ''));"
+      }
+    },
+    {
+      "id": "9e1acb41-8cb9-47d5-be6a-8d1dd8a0bc0d",
+      "name": "Manter agendamento",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        2100
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const I = $('Interpretar').first().json;\nconst bot = I.bot;\nconst ctx = bot.context || {};\nconst choice = I.choice || {};\nconst R = (result) => [{ json: { result } }];\nreturn R({ nextState: 'MAIN_MENU', resetContext: true });"
+      }
+    },
+    {
+      "id": "1a197ac2-229a-4544-825c-bcb77d708b0c",
+      "name": "Buscar dias",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2420,
+        700
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Config').first().json.painelUrl }}/availability/days",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-InnoChat-Instance",
+              "value": "={{ $('Config').first().json.token }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        },
+        "sendQuery": true,
+        "specifyQuery": "json",
+        "jsonQuery": "={{ JSON.stringify($json.query) }}"
+      },
+      "retryOnFail": true
+    },
+    {
+      "id": "771fddbd-6729-4f81-bb9a-e50d93cbd6f4",
+      "name": "Resultado dias",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2640,
+        700
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const I = $('Interpretar').first().json;\nconst bot = I.bot;\nconst ctx = bot.context || {};\nconst choice = I.choice || {};\nconst R = (result) => [{ json: { result } }];\nconst prep = $('Preparar dias').first().json;\nconst r = $input.first().json;\nconst opts = (r.options || []).map((o) => ({ id: o.id, label: o.label }));\nif (!opts.length) return R({ nextState: 'MAIN_MENU', resetContext: true, textKey: 'NO_AVAILABILITY' });\nif (r.hasMore && r.nextFrom) opts.push({ n: 8, id: '__more_days', label: 'Ver mais datas' });\nconst patch = Object.assign({}, prep.patch, { serviceId: prep.query.serviceId, professionalId: prep.professionalId ?? null, nextFrom: r.nextFrom || null });\nreturn R({ nextState: 'SELECT_DAY', contextPatch: patch, textKey: 'CHOOSE_DAY', options: opts });"
+      }
+    },
+    {
+      "id": "43764418-28f9-47fa-ab9d-5a15148e10f5",
+      "name": "Buscar horários",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2420,
+        1000
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Config').first().json.painelUrl }}/availability/slots",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-InnoChat-Instance",
+              "value": "={{ $('Config').first().json.token }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        },
+        "sendQuery": true,
+        "specifyQuery": "json",
+        "jsonQuery": "={{ JSON.stringify($json.query) }}"
+      },
+      "retryOnFail": true
+    },
+    {
+      "id": "034344ca-a3a1-406f-873b-e9e897445658",
+      "name": "Resultado horários",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2640,
+        1000
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const I = $('Interpretar').first().json;\nconst bot = I.bot;\nconst ctx = bot.context || {};\nconst choice = I.choice || {};\nconst R = (result) => [{ json: { result } }];\nconst prep = $('Preparar horários').first().json;\nconst r = $input.first().json;\nconst opts = (r.options || []).map((o) => ({ id: o.id, label: o.label }));\nif (!opts.length) {\n  if (bot.session.state === 'SELECT_DAY' && Array.isArray(ctx.options) && ctx.options.length) {\n    return R({ nextState: 'SELECT_DAY', textKey: 'NO_SLOTS_DAY', options: ctx.options });\n  }\n  return R({ nextState: 'MAIN_MENU', resetContext: true, textKey: 'NO_AVAILABILITY' });\n}\nif (r.hasMore) opts.push({ n: 9, id: '__more_times', label: 'Mais horários' });\nconst patch = Object.assign({}, prep.patch, { slotOffset: prep.offset });\nreturn R({ nextState: 'SELECT_TIME', contextPatch: patch, textKey: 'CHOOSE_TIME', vars: { data: prep.patch.dayLabel || ctx.dayLabel || '' }, options: opts });"
+      }
+    },
+    {
+      "id": "2e696ae5-3dfd-4ddf-8ec0-848fe8b5aca5",
+      "name": "Salvar sessão",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        3120,
+        300
+      ],
+      "parameters": {
+        "method": "PUT",
+        "url": "={{ $('Config').first().json.painelUrl }}/sessions/{{ encodeURIComponent($json.sessionId) }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-InnoChat-Instance",
+              "value": "={{ $('Config').first().json.token }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.save) }}"
+      },
+      "retryOnFail": true
+    },
+    {
+      "id": "934aa23c-3bd4-45f1-bce7-a8b05c978bd2",
+      "name": "Resultado da gravação",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        3340,
+        300
+      ],
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.statusCode }}",
+                    "operator": {
+                      "type": "number",
+                      "operation": "equals"
+                    },
+                    "rightValue": 200
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "gravou"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.statusCode }}",
+                    "operator": {
+                      "type": "number",
+                      "operation": "equals"
+                    },
+                    "rightValue": 409
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "trava perdida"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "erro"
+        }
+      }
+    },
+    {
+      "id": "a09e01f9-f06e-4a81-af46-ea5e41fed35d",
+      "name": "Sandbox?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        3560,
+        250
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $('Montar mensagem').first().json.sandbox }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              },
+              "rightValue": ""
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "a441b41a-a2ba-44ae-a25d-1d2c29d17232",
+      "name": "Enviar para sandbox",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        3780,
+        150
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.painelUrl }}/sandbox/outbox",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-InnoChat-Instance",
+              "value": "={{ $('Config').first().json.token }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ sessionId: $('Montar mensagem').first().json.sessionId, messages: $('Montar mensagem').first().json.messages.map((m) => m.text) }) }}"
+      }
+    },
+    {
+      "id": "2b32d119-d332-4333-8c5f-09651f8b2ead",
+      "name": "Preparar envio",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        3780,
+        350
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "messages",
+              "name": "messages",
+              "value": "={{ $('Montar mensagem').first().json.messages }}",
+              "type": "array"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "2735e285-f58d-4b08-984a-e9eacb2b2533",
+      "name": "Separar mensagens",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        4000,
+        350
+      ],
+      "parameters": {
+        "fieldToSplitOut": "messages",
+        "include": "noOtherFields"
+      }
+    },
+    {
+      "id": "dc0302db-65d8-455a-92a6-53fe1f39bfc7",
+      "name": "Enviar pela Evolution",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        4220,
+        350
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.evolutionUrl }}/message/sendText/{{ encodeURIComponent($('Montar mensagem').first().json.instanceName) }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ number: $json.number, text: $json.text, delay: 1200 }) }}",
+        "options": {
+          "timeout": 10000,
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 300
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "a8fbaefd-0299-4229-ab00-1d9bae79a391",
+      "name": "Descartar (LOCK_LOST)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        3560,
+        450
+      ]
+    },
+    {
+      "id": "ff1ad680-a28e-4247-96bc-6adff088916f",
+      "name": "Falha ao salvar sessão",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        3560,
+        600
+      ],
+      "parameters": {
+        "errorType": "errorMessage",
+        "errorMessage": "=PUT /sessions respondeu HTTP {{ $json.statusCode }}"
+      }
+    },
+    {
+      "id": "d3ddf478-7a9c-4dd5-85e0-079975056e27",
+      "name": "Sticky Note e726c988",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        170,
+        350
+      ],
+      "parameters": {
+        "content": "## Configuração central\nPreencha no nó **Config**: `painelUrl` (https://<painel>/api/internal/v1), `evolutionUrl` e `n8nApiUrl` (ou deixe a sincronização do painel fazer isso). Não renomeie o nó nem os campos.\nCredenciais Header Auth: **InnoChat Painel (Bearer)** (Authorization = Bearer <INTERNAL_API_SECRET>) e **Evolution API (apikey)** (apikey = <chave>).\nDocs: n8n/README.md",
+        "color": 4,
+        "width": 300,
+        "height": 200
+      }
+    },
+    {
+      "id": "1e982204-b33c-43d9-9ba7-726670c5c929",
+      "name": "Sticky Note 660f5f1c",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1270,
+        250
+      ],
+      "parameters": {
+        "content": "## Motor do menu\nOs ramos devolvem só `{ result: { nextState, contextPatch, textKey, vars, options, handoff } }`.\nSó o nó **Montar mensagem** monta texto (docs/arquitetura.md §6.6/§6.7).",
+        "color": 5,
+        "width": 300,
+        "height": 200
+      }
+    }
+  ],
+  "activeVersion": null,
+  "tags": [],
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  },
+  "parentFolderId": null,
+  "description": "Chatbot de agendamento InnoChat por WhatsApp (menu numerado, sem IA): webhook da Evolution, claim no painel, motor do menu por estado, grava a sessão e envia pela Evolution ou sandbox."
+}

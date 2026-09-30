@@ -1155,3 +1155,7 @@ Nenhuma bloqueante. Ver o plano §7 para as confirmações de baixo risco.
     - páginas seguintes: 6 dias + "Mais" + "Anteriores".
   
   Isso substitui o "até 8" das §3.4 e §3.5.
+- **Esclarecimentos para os critérios (Atlas, 2026-09-30):**
+  - **CA-41:** o rodapé "Digite *0* para o menu ou *voltar*…" vale para as **telas de escolha** (serviço, profissional, dia, horário, meus agendamentos, ação do agendamento, confirmação). Não vale para `POST_ACTION`, `RESUME_OFFER` e `APPOINTMENT_LOCKED`, que seguem os exemplos da §5.4.
+  - **CA-03:** vale a §2.4.3: um comando **zera** o `invalidCount`.
+  - **CA-30:** o 404 de item indisponível pode vir de qualquer endpoint da etapa (profissionais, dias ou horários). O fluxo trata os três igualmente com `ITEM_UNAVAILABLE`.
