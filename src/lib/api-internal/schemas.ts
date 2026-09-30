@@ -88,9 +88,23 @@ export const ReleaseSessionResponseSchema = z.object({ released: z.literal(true)
 // Catálogo e disponibilidade (§6.4) — todas GET, sem corpo.
 // ---------------------------------------------------------------------------
 
+export const CatalogServicesQuerySchema = z.object({ contactId: z.string().min(1).optional() });
 export const CatalogServicesResponseSchema = z
-  .object({ options: z.array(optionSchema.extend({ durationMin: z.number().int() })) })
-  .describe("200 GET /catalog/services");
+  .object({
+    options: z.array(
+      optionSchema.extend({
+        durationMin: z.number().int(),
+        name: z.string(),
+        durationLabel: z.string().describe('Ex.: "1h", "40 min", "1h30".'),
+        priceLabel: z.string().nullable().describe('Ex.: "R$ 80,00"; null = sem preço.'),
+      }),
+    ),
+    limit: z
+      .object({ max: z.number().int().describe("0 = sem limite."), count: z.number().int(), reached: z.boolean() })
+      .optional()
+      .describe("Só com ?contactId (limite de agendamentos futuros, bot v2)."),
+  })
+  .describe("200 GET /catalog/services — só serviços com profissional ativo e com expediente");
 
 export const CatalogProfessionalsResponseSchema = z
   .object({ options: z.array(optionSchema), skip: z.boolean() })
@@ -102,10 +116,16 @@ export const AvailabilityDaysQuerySchema = z.object({
   // Omitido = "hoje no fuso do tenant" (resolvido em `listAvailabilityDayOptions`, que já
   // carrega o tenant para outras coisas — evita o n8n precisar saber o fuso só para montar isto).
   from: z.string().regex(isoDateOnly, "from precisa estar no formato YYYY-MM-DD").optional(),
-  limit: z.coerce.number().int().min(1).max(7).default(7),
+  // Omitido: 6 com `X-InnoChat-Flow: 2`, 7 sem o header (v1). Resolvido na rota.
+  limit: z.coerce.number().int().min(1).max(7).optional(),
 });
 export const AvailabilityDaysResponseSchema = z
-  .object({ options: z.array(optionSchema), hasMore: z.boolean(), nextFrom: z.string().nullable() })
+  .object({
+    options: z.array(optionSchema.extend({ relativeLabel: z.string().describe('Ex.: "Hoje · Qua 30/09".') })),
+    hasMore: z.boolean(),
+    nextFrom: z.string().nullable().describe("Dia SEGUINTE ao último mostrado (BUG-05); null sem próxima página."),
+    lastBookableDate: optionSchema,
+  })
   .describe("200 GET /availability/days");
 
 export const AvailabilitySlotsQuerySchema = z.object({
@@ -113,9 +133,32 @@ export const AvailabilitySlotsQuerySchema = z.object({
   professionalId: z.string().min(1).optional(),
   date: z.string().regex(isoDateOnly, "date precisa estar no formato YYYY-MM-DD"),
   offset: z.coerce.number().int().min(0).default(0),
-  limit: z.coerce.number().int().min(1).max(8).default(8),
+  // Omitido: 3 com `near`; senão 7 com `X-InnoChat-Flow: 2` e 8 no v1. Resolvido na rota.
+  limit: z.coerce.number().int().min(1).max(8).optional(),
+  period: z.enum(["morning", "afternoon", "evening"]).optional(),
+  near: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "near precisa estar no formato HH:mm").optional(),
 });
-export const AvailabilitySlotsResponseSchema = z.object({ options: z.array(optionSchema), hasMore: z.boolean() }).describe("200 GET /availability/slots");
+export const AvailabilitySlotsResponseSchema = z
+  .object({
+    options: z.array(optionSchema),
+    hasMore: z.boolean(),
+    exact: z.boolean().optional().describe("Só com near: options[0] é exatamente near."),
+    dateLabel: z.string(),
+    dateRelativeLabel: z.string(),
+    dateLongLabel: z.string(),
+    reason: z.enum(["PAST", "BEYOND_HORIZON", "CLOSED", "FULL"]).nullable().describe("Preenchido só com options vazio."),
+    nextDay: optionSchema.extend({ relativeLabel: z.string() }).nullable(),
+  })
+  .describe("200 GET /availability/slots");
+
+export const AvailabilityNextQuerySchema = z.object({
+  serviceId: z.string().min(1),
+  professionalId: z.string().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(10).default(6),
+});
+export const AvailabilityNextResponseSchema = z
+  .object({ options: z.array(z.object({ id: z.string().describe("ISO UTC"), label: z.string().describe('Ex.: "Hoje · 16:30".'), date: z.string() })) })
+  .describe("200 GET /availability/next");
 
 // ---------------------------------------------------------------------------
 // Escrita: contato e agendamento (§6.5)
@@ -135,6 +178,12 @@ const appointmentOptionSchema = optionSchema.extend({
   data: z.string().describe("Rótulo formatado no fuso do tenant, ex.: \"Ter 30/09\" (core/bot/format.ts)."),
   hora: z.string().describe("Rótulo formatado no fuso do tenant, ex.: \"14:30\" (core/bot/format.ts)."),
   startsAt: z.string().describe("ISO 8601 em UTC."),
+  canChange: z.boolean().describe("startsAt - agora >= cancelMinLeadMin."),
+  changeDeadlineLabel: z.string(),
+  durationLabel: z.string(),
+  priceLabel: z.string().nullable(),
+  dataLonga: z.string(),
+  relativeLabel: z.string(),
 });
 export const ContactAppointmentsResponseSchema = z
   .object({ options: z.array(appointmentOptionSchema) })
@@ -148,14 +197,28 @@ export const CreateAppointmentRequestSchema = z
     startsAt: z.coerce.date().describe("ISO 8601 (ex.: 2026-09-30T17:30:00Z)"),
     idempotencyKey: z.string().min(1).max(190),
     instanceName: z.string().min(1).optional(),
+    contactName: z.string().max(200).optional().describe("Nome digitado na conversa; validado (422 INVALID_NAME) e gravado com a reserva."),
   })
   .describe("Corpo de POST /appointments");
 
-const alternativesSchema = z.object({ date: z.string(), options: z.array(optionSchema) });
+const alternativesSchema = z.object({
+  date: z.string(),
+  dateISO: z.string(),
+  dateRelativeLabel: z.string(),
+  options: z.array(optionSchema),
+});
 
 export const AppointmentSummarySchema = z.object({
   id: z.string(),
-  summary: z.object({ servico: z.string(), profissional: z.string(), data: z.string(), hora: z.string() }),
+  summary: z.object({
+    servico: z.string(),
+    profissional: z.string(),
+    data: z.string(),
+    hora: z.string(),
+    duracao: z.string(),
+    preco: z.string().nullable(),
+    data_longa: z.string(),
+  }),
 });
 export const CreateAppointmentResponseSchema = z.object({ appointment: AppointmentSummarySchema }).describe("201/200 (§6.5)");
 export const SlotTakenResponseSchema = z.object({ alternatives: alternativesSchema }).describe("409 SLOT_TAKEN (§6.5)");

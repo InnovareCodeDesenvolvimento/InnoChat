@@ -218,7 +218,24 @@ export type CreateAppointmentActorOptions = {
   source?: "PANEL" | "WHATSAPP";
   whatsappInstanceId?: string | null;
   authorType?: "USER" | "CONTACT" | "SYSTEM";
+  /**
+   * Nome JÁ VALIDADO (o chamador roda `validateName`) a gravar em `Contact.name` na mesma transação
+   * da reserva — também quando a reserva já existia (idempotência). Nunca antes: desistir no meio
+   * do funil não deixa lixo no cadastro (bot v2, spec §3.1).
+   */
+  contactName?: string;
+  /**
+   * Limite de agendamentos FUTUROS (`SCHEDULED`, `startsAt > agora`) por contato. `0`/omitido = sem
+   * limite. Só o bot v2 passa (`X-InnoChat-Flow: 2`); o painel nunca é barrado. A contagem roda
+   * sob trava da linha do contato, então duas reservas simultâneas não passam juntas do limite.
+   */
+  futureLimit?: number;
 };
+
+async function saveContactName(tenantId: string, contactId: string, name: string | undefined) {
+  if (!name) return;
+  await forTenant(tenantId).contact.update({ where: { id: contactId }, data: { name } });
+}
 
 export async function createAppointmentManual(
   tenantId: string,
@@ -234,7 +251,10 @@ export async function createAppointmentManual(
   // Idempotência (docs/arquitetura.md §2 regra 4): mesma chave → devolve o existente.
   if (input.idempotencyKey) {
     const existing = await db.appointment.findFirst({ where: { idempotencyKey: input.idempotencyKey } });
-    if (existing) return { appointment: existing, alreadyExisted: true };
+    if (existing) {
+      await saveContactName(tenantId, existing.contactId, actorOptions?.contactName);
+      return { appointment: existing, alreadyExisted: true };
+    }
   }
 
   const plan = await planBooking(tenantId, input);
@@ -244,10 +264,32 @@ export async function createAppointmentManual(
   const duplicate = await db.appointment.findFirst({
     where: { contactId: plan.contactId, serviceId: input.serviceId, startsAt: plan.startsAt, status: "SCHEDULED" },
   });
-  if (duplicate) return { appointment: duplicate, alreadyExisted: true };
+  if (duplicate) {
+    await saveContactName(tenantId, plan.contactId, actorOptions?.contactName);
+    return { appointment: duplicate, alreadyExisted: true };
+  }
+
+  const futureLimit = actorOptions?.futureLimit ?? 0;
 
   try {
     const appointment = await getPrisma().$transaction(async (tx) => {
+      // Trava a linha do contato (UPDATE = lock de linha exclusivo até o fim da transação): a
+      // gravação do nome e/ou a contagem do limite ficam serializadas por contato. Sem nome nem
+      // limite não há o que proteger, então não trava.
+      if (actorOptions?.contactName || futureLimit > 0) {
+        await tx.contact.update({
+          where: { id: plan.contactId },
+          data: actorOptions?.contactName ? { name: actorOptions.contactName } : { updatedAt: new Date() },
+        });
+      }
+      if (futureLimit > 0) {
+        const count = await tx.appointment.count({
+          where: { tenantId, contactId: plan.contactId, status: "SCHEDULED", startsAt: { gt: new Date() } },
+        });
+        if (count >= futureLimit) {
+          throw new DomainError("LIMIT_REACHED", "O cliente já atingiu o limite de agendamentos futuros.", { max: futureLimit, count });
+        }
+      }
       const created = await tx.appointment.create({
         data: {
           tenantId,
