@@ -108,9 +108,10 @@ test.describe("Lembrete automático (Configurações)", () => {
       await page.reload();
       await expect(page.getByTestId("lembrete-card").getByLabel("Enviar com quantas horas de antecedência", { exact: false })).toHaveValue("30");
 
-      // Desligar deixa o campo de horas desabilitado.
+      // Desligado, as horas continuam editáveis (dá para ajustar antes de ligar) e o Salvar aparece ao mudar.
       await page.getByTestId("lembrete-card").getByRole("switch").click();
-      await expect(page.getByTestId("lembrete-card").getByLabel("Enviar com quantas horas de antecedência", { exact: false })).toBeDisabled();
+      await expect(page.getByTestId("lembrete-card").getByLabel("Enviar com quantas horas de antecedência", { exact: false })).toBeEnabled();
+      await expect(page.getByTestId("lembrete-card").getByRole("button", { name: "Salvar" })).toBeEnabled();
     });
 
     test("Mensagens do bot: o lembrete é um item da aba \"Meus agendamentos\" e as variáveis ficam no editor", async ({ page }) => {

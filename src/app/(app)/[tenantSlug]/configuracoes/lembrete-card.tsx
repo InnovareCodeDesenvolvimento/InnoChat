@@ -76,22 +76,26 @@ export function LembreteCard({
       </CardHeader>
       <form onSubmit={handleSubmit} noValidate>
         <CardContent className="flex flex-col gap-5">
-          <div className="flex items-center justify-between gap-4">
-            <div className="min-w-0">
-              <p id="reminder-enabled-label" className="text-sm font-semibold text-text">
-                Enviar lembrete automático
-              </p>
-              <p id="reminder-enabled-hint" className="text-xs text-text-secondary">
-                {enabled ? "Os clientes com horário marcado recebem o aviso." : "Nenhum lembrete é enviado."}
-              </p>
-            </div>
+          {/* Chave colada ao rótulo (antes ficava na borda direita do card largo e o dono não a achava). */}
+          <div className="flex items-start gap-3">
             <Switch
               checked={enabled}
               onCheckedChange={setEnabled}
               disabled={!canEdit || isPending}
               aria-labelledby="reminder-enabled-label"
               aria-describedby="reminder-enabled-hint"
+              className="mt-0.5"
             />
+            <div className="min-w-0">
+              <p id="reminder-enabled-label" className="text-sm font-semibold text-text">
+                Enviar lembrete automático
+              </p>
+              <p id="reminder-enabled-hint" className="text-xs text-text-secondary">
+                {enabled
+                  ? "Os clientes com horário marcado recebem o aviso."
+                  : "Desligado: nenhum lembrete é enviado. Ligue a chave e clique em Salvar."}
+              </p>
+            </div>
           </div>
 
           <div className="max-w-xs">
@@ -113,7 +117,7 @@ export function LembreteCard({
                   step={1}
                   value={hours}
                   onChange={(e) => setHours(e.target.value)}
-                  disabled={!canEdit || isPending || !enabled}
+                  disabled={!canEdit || isPending}
                   invalid={!!error}
                 />
               )}
