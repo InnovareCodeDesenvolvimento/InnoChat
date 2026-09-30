@@ -5,7 +5,8 @@ import { requireTenantMember } from "@/lib/auth/guards";
 import { runAction, type Result } from "@/lib/result";
 import { assertTenantCanWrite } from "@/modules/billing/service";
 import { BOT_TEXT_KEYS } from "@/core/bot/texts";
-import { listBotTexts, previewBotText, resetBotText, upsertBotText } from "./service";
+import { BOT_TEXT_KEYS_V2, LEGACY_V1_KEYS } from "@/core/bot/texts-v2";
+import { getPublishedFlowVersion, listBotTexts, previewBotText, resetBotText, upsertBotText, type BotTextsView } from "./service";
 
 /**
  * CRUD de `BotText` para a futura tela "Mensagens do bot" (Lyra, fora do escopo da Fase 4 —
@@ -18,12 +19,14 @@ import { listBotTexts, previewBotText, resetBotText, upsertBotText } from "./ser
  * continuam sem o guard: são leitura, não escrita.
  */
 
-const keySchema = z.enum(BOT_TEXT_KEYS);
+// Chaves aceitas: união v1 + v2 + legadas (reset de legada continua permitido). A versão do fluxo
+// publicado decide, no service, quais dessas são EDITÁVEIS (upsert recusa fora do catálogo da versão).
+const keySchema = z.enum([...new Set([...BOT_TEXT_KEYS, ...BOT_TEXT_KEYS_V2, ...LEGACY_V1_KEYS])] as [string, ...string[]]);
 
-export async function listBotTextsAction(tenantSlug: string): Promise<Result<unknown>> {
+export async function listBotTextsAction(tenantSlug: string): Promise<Result<BotTextsView>> {
   return runAction(async () => {
     const { tenant } = await requireTenantMember(tenantSlug);
-    return listBotTexts(tenant.id);
+    return listBotTexts(tenant.id, await getPublishedFlowVersion());
   });
 }
 
@@ -34,7 +37,7 @@ export async function upsertBotTextAction(tenantSlug: string, input: unknown): P
     const { tenant } = await requireTenantMember(tenantSlug);
     await assertTenantCanWrite(tenant.id);
     const data = upsertSchema.parse(input);
-    return upsertBotText(tenant.id, data.key, data.text);
+    return upsertBotText(tenant.id, data.key, data.text, await getPublishedFlowVersion());
   });
 }
 
@@ -48,13 +51,13 @@ export async function resetBotTextAction(tenantSlug: string, key: unknown): Prom
   });
 }
 
-const previewSchema = z.object({ text: z.string().trim().min(1).max(1000) });
+const previewSchema = z.object({ text: z.string().trim().min(1).max(1000), key: keySchema.optional() });
 
 /** Pré-visualização com valores de exemplo — não exige o texto já estar salvo. */
 export async function previewBotTextAction(tenantSlug: string, input: unknown): Promise<Result<{ preview: string; unknownVariables: string[] }>> {
   return runAction(async () => {
     await requireTenantMember(tenantSlug);
     const data = previewSchema.parse(input);
-    return previewBotText(data.text);
+    return previewBotText(data.text, { flowVersion: await getPublishedFlowVersion(), key: data.key });
   });
 }

@@ -22,5 +22,5 @@ export default async function MensagensBotPage({
     );
   }
 
-  return <MensagensBotClient tenantSlug={tenantSlug} initialTexts={result.data as BotTextRow[]} />;
+  return <MensagensBotClient tenantSlug={tenantSlug} initialTexts={result.data.items as BotTextRow[]} />;
 }

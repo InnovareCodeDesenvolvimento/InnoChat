@@ -22,6 +22,7 @@ vi.mock("@/modules/billing/service", () => ({
 const upsertBotTextMock = vi.fn();
 const resetBotTextMock = vi.fn();
 vi.mock("./service", () => ({
+  getPublishedFlowVersion: vi.fn().mockResolvedValue(1),
   listBotTexts: vi.fn(),
   previewBotText: vi.fn(),
   upsertBotText: upsertBotTextMock,
@@ -65,6 +66,6 @@ describe("upsertBotTextAction / resetBotTextAction — bloqueio de escrita", () 
     const result = await upsertBotTextAction("studio-demo", { key: "GREETING", text: "Olá!" });
 
     expect(result.ok).toBe(true);
-    expect(upsertBotTextMock).toHaveBeenCalledWith(TENANT.id, "GREETING", "Olá!");
+    expect(upsertBotTextMock).toHaveBeenCalledWith(TENANT.id, "GREETING", "Olá!", 1);
   });
 });

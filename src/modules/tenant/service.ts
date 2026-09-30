@@ -36,3 +36,44 @@ export async function updateTenantDocument(tenantId: string, rawDocument: string
     select: { id: true, slug: true, document: true },
   });
 }
+
+export type BotRules = {
+  maxFutureAppointmentsPerContact: number;
+  slotGranularityMin: 15 | 30;
+  handoffResumeMinutes: number;
+  /** Só leitura: janela em que o bot fica quieto após a equipe responder pelo WhatsApp. */
+  humanPauseMin: number;
+};
+
+const BOT_RULES_SELECT = {
+  maxFutureAppointmentsPerContact: true,
+  slotGranularityMin: true,
+  handoffResumeMinutes: true,
+  humanPauseMin: true,
+} as const;
+
+function toBotRules(row: { maxFutureAppointmentsPerContact: number; slotGranularityMin: number; handoffResumeMinutes: number; humanPauseMin: number }): BotRules {
+  return { ...row, slotGranularityMin: row.slotGranularityMin === 15 ? 15 : 30 };
+}
+
+export async function getBotRules(tenantId: string): Promise<BotRules> {
+  const row = await getPrisma().tenant.findUniqueOrThrow({ where: { id: tenantId }, select: BOT_RULES_SELECT });
+  return toBotRules(row);
+}
+
+/** Os limites (0..20, 15|30, 30..1440 múltiplo de 15) também têm CHECK no banco; a validação de entrada é da action. */
+export async function updateBotRules(
+  tenantId: string,
+  input: { maxFutureAppointmentsPerContact: number; slotGranularityMin: 15 | 30; handoffResumeMinutes: number },
+): Promise<BotRules> {
+  const row = await getPrisma().tenant.update({
+    where: { id: tenantId },
+    data: {
+      maxFutureAppointmentsPerContact: input.maxFutureAppointmentsPerContact,
+      slotGranularityMin: input.slotGranularityMin,
+      handoffResumeMinutes: input.handoffResumeMinutes,
+    },
+    select: BOT_RULES_SELECT,
+  });
+  return toBotRules(row);
+}
