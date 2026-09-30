@@ -18,7 +18,7 @@ export default async function ProfissionaisPage({
   if (!result.ok) {
     return (
       <div>
-        <PageHeader icon={navIconFor("profissionais")} title="Profissionais" description="Expediente semanal e serviços de cada um." />
+        <PageHeader help="pagina.profissionais" icon={navIconFor("profissionais")} title="Profissionais" description="Expediente semanal e serviços de cada um." />
         <EmptyState
           icon={UserRound}
           title="Não deu para carregar os profissionais"

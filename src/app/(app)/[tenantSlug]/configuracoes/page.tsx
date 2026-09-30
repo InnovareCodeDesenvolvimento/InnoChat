@@ -16,6 +16,7 @@ import { getBotRulesAction } from "@/modules/tenant/actions";
 const SECTIONS: ConfigSection[] = [
   {
     href: "aparencia",
+    help: "pagina.aparencia",
     icon: <Palette aria-hidden="true" />,
     title: "Aparência",
     description: "Escolha o tema visual do painel da sua empresa.",
@@ -37,6 +38,7 @@ const SECTIONS: ConfigSection[] = [
   },
   {
     href: "bloqueios",
+    help: "pagina.bloqueios",
     icon: <CalendarOff aria-hidden="true" />,
     title: "Bloqueios e feriados",
     description: "Períodos em que a empresa inteira não atende, para todos os profissionais.",
@@ -44,6 +46,7 @@ const SECTIONS: ConfigSection[] = [
   },
   {
     href: "equipe",
+    help: "pagina.equipe",
     icon: <Users2 aria-hidden="true" />,
     title: "Equipe",
     description: "Convide colegas para o painel.",
@@ -82,7 +85,7 @@ export default async function ConfiguracoesPage({
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader icon={navIconFor("configuracoes")} title="Configurações" description="Empresa, regras de agenda e do bot, equipe." />
+      <PageHeader help="pagina.configuracoes" icon={navIconFor("configuracoes")} title="Configurações" description="Empresa, regras de agenda e do bot, equipe." />
 
       <EmpresaDocumentForm
         tenantSlug={tenantSlug}

@@ -31,7 +31,7 @@ export default async function BloqueiosPage({
   if (!result.ok) {
     return (
       <div>
-        <PageHeader icon={navIconFor("configuracoes")} title="Bloqueios e feriados" description="Períodos em que a empresa inteira não atende." />
+        <PageHeader help="pagina.bloqueios" icon={navIconFor("configuracoes")} title="Bloqueios e feriados" description="Períodos em que a empresa inteira não atende." />
         <EmptyState icon={CalendarOff} title="Não deu para carregar" description={result.error.message} />
       </div>
     );

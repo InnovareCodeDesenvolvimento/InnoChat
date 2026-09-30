@@ -18,7 +18,7 @@ export default async function ServicosPage({
   if (!result.ok) {
     return (
       <div>
-        <PageHeader icon={navIconFor("servicos")} title="Serviços" description="Nome, duração, intervalo, preço opcional e ordem." />
+        <PageHeader help="pagina.servicos" icon={navIconFor("servicos")} title="Serviços" description="Nome, duração, intervalo, preço opcional e ordem." />
         <EmptyState
           icon={Scissors}
           title="Não deu para carregar os serviços"

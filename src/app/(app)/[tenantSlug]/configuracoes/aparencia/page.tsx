@@ -22,7 +22,7 @@ export default async function AparenciaPage({
 
   return (
     <div>
-      <PageHeader icon={navIconFor("configuracoes")}
+      <PageHeader help="pagina.aparencia" icon={navIconFor("configuracoes")}
         title="Aparência"
         description="O tema escolhido vale para toda a equipe desta empresa."
       />

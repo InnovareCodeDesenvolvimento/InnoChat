@@ -34,7 +34,7 @@ export default async function AgendaPage({
   if (professionals.filter((p) => p.active).length === 0) {
     return (
       <div>
-        <PageHeader icon={navIconFor("agenda")} title="Agenda" description="Dia e semana por profissional." />
+        <PageHeader help="pagina.agenda" icon={navIconFor("agenda")} title="Agenda" description="Dia e semana por profissional." />
         <EmptyState
           icon={Calendar}
           title="Cadastre um profissional ativo para começar"

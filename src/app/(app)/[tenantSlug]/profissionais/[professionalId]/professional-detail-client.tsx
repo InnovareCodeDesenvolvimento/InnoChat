@@ -185,7 +185,7 @@ export function ProfessionalDetailClient({
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader icon={navIconFor("profissionais")}
+      <PageHeader help="pagina.profissionalDetalhe" icon={navIconFor("profissionais")}
         title={
           <span className="flex items-center gap-3">
             <Avatar id={professional.id} name={professional.name} />
@@ -213,7 +213,7 @@ export function ProfessionalDetailClient({
       ) : null}
 
       <Card className="rounded-hero">
-        <CardHeader>
+        <CardHeader help="profissional.dados">
           <CardTitle>Dados</CardTitle>
         </CardHeader>
         <CardContent>
@@ -243,7 +243,7 @@ export function ProfessionalDetailClient({
       </Card>
 
       <Card className="rounded-hero">
-        <CardHeader>
+        <CardHeader help="profissional.servicos">
           <CardTitle>Serviços que realiza</CardTitle>
           <CardDescription>Marque os serviços que este profissional atende.</CardDescription>
         </CardHeader>
@@ -281,7 +281,7 @@ export function ProfessionalDetailClient({
       </Card>
 
       <Card className="rounded-hero">
-        <CardHeader>
+        <CardHeader help="profissional.expediente">
           <CardTitle>Expediente semanal</CardTitle>
           <CardDescription>Vários intervalos por dia — por exemplo, manhã e tarde com almoço no meio.</CardDescription>
         </CardHeader>
@@ -351,7 +351,7 @@ export function ProfessionalDetailClient({
       </Card>
 
       <Card className="rounded-hero">
-        <CardHeader>
+        <CardHeader help="profissional.folgas">
           <CardTitle>Bloqueios e folgas</CardTitle>
           <CardDescription>Períodos em que este profissional não atende.</CardDescription>
         </CardHeader>

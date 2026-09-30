@@ -22,7 +22,7 @@ export default async function OnboardingPage({
   if (!servicesResult.ok || !professionalsResult.ok) {
     return (
       <div>
-        <PageHeader icon={navIconFor("onboarding")} title="Primeiros passos" description="Configure sua empresa para começar a agendar." />
+        <PageHeader help="pagina.onboarding" icon={navIconFor("onboarding")} title="Primeiros passos" description="Configure sua empresa para começar a agendar." />
         <EmptyState
           icon={AlertTriangle}
           title="Não deu para carregar"

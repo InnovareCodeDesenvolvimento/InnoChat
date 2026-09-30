@@ -1,5 +1,6 @@
 "use client";
 
+import { HelpButton } from "@/components/help/help-button";
 import { navIconFor } from "@/components/shell/nav-items";
 import { useEffect, useState, useTransition } from "react";
 import { CalendarPlus, ClipboardList, MessageCircle, Pause, Pencil, Play, Trash2, X } from "lucide-react";
@@ -320,7 +321,10 @@ export function ContactDetailDialog({
               ) : null}
 
               <div className="rounded-card border border-border p-3">
-                <p className="text-sm font-medium text-text">Bot do WhatsApp</p>
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-sm font-medium text-text">Bot do WhatsApp</p>
+                  <HelpButton helpKey="config.pausaCliente" />
+                </div>
                 <p className="mt-0.5 text-xs text-text-secondary">
                   Pausar faz o bot parar de responder esse cliente — você atende pelo celular. Retome quando quiser
                   que o bot volte a responder.

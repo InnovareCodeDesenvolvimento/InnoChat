@@ -27,7 +27,7 @@ export default async function ProfessionalDetailPage({
   if (!professionalsResult.ok) {
     return (
       <div>
-        <PageHeader icon={navIconFor("profissionais")} title="Profissional" />
+        <PageHeader help="pagina.profissionalDetalhe" icon={navIconFor("profissionais")} title="Profissional" />
         <EmptyState icon={UserRound} title="Não deu para carregar" description={professionalsResult.error.message} />
       </div>
     );

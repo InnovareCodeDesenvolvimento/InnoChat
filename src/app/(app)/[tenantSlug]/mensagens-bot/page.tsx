@@ -16,7 +16,7 @@ export default async function MensagensBotPage({
   if (!result.ok) {
     return (
       <div>
-        <PageHeader icon={navIconFor("mensagens-bot")} title="Mensagens do bot" description="Edite os textos que o bot envia no WhatsApp." />
+        <PageHeader help="pagina.mensagensBot" icon={navIconFor("mensagens-bot")} title="Mensagens do bot" description="Edite os textos que o bot envia no WhatsApp." />
         <EmptyState icon={Bot} title="Não deu para carregar as mensagens" description={result.error.message} />
       </div>
     );

@@ -172,7 +172,7 @@ export function ServicosClient({
 
   return (
     <div>
-      <PageHeader icon={navIconFor("servicos")}
+      <PageHeader help="pagina.servicos" icon={navIconFor("servicos")}
         title="Serviços"
         description="Nome, duração, intervalo, preço opcional e ordem."
         action={

@@ -135,7 +135,7 @@ export function WhatsappClient({
 
   return (
     <div>
-      <PageHeader icon={navIconFor("whatsapp")}
+      <PageHeader help="pagina.whatsapp" icon={navIconFor("whatsapp")}
         title="WhatsApp"
         description="Números conectados, QR code e status da conexão."
         action={isOwner && hasInstances && !limitReached ? renderConnectTrigger() : undefined}

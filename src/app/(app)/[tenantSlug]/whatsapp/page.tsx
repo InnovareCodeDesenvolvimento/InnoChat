@@ -23,7 +23,7 @@ export default async function WhatsappPage({
   if (!result.ok) {
     return (
       <div>
-        <PageHeader icon={navIconFor("whatsapp")} title="WhatsApp" description="Números conectados, QR code e status da conexão." />
+        <PageHeader help="pagina.whatsapp" icon={navIconFor("whatsapp")} title="WhatsApp" description="Números conectados, QR code e status da conexão." />
         <EmptyState icon={MessageCircle} title="Não deu para carregar os números" description={result.error.message} />
       </div>
     );

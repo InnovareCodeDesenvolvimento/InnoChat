@@ -118,7 +118,7 @@ export function BloqueiosClient({
 
   return (
     <div>
-      <PageHeader icon={navIconFor("configuracoes")}
+      <PageHeader help="pagina.bloqueios" icon={navIconFor("configuracoes")}
         title="Bloqueios e feriados"
         description="Períodos em que a empresa inteira não atende — vale para todos os profissionais, diferente do bloqueio individual em Profissionais."
         action={

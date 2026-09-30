@@ -116,7 +116,7 @@ export function ProfissionaisClient({
 
   return (
     <div>
-      <PageHeader icon={navIconFor("profissionais")}
+      <PageHeader help="pagina.profissionais" icon={navIconFor("profissionais")}
         title="Profissionais"
         description="Expediente semanal e serviços de cada um."
         action={

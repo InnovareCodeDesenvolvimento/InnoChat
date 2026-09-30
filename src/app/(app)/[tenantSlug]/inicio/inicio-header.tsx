@@ -101,7 +101,7 @@ export function InicioHeader({
   const whatsappHref = `/${tenantSlug}/whatsapp`;
 
   return (
-    <PageHeader
+    <PageHeader help="pagina.inicio"
       icon={navIconFor("inicio")}
       size="hero"
       title={

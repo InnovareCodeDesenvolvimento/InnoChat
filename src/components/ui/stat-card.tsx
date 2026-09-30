@@ -3,6 +3,8 @@
 import { motion, useReducedMotion } from "framer-motion";
 import { cn } from "@/components/lib/cn";
 import { STAGGER_DELAY_S } from "@/components/lib/motion";
+import { HelpButton } from "@/components/help/help-button";
+import type { HelpKey } from "@/components/help/help-content";
 import { AnimatedCounter } from "./animated-counter";
 
 export type StatCardTone = "primary" | "success" | "warning" | "danger";
@@ -44,6 +46,8 @@ export type StatCardProps = {
   /** Único cartão "hero" da tela usa raio maior (`rounded-hero-lg`) — os demais usam `rounded-hero`
    * (docs/design/premium-spec.md §6, os dois multiplicadores testados antes de fixar). */
   size?: "default" | "hero";
+  /** Chave do texto de ajuda: "i" no canto superior direito do cartão. */
+  help?: HelpKey;
   className?: string;
 };
 
@@ -62,6 +66,7 @@ export function StatCard({
   tone = "primary",
   index = 0,
   size = "default",
+  help,
   className,
 }: StatCardProps) {
   const reduceMotion = useReducedMotion();
@@ -84,6 +89,7 @@ export function StatCard({
       >
         {icon}
       </div>
+      {help ? <HelpButton helpKey={help} placement="corner" /> : null}
       <div
         className={cn(
           "mb-4 flex h-11 w-11 items-center justify-center rounded-full transition-transform duration-200 group-hover:scale-110 motion-reduce:transition-none motion-reduce:group-hover:scale-100 [&>svg]:h-5 [&>svg]:w-5",

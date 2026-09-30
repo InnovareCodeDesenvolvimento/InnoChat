@@ -208,7 +208,7 @@ export function ClientesClient({
 
   return (
     <div>
-      <PageHeader icon={navIconFor("clientes")}
+      <PageHeader help="pagina.clientes" icon={navIconFor("clientes")}
         title="Clientes"
         description="Lista, agendamentos e pausa do bot por cliente."
         action={

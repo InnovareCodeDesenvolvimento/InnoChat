@@ -5,6 +5,8 @@ import { History, Pencil, RotateCcw, X } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { navIconFor } from "@/components/shell/nav-items";
 import { Card } from "@/components/ui/card";
+import { HelpButton } from "@/components/help/help-button";
+import { BOT_TAB_HELP } from "@/components/help/help-content";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -119,7 +121,7 @@ export function MensagensBotClient({
 
   return (
     <div>
-      <PageHeader
+      <PageHeader help="pagina.mensagensBot"
         icon={navIconFor("mensagens-bot")}
         title="Mensagens do bot"
         description="Edite os textos que o bot envia no WhatsApp, por etapa da conversa."
@@ -175,7 +177,10 @@ export function MensagensBotClient({
       </div>
 
       <div role="tabpanel" id={`bot-panel-${active.id}`} aria-labelledby={`bot-tab-${active.id}`} tabIndex={-1}>
-        <p className="mb-3 text-sm text-text-secondary">{active.hint}</p>
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <p className="min-w-0 pt-0.5 text-sm text-text-secondary">{active.hint}</p>
+          <HelpButton key={active.id} helpKey={BOT_TAB_HELP[active.id]} />
+        </div>
         <Card className="rounded-hero">
           {activeEntries.length === 0 ? (
             <p className="p-5 text-sm text-text-secondary">Nenhuma mensagem neste grupo.</p>

@@ -103,7 +103,7 @@ export function AgendamentosClient({
 
   return (
     <div>
-      <PageHeader icon={navIconFor("agendamentos")}
+      <PageHeader help="pagina.agendamentos" icon={navIconFor("agendamentos")}
         title="Agendamentos"
         description="Lista filtrável por período, profissional e status."
         action={

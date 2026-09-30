@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { motion, useReducedMotion } from "framer-motion";
 import { Card, CardContent } from "@/components/ui/card";
+import { HelpButton } from "@/components/help/help-button";
+import type { HelpKey } from "@/components/help/help-content";
 import { STAGGER_DELAY_S } from "@/components/lib/motion";
 
 export type ConfigSection = {
@@ -18,6 +20,8 @@ export type ConfigSection = {
   title: string;
   description: string;
   ready: boolean;
+  /** Texto de ajuda do destino (só para cards que já funcionam). */
+  help?: HelpKey;
 };
 
 /**
@@ -44,7 +48,8 @@ export function ConfiguracoesGrid({ tenantSlug, sections }: { tenantSlug: string
                 : "rounded-hero opacity-60"
             }
           >
-            <CardContent>
+            <CardContent className="relative">
+              {section.help ? <HelpButton helpKey={section.help} placement="corner" className="right-2 top-2" /> : null}
               <div
                 className={
                   section.ready

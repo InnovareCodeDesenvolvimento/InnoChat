@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/components/lib/cn";
+import { HelpButton } from "@/components/help/help-button";
 import { updateBotRulesAction } from "@/modules/tenant/actions";
 
 export const MAX_FUTURE_MIN = 0;
@@ -127,7 +128,7 @@ export function AtendimentoCard({
 
   return (
     <Card className="rounded-hero" data-testid="atendimento-card">
-      <CardHeader>
+      <CardHeader help="config.atendimento">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
           <span aria-hidden="true" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-card bg-primary/10 text-primary">
             <Headset className="h-[18px] w-[18px]" />
@@ -144,6 +145,7 @@ export function AtendimentoCard({
             <Field
               label="Agendamentos futuros por cliente"
               htmlFor="bot-max-future"
+              labelAction={<HelpButton helpKey="config.limiteAgendamentos" />}
               required
               error={errors.max}
               hint={!errors.max ? "Quantos horários um mesmo cliente pode ter marcados ao mesmo tempo. 0 = sem limite." : undefined}
@@ -174,7 +176,10 @@ export function AtendimentoCard({
           </div>
 
           <fieldset className="min-w-0" disabled={!canEdit || isPending}>
-            <legend className="mb-1.5 text-sm font-medium text-text">Grade de horários</legend>
+            <legend className="mb-2 flex w-full items-center justify-between gap-3 text-sm font-medium text-text">
+              Grade de horários
+              <HelpButton helpKey="config.grade" />
+            </legend>
             <div role="radiogroup" aria-describedby="bot-granularity-hint" className="grid gap-3 sm:grid-cols-2">
               {GRANULARITY_OPTIONS.map((opt) => {
                 const checked = granularity === opt.value;
@@ -222,6 +227,7 @@ export function AtendimentoCard({
             <Field
               label="Bot volta a responder depois de"
               htmlFor="bot-resume"
+              labelAction={<HelpButton helpKey="config.retomada" />}
               required
               error={errors.resume}
               hint={!errors.resume ? "Tempo sem resposta da equipe depois que o cliente pede um atendente." : undefined}
@@ -250,9 +256,12 @@ export function AtendimentoCard({
 
           <div className="flex items-center justify-between gap-4 rounded-card border border-border p-3">
             <div className="min-w-0">
-              <p id="bot-notify-client-label" className="text-sm font-semibold text-text">
-                Avisar o cliente no WhatsApp quando a equipe agendar, remarcar ou cancelar
-              </p>
+              <div className="flex min-h-11 items-center gap-2">
+                <p id="bot-notify-client-label" className="min-w-0 text-sm font-semibold text-text">
+                  Avisar o cliente no WhatsApp quando a equipe agendar, remarcar ou cancelar
+                </p>
+                <HelpButton helpKey="config.avisoCliente" className="my-0" />
+              </div>
               <p id="bot-notify-client-hint" className="mt-0.5 text-xs text-text-secondary">
                 {notifyClient ? "O cliente recebe uma mensagem a cada mudança feita pelo painel." : "O cliente não é avisado das mudanças feitas pelo painel."}{" "}
                 O texto de cada aviso fica em{" "}

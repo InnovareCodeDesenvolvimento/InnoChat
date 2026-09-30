@@ -97,7 +97,7 @@ async function InicioHeaderLoader({ tenantSlug }: { tenantSlug: string }) {
     props = null;
   }
   if (!props) {
-    return <PageHeader icon={navIconFor("inicio")} size="hero" title="Início" description="O resumo do seu negócio hoje." />;
+    return <PageHeader help="pagina.inicio" icon={navIconFor("inicio")} size="hero" title="Início" description="O resumo do seu negócio hoje." />;
   }
   return <InicioHeader {...props} />;
 }
@@ -154,6 +154,7 @@ async function InicioContent({ tenantSlug }: { tenantSlug: string }) {
           size="hero"
           icon={<CalendarClock aria-hidden="true" strokeWidth={1.5} />}
           label="Agendamentos hoje"
+          help="inicio.agendamentosHoje"
           value={view.appointmentsToday}
           tone="primary"
           context="não cancelados"
@@ -162,6 +163,7 @@ async function InicioContent({ tenantSlug }: { tenantSlug: string }) {
           index={1}
           icon={<CalendarRange aria-hidden="true" strokeWidth={1.5} />}
           label="Próximos 7 dias"
+          help="inicio.proximos7dias"
           value={view.appointmentsNext7Days}
           tone="primary"
           context="agendamentos previstos"
@@ -170,6 +172,7 @@ async function InicioContent({ tenantSlug }: { tenantSlug: string }) {
           index={2}
           icon={<UserX aria-hidden="true" strokeWidth={1.5} />}
           label="Taxa de faltas"
+          help="inicio.taxaFaltas"
           value={view.noShowRatePercent}
           suffix="%"
           tone={view.noShowRatePercent > 20 ? "danger" : "success"}
@@ -179,6 +182,7 @@ async function InicioContent({ tenantSlug }: { tenantSlug: string }) {
           index={3}
           icon={<Percent aria-hidden="true" strokeWidth={1.5} />}
           label="Agendado pelo bot"
+          help="inicio.agendadoPeloBot"
           value={view.botSharePercent}
           suffix="%"
           tone="primary"
@@ -188,6 +192,7 @@ async function InicioContent({ tenantSlug }: { tenantSlug: string }) {
           index={4}
           icon={<MessageCircle aria-hidden="true" strokeWidth={1.5} />}
           label="WhatsApp conectado"
+          help="inicio.whatsappConectado"
           value={view.connectedWhatsappCount}
           tone={view.connectedWhatsappCount > 0 ? "success" : "warning"}
           context={`de ${view.totalWhatsappCount} número(s)`}
@@ -196,7 +201,7 @@ async function InicioContent({ tenantSlug }: { tenantSlug: string }) {
 
       <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Card className="rounded-hero lg:col-span-2">
-          <CardHeader>
+          <CardHeader help="inicio.grafico">
             <CardTitle>Agendamentos por dia</CardTitle>
           </CardHeader>
           <CardContent>

@@ -45,7 +45,7 @@ export default async function EquipePage({
 
   return (
     <div>
-      <PageHeader icon={navIconFor("configuracoes")} title="Equipe" description="Quem tem acesso ao painel desta empresa." />
+      <PageHeader help="pagina.equipe" icon={navIconFor("configuracoes")} title="Equipe" description="Quem tem acesso ao painel desta empresa." />
       <EquipeClient tenantSlug={tenantSlug} initialMembers={members} canInvite={canInvite} />
     </div>
   );

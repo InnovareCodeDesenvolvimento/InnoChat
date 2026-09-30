@@ -28,7 +28,7 @@ export function Field({ label, htmlFor, hint, error, required, labelAction, chil
   return (
     <div>
       {labelAction ? (
-        <div className="mb-1.5 flex items-baseline justify-between gap-3">
+        <div className="mb-2 flex items-center justify-between gap-3">
           <Label htmlFor={id} className="mb-0">
             {label}
             {required ? <span className="text-danger"> *</span> : null}

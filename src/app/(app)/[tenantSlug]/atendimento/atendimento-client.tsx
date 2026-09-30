@@ -174,7 +174,7 @@ export function AtendimentoClient({
   return (
     <div>
       <div className={cn(selectedId && "max-md:hidden")}>
-        <PageHeader
+        <PageHeader help="pagina.atendimento"
           icon={navIconFor("atendimento")}
           title="Atendimento"
           description="Responda pelo painel os clientes que pediram atendente."

@@ -147,7 +147,7 @@ export function OnboardingClient({
 
   return (
     <div className="mx-auto max-w-2xl">
-      <PageHeader icon={navIconFor("onboarding")} title="Primeiros passos" description="Configure sua empresa para começar a agendar pelo painel." />
+      <PageHeader help="pagina.onboarding" icon={navIconFor("onboarding")} title="Primeiros passos" description="Configure sua empresa para começar a agendar pelo painel." />
 
       <StepIndicator current={step} />
 

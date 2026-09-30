@@ -7,6 +7,7 @@ import QRCode from "qrcode";
 import { AlertTriangle, ArrowDown, ArrowUp, Check, Copy, QrCode, Sparkles, X } from "lucide-react";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { HelpButton } from "@/components/help/help-button";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
 import { PageHeader } from "@/components/ui/page-header";
@@ -196,7 +197,7 @@ function PixCard({
 
   return (
     <Card className="rounded-hero-lg border-primary/20 bg-gradient-to-br from-primary/5 to-transparent shadow-card-hover">
-      <CardHeader>
+      <CardHeader help="assinatura.fatura">
         <CardTitle>Fatura em aberto</CardTitle>
         <CardDescription>
           {formatBRL(invoice.amountCents)} — vencimento em {formatDateTimeLabel(invoice.dueAt, timezone)}
@@ -338,7 +339,8 @@ function PlanosCard({
   return (
     <>
       <div>
-        <div className="mb-4">
+        <div className="relative mb-4 pr-12">
+          <HelpButton helpKey="assinatura.planos" placement="corner" className="right-0 top-0" />
           <h2 className="font-display text-lg font-bold text-text">Planos disponíveis</h2>
           <p className="mt-1 text-sm text-text-secondary">
             {isOwner
@@ -499,10 +501,10 @@ export function AssinaturaClient({
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader icon={navIconFor("assinatura")} title="Assinatura" description="Plano atual, status e fatura em aberto." />
+      <PageHeader help="pagina.assinatura" icon={navIconFor("assinatura")} title="Assinatura" description="Plano atual, status e fatura em aberto." />
 
       <Card className="rounded-hero">
-        <CardHeader>
+        <CardHeader help="assinatura.plano">
           <CardTitle>{snapshot.planName}</CardTitle>
           <CardDescription>
             {snapshot.priceCents > 0

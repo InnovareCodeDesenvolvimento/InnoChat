@@ -62,7 +62,7 @@ export function LembreteCard({
 
   return (
     <Card className="rounded-hero" data-testid="lembrete-card">
-      <CardHeader>
+      <CardHeader help="config.lembrete">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
           <span aria-hidden="true" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-card bg-primary/10 text-primary">
             <BellRing className="h-[18px] w-[18px]" />

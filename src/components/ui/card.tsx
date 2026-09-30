@@ -1,4 +1,6 @@
 import { cn } from "@/components/lib/cn";
+import { HelpButton } from "@/components/help/help-button";
+import type { HelpKey } from "@/components/help/help-content";
 
 export function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
@@ -12,8 +14,22 @@ export function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElemen
   );
 }
 
-export function CardHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("border-b border-border p-5", className)} {...props} />;
+/**
+ * `help` põe o "i" de ajuda (texto em `help/help-content.ts`) no canto superior direito do card e
+ * reserva a faixa dele (`pr-14`) para não encostar no título nem no `Badge` ao lado do título.
+ */
+export function CardHeader({
+  className,
+  help,
+  children,
+  ...props
+}: React.HTMLAttributes<HTMLDivElement> & { help?: HelpKey }) {
+  return (
+    <div className={cn("border-b border-border p-5", help && "relative pr-14", className)} {...props}>
+      {children}
+      {help ? <HelpButton helpKey={help} placement="corner" className="right-2 top-3" /> : null}
+    </div>
+  );
 }
 
 export function CardTitle({ className, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {

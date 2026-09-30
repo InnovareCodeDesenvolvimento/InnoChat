@@ -1,5 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/components/lib/cn";
+import { HelpButton } from "@/components/help/help-button";
+import type { HelpKey } from "@/components/help/help-content";
 
 export type PageHeaderProps = {
   /** Normalmente uma string; aceita `ReactNode` para os casos em que o título carrega um avatar
@@ -16,13 +18,16 @@ export type PageHeaderProps = {
    * para o cabeçalho confirmar onde a pessoa está. Selo some no mobile (`sm:flex`): ali o espaço
    * vale mais para o título e o ícone já aparece no menu. */
   icon?: LucideIcon;
+  /** Chave do texto de ajuda (`help-content.ts`): põe o "i" no canto superior direito do cabeçalho.
+   * É só uma string — atravessa a fronteira Server→Client sem problema. */
+  help?: HelpKey;
 };
 
-export function PageHeader({ title, description, action, className, size = "default", icon: Icon }: PageHeaderProps) {
+export function PageHeader({ title, description, action, className, size = "default", icon: Icon, help }: PageHeaderProps) {
   const hero = size === "hero";
   return (
-    <div className={cn("mb-6 flex flex-wrap items-start justify-between gap-4", className)}>
-      <div className="flex min-w-0 items-center gap-3.5">
+    <div className={cn("relative mb-6 flex flex-wrap items-start justify-between gap-4", className)}>
+      <div className={cn("flex min-w-0 items-center gap-3.5", help && "max-sm:pr-11")}>
         {Icon ? (
           <span
             aria-hidden="true"
@@ -48,7 +53,8 @@ export function PageHeader({ title, description, action, className, size = "defa
           {description ? <p className="mt-1.5 text-sm text-text-secondary">{description}</p> : null}
         </div>
       </div>
-      {action ? <div className="shrink-0">{action}</div> : null}
+      {action ? <div className={cn("shrink-0", help && "sm:mr-11")}>{action}</div> : null}
+      {help ? <HelpButton helpKey={help} placement="corner" className="right-0 top-0" /> : null}
     </div>
   );
 }

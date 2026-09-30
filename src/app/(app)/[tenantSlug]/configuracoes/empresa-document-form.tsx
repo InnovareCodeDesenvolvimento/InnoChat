@@ -53,7 +53,7 @@ export function EmpresaDocumentForm({
 
   return (
     <Card className="rounded-hero">
-      <CardHeader>
+      <CardHeader help="config.cobranca">
         <div className="flex items-center gap-2">
           <CardTitle>Dados para cobrança</CardTitle>
           {saved ? <Badge variant="success">Cadastrado</Badge> : <Badge variant="warning">Pendente</Badge>}

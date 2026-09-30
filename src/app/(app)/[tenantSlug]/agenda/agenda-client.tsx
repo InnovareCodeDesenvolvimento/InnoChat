@@ -326,7 +326,7 @@ export function AgendaClient({
 
   return (
     <div>
-      <PageHeader icon={navIconFor("agenda")}
+      <PageHeader help="pagina.agenda" icon={navIconFor("agenda")}
         title="Agenda"
         description={friendlyTimezoneLabel(timezone)}
         action={
