@@ -226,9 +226,24 @@ describe("n8n/innochat-bot.json (workflow v2)", () => {
         "var __defProp = function (o, k, d) { if (d && d.get) { o[k] = undefined; return o; } return Object.defineProperty(o, k, d); };",
       );
       const engine = vm.runInNewContext(`${broken}\nInnoEngine;`) as Record<string, unknown>;
-      for (const fn of ["interpret", "routeFor", "isResumable", "renderMessage", "normalizeText"]) {
+      for (const fn of ["interpret", "routeFor", "isResumable", "renderMessage", "renderMessages", "normalizeText"]) {
         expect(typeof engine[fn], `${name}: ${fn}`).toBe("function");
       }
     }
+  });
+
+  // Pedido do dono: a confirmação vai sozinha e o "Posso ajudar em algo mais?" numa 2ª mensagem.
+  it("BOOKED, RESCHEDULED e CANCELED mandam o pós-ação em mensagem própria; Montar mensagem envia uma por mensagem", () => {
+    const code = (name: string) => String(flow.nodes.find((n) => n.name === name)?.parameters?.jsCode ?? "");
+    expect(code("Resultado reserva")).toContain("{ key: 'BOOKED', vars }, postAlone()");
+    expect(code("Resultado remarcação")).toContain("{ key: 'RESCHEDULED', vars }, postAlone()");
+    expect(code("Resultado cancelamento")).toContain("postAlone()]");
+    const montar = code("Montar mensagem");
+    expect(montar).toContain("E.renderMessages(blocks, texts)");
+    expect(montar).toContain("outbound: messages,");
+    expect(montar).toContain("messages.map((text) => ({ number: claim.to, text }))");
+    const envio = flow.nodes.find((n) => n.name === "Enviar pela Evolution");
+    const batch = (envio?.parameters as { options?: { batching?: { batch?: { batchSize?: number; batchInterval?: number } } } }).options?.batching?.batch;
+    expect(batch).toEqual({ batchSize: 1, batchInterval: 800 });
   });
 });

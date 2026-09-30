@@ -25,5 +25,5 @@ export { routeFor, isResumable } from "./route";
 export { mapLegacyOptions } from "./legacy";
 export { pageSlice, buildOptions, keycap } from "./options";
 export { pushTrail, popTrail } from "./trail";
-export { renderTemplateV2, renderMessage } from "./render";
+export { renderTemplateV2, renderMessage, renderMessages } from "./render";
 export { STATIC_OPTION_IDS, STATE_ALIASES } from "./aliases";

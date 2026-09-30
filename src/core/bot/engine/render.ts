@@ -46,12 +46,8 @@ function optionLine(o: { n: number; title: string; detail?: string | null }): st
   return detail ? `${keycap(o.n)} ${title} — _${detail}_` : `${keycap(o.n)} ${title}`;
 }
 
-/**
- * Monta a mensagem: blocos separados por 1 linha em branco; opções numeradas com keycap
- * (`1️⃣ Título — _detalhe_`); o rodapé (`footer`) sempre por último. Chave ausente em `texts`
- * lança: o fluxo de erro do n8n avisa o cliente em vez de mandar mensagem em branco.
- */
-export function renderMessage(blocks: Block[], texts: Texts): string {
+/** Uma mensagem só: blocos separados por 1 linha em branco, rodapé por último. */
+function renderOne(blocks: Block[], texts: Texts): string {
   const parts: string[] = [];
   const footers: string[] = [];
   for (const block of blocks) {
@@ -70,4 +66,25 @@ export function renderMessage(blocks: Block[], texts: Texts): string {
     }
   }
   return [...parts, ...footers].join("\n\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+/**
+ * Monta as mensagens da resposta. `newMessage: true` num bloco abre uma mensagem nova; sem nenhum
+ * `newMessage` sai uma só (comportamento de sempre). Cada mensagem tem seu próprio rodapé. Mensagem
+ * que ficou vazia é descartada. Chave ausente em `texts` lança: o fluxo de erro do n8n avisa o
+ * cliente em vez de mandar mensagem em branco. Sem getters/Proxy: roda no task runner do n8n.
+ */
+export function renderMessages(blocks: Block[], texts: Texts): string[] {
+  const groups: Block[][] = [];
+  for (const block of blocks) {
+    if (block.newMessage === true && groups.length > 0) groups.push([block]);
+    else if (groups.length === 0) groups.push([block]);
+    else groups[groups.length - 1].push(block);
+  }
+  return groups.map((g) => renderOne(g, texts)).filter((m) => m.length > 0);
+}
+
+/** Todas as mensagens numa string só (prévia do painel): junta com 1 linha em branco. */
+export function renderMessage(blocks: Block[], texts: Texts): string {
+  return renderMessages(blocks, texts).join("\n\n");
 }

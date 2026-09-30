@@ -561,9 +561,14 @@ scenario("CA-21", "Duas sessões confirmam o mesmo horário: uma BOOKED, outra S
 scenario("CA-22", "Depois de BOOKED: Agendar outro / Meus agendamentos / Encerrar", "W-1", async () => {
   const c = conv();
   const r = await book(c, { pro: /Ana/, day: 4, time: 0 });
-  check(T.BOOKED.test(r.text) && T.POST_ACTION_MENU.test(r.text), `BOOKED + POST_ACTION na mesma mensagem | ${brief(r.text)}`);
+  check(r.msgs.length === 2 && T.BOOKED.test(r.msgs[0]) && !T.POST_ACTION_MENU.test(r.msgs[0]) && T.POST_ACTION_MENU.test(r.msgs[1]), `BOOKED sozinho + POST_ACTION na 2ª mensagem (${r.msgs.length} mensagem(ns)) | ${brief(r.text)}`);
   const o = opts(c);
   check(o.length === 3 && /Agendar outro/.test(o[0].label) && /Meus agendamentos/.test(o[1].label) && /Encerrar/.test(o[2].label), `opções: Agendar outro / Meus agendamentos / Encerrar (${o.map((x) => x.label).join(" | ")})`);
+  // Cancelamento concluído: confirmação sozinha + POST_ACTION na 2ª mensagem.
+  await c.pick(/Meus agendamentos/);
+  await c.pick(/Cancelar/);
+  const rc = await c.pick(/Sim/);
+  check(rc.msgs.length === 2 && T.CANCELED.test(rc.msgs[0]) && !T.POST_ACTION_MENU.test(rc.msgs[0]) && T.POST_ACTION_MENU.test(rc.msgs[1]), `CANCELED sozinho + POST_ACTION na 2ª mensagem (${rc.msgs.length} mensagem(ns)) | ${brief(rc.text)}`);
   const e = await c.pick(/Encerrar/);
   const row = await c.sessionRow();
   check(row.state === "MAIN_MENU" && !(row.context || {}).serviceId, `Encerrar fecha a conversa (state=${row.state}) | ${brief(e.text)}`);
@@ -645,7 +650,7 @@ scenario("CA-25", "Remarcar → CONFIRM_RESCHEDULE com \"De\" riscado → RESCHE
   const r = await say(c, String(timeOpts(c.last)[0].n));
   check(T.CONFIRM_RESCHEDULE.test(r.text) && /\*De:\* ~.+~/.test(r.text) && /\*Para:\*/.test(r.text), `CONFIRM_RESCHEDULE com "De" riscado | ${brief(r.text)}`);
   const r2 = await c.pick(/Confirmar/);
-  check(T.RESCHEDULED.test(r2.text), `RESCHEDULED | ${brief(r2.text)}`);
+  check(r2.msgs.length === 2 && T.RESCHEDULED.test(r2.msgs[0]) && !T.POST_ACTION_MENU.test(r2.msgs[0]) && T.POST_ACTION_MENU.test(r2.msgs[1]), `RESCHEDULED sozinho + POST_ACTION na 2ª mensagem (${r2.msgs.length}) | ${brief(r2.text)}`);
   const after = await p.appointment.findMany({ where: { contactId: await c.contactId() } });
   check(after.length === 1 && before.length === 1 && after[0].status === "SCHEDULED" && after[0].startsAt.getTime() !== before[0].startsAt.getTime(), `continua 1 agendamento, em outro horário (${after.length} linha(s))`);
 });

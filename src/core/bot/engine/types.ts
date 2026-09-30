@@ -69,4 +69,9 @@ export type Block = {
   vars?: Vars;
   options?: OptionV2[];
   footer?: "MENU_HINT" | "FOOTER_HINT";
+  /**
+   * Este bloco abre uma NOVA mensagem do WhatsApp (o envio faz um POST por mensagem, em ordem).
+   * Os blocos seguintes ficam nela até o próximo `newMessage`. No primeiro bloco não tem efeito.
+   */
+  newMessage?: boolean;
 };

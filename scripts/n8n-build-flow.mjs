@@ -55,6 +55,8 @@ const nulls = (keys) => { const p = {}; for (const k of keys) p[k] = null; retur
 const svcPatch = (o) => Object.assign(nulls(PRO_KEYS.concat(DAY_KEYS)), { serviceId: o.id, serviceName: o.name || o.label, durationLabel: o.durationLabel || null, priceLabel: o.priceLabel || null });
 const menuBlock = () => ({ key: 'MENU_PROMPT', options: [{ id: 'BOOK', titleKey: 'LABEL_MENU_BOOK' }, { id: 'MY', titleKey: 'LABEL_MENU_MY' }, { id: 'HUMAN', titleKey: 'LABEL_MENU_HUMAN' }], footer: 'MENU_HINT' });
 const postBlock = () => ({ key: 'POST_ACTION_MENU', options: [{ id: 'BOOK', titleKey: 'LABEL_BOOK_ANOTHER' }, { id: 'MY', titleKey: 'LABEL_MENU_MY' }, { id: 'FINISH', titleKey: 'LABEL_FINISH' }], footer: 'FOOTER_HINT' });
+// Pós-ação em mensagem PRÓPRIA (a confirmação vai sozinha; o "Posso ajudar em algo mais?" vem logo depois).
+const postAlone = () => Object.assign(postBlock(), { newMessage: true });
 // Página de uma lista em memória (no máximo 9 opções por mensagem, contando fixas). Cabe tudo => sem paginar; senão
 // 1ª página = cap - fixas - 1 (+ Ver mais), do meio = cap - 2 (+ mais + anteriores), última = o que sobrar (+ anteriores).
 // "cap" = opções que sobram para a lista (9 menos as fixas do fim); "leading" = fixas no começo (só na 1ª página).

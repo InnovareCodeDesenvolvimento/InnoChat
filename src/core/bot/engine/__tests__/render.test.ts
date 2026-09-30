@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildOptions, renderMessage, renderTemplateV2 } from "../index";
+import { buildOptions, renderMessage, renderMessages, renderTemplateV2 } from "../index";
 
 const TEXTS = {
   GREETING: "Olá, {nome}! 👋\nBoas-vindas à *{empresa}*.",
@@ -97,5 +97,33 @@ describe("renderMessage", () => {
   });
   it("chave ausente lança", () => {
     expect(() => renderMessage([{ key: "NAO_EXISTE" }], TEXTS)).toThrow(/NAO_EXISTE/);
+  });
+});
+
+describe("renderMessages (várias mensagens por resposta)", () => {
+  const opts = buildOptions({ items: [{ id: "A", title: "Agendar outro" }], labels: { more: "Ver mais", prev: "Anteriores" } });
+  it("sem newMessage sai uma mensagem só, igual ao renderMessage", () => {
+    const blocks = [{ key: "GREETING", vars: { nome: "Ana", empresa: "Studio" } }, { key: "MENU_PROMPT", options: opts, footer: "MENU_HINT" as const }];
+    expect(renderMessages(blocks, TEXTS)).toEqual([renderMessage(blocks, TEXTS)]);
+  });
+  it("newMessage abre uma segunda mensagem, cada uma com o próprio rodapé", () => {
+    const msgs = renderMessages(
+      [{ key: "THANKS_REPLY", vars: { nome: "Ana" } }, { key: "MENU_PROMPT", options: opts, footer: "FOOTER_HINT", newMessage: true }],
+      TEXTS,
+    );
+    expect(msgs).toHaveLength(2);
+    expect(msgs[0]).toBe("Por nada, Ana! Quando precisar, é só mandar uma mensagem. 👋");
+    expect(msgs[1]).toContain("Como posso ajudar você hoje?");
+    expect(msgs[1]).toContain("1️⃣ Agendar outro");
+    expect(msgs[1].endsWith(TEXTS.FOOTER_HINT)).toBe(true);
+    expect(msgs[0]).not.toContain(TEXTS.FOOTER_HINT);
+  });
+  it("newMessage no 1º bloco não cria mensagem vazia; mensagem vazia é descartada", () => {
+    expect(renderMessages([{ key: "THANKS_REPLY", vars: { nome: "Ana" }, newMessage: true }], TEXTS)).toHaveLength(1);
+    expect(renderMessages([], TEXTS)).toEqual([]);
+  });
+  it("renderMessage junta as mensagens com 1 linha em branco (prévia do painel)", () => {
+    const blocks = [{ key: "THANKS_REPLY", vars: { nome: "Ana" } }, { key: "CHOOSE_DAY", vars: {}, newMessage: true }];
+    expect(renderMessage(blocks, TEXTS)).toBe(renderMessages(blocks, TEXTS).join("\n\n"));
   });
 });
