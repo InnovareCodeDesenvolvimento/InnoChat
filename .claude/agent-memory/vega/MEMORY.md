@@ -44,3 +44,4 @@
 - [Publicar fluxo (D-1): hash, snapshot `{}`, bundle do JSON](publish_flow_d1_design.md) — decisões e armadilhas do n8n-publish.
 - [B-1 API agenda/catálogo do bot v2](botv2_b1_agenda_api.md) — limite sob trava de linha, defaults por versão na rota, lastBookableDate, reason.
 - [B-2: handoff/release/sino do bot v2](botv2_b2_handoff_release_decisions.md) — createMany skipDuplicates, release atômico por lockToken, furos assumidos.
+- [W-1: workflow v2 do bot (hub Preparar passo → Ir para)](botv2_w1_workflow_design.md) — desenho, cola/motor injetados, furo do routeFor, armadilhas do ambiente de teste.

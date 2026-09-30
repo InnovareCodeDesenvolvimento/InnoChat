@@ -2,13 +2,14 @@
 
 | Arquivo | Workflow | ID no n8n do dono | Estado |
 |---|---|---|---|
-| `innochat-bot.json` | `innochat-bot`: chatbot de agendamento (menu numerado, sem IA) | `levHnMSXf1dOR3gS` | **inativo** |
+| `innochat-bot.json` | `innochat-bot` **v2** (`Config.flowVersion = 2.0.0`): chatbot de agendamento (menu numerado, sem IA), com o motor de `src/core/bot/engine/` embutido. É o que o **Publicar fluxo** do Admin sobe | `levHnMSXf1dOR3gS` | **inativo** |
+| `legacy/innochat-bot.v1.json` | O `innochat-bot` **v1**, cópia fiel do que estava no repositório antes da v2. Só consulta e diff (o rollback em produção é o snapshot do Publicar fluxo) | — | — |
 | `innochat-erros.json` | `innochat-erros`: error workflow do bot, libera a trava da sessão | `GZSwTNgvVt4LYnwW` | **inativo** |
 | `innochat-cron.json` | `innochat-cron`: de hora em hora chama `POST /billing/tick` ("Fase 7" em `docs/contratos.md`); diariamente às 03:15 chama `POST /maintenance/tick` (LGPD, "Segurança"). Ambos idempotentes | `dPMhT4MqGglCpFSw` | **inativo** |
 
 Contrato: `docs/arquitetura.md` §6.6/§6.7, `docs/api-interna.openapi.json` e as seções "API interna do bot — Fase 4" e "Fase 4b" em `docs/contratos.md`.
 Estes arquivos são o export (`get_workflow_details`) e servem de histórico e diff do fluxo.
-Depois de toda alteração no n8n, exporte de novo para cá.
+Depois de toda alteração no n8n, exporte de novo para cá. **Atenção com o `innochat-bot.json`:** os trechos `/* @engine:begin */…/* @engine:end */` e `/* @glue:begin */…/* @glue:end */` dos Code nodes são gerados por `npm run build:flow` (motor + cola). Ao exportar do n8n, mantenha os marcadores; depois rode `npm run build:flow` e confira com `npm run build:flow -- --check`.
 
 ## Importar
 
@@ -43,7 +44,7 @@ Os nomes abaixo são **exatos**: a sincronização do painel liga as credenciais
 
 | Nome (exato) | Header | Valor | Workflow | Nós HTTP que usam |
 |---|---|---|---|---|
-| `InnoChat Painel (Bearer)` | `Authorization` | `Bearer <INTERNAL_API_SECRET>` (gerado no admin da plataforma) | `innochat-bot` | `Claim`, `Registrar conexão`, `Buscar serviços`, `Buscar meus agendamentos`, `Buscar profissionais`, `Buscar dias`, `Buscar horários`, `Salvar nome`, `Reservar horário`, `Remarcar agendamento`, `Cancelar agendamento`, `Salvar sessão`, `Enviar para sandbox` (13 nós) |
+| `InnoChat Painel (Bearer)` | `Authorization` | `Bearer <INTERNAL_API_SECRET>` (gerado no admin da plataforma) | `innochat-bot` | `Claim`, `Registrar conexão`, `Buscar serviços`, `Buscar profissionais`, `Buscar dias`, `Buscar próximos horários`, `Buscar horários`, `Buscar agendamentos`, `Reservar horário`, `Remarcar agendamento`, `Cancelar agendamento`, `Salvar sessão`, `Enviar para sandbox` (13 nós; todos mandam `X-InnoChat-Flow: 2`) |
 | `InnoChat Painel (Bearer)` | idem | idem | `innochat-erros` | `Liberar trava` |
 | `InnoChat Painel (Bearer)` | idem | idem | `innochat-cron` | `Chamar billing/tick`, `Chamar maintenance/tick`. Vão **sem** `X-InnoChat-Instance`, porque os ticks não são escopados a uma instância |
 | `Evolution API (apikey)` | `apikey` | chave da Evolution | `innochat-bot` | `Enviar pela Evolution` |
@@ -65,63 +66,66 @@ Confira a URL de produção exibida no nó depois de ativar, porque algumas vers
 - A retenção de 7 dias das execuções com erro é **da instância**, não do workflow: `EXECUTIONS_DATA_PRUNE=true` e `EXECUTIONS_DATA_MAX_AGE=168`.
 - `innochat-erros` também não salva sucesso. Ele busca a execução com falha, que contém telefone e texto, então salvar o sucesso dele vazaria esse dado.
 
-## Mapa dos nós (`innochat-bot`)
+## Mapa dos nós (`innochat-bot`, v2)
+
+O fluxo v2 troca o "Interpretar genérico" por um **motor TypeScript** (`src/core/bot/engine/`, testado no Vitest) que roda dentro de dois Code nodes. As decisões de rota continuam em Switch/IF, visíveis no canvas.
 
 ```
 Webhook → Config → Filtrar evento ─ conexão ─► Registrar conexão (POST /connection-events)
-                                  └ mensagem ─► Claim (POST /messages/claim)
+                                  └ mensagem ─► Claim (POST /messages/claim, X-InnoChat-Flow: 2)
 Claim → Roteia claim ─ ignorar ─► Ignorar (claim)
                      ├ ocupado ─► Tentar de novo? ($runIndex < 6) ─► Esperar (retryAfterMs) ─► Claim
                      │                                             └► Desistir (ocupado)
-                     └ processar ─► Interpretar (Code, genérico) ─► Switch por passo
-Switch por passo:
-  PRONTO               ─► Montar mensagem   (mídia, 0/menu, sair, inválida, 3 inválidas, sessão nova/expirada, "Ver mais")
-  MAIN_MENU            ─► Opção do menu ─ agendar ► Buscar serviços ► Resultado serviços
-                                        ├ meus    ► Buscar meus agendamentos ► Resultado meus agendamentos
-                                        └ atendente ► Pedir atendente (handoff)
-  SELECT_SERVICE       ─► Buscar profissionais ► Resultado profissionais ► Pular profissional? ─ sim ► Preparar dias
-  SELECT_PROFESSIONAL  ─► Profissional escolhido ► Preparar dias
-  SELECT_DAY           ─► Dia escolhido ► Ver mais datas? ─ sim ► Preparar dias / não ► Preparar horários
-  SELECT_TIME          ─► Horário escolhido ► Mais horários? ─ sim ► Preparar horários / não ► (CONFIRM ou ASK_NAME)
-  ASK_NAME             ─► Salvar nome (PATCH /contacts/{id}) ► Resultado nome
-  CONFIRM              ─► Confirmação ► Rota da confirmação ─ reservar ► Reservar horário (POST /appointments) ► Resultado reserva
-                                                          ├ outro horário ► Preparar horários
-                                                          ├ outro dia ► Preparar dias
-                                                          └ remarcar (context.mode = RESCHEDULE) ► Remarcar agendamento
-                                                              (POST /appointments/{id}/reschedule) ► Resultado remarcação
-  MY_APPOINTMENTS      ─► Agendamento escolhido (guarda serviceId/professionalId/servico/data/hora do item em context.appointment)
-  APPOINTMENT_ACTION   ─► Ação escolhida ► Remarcar? ─ 2 remarcar ► Preparar dias (mesmo serviço e profissional, mode = RESCHEDULE)
-                                                    └ 1 cancelar ► Montar mensagem (CONFIRM_CANCEL com os campos estruturados)
-  CONFIRM_CANCEL       ─► Confirmou cancelamento? ─ sim ► Cancelar agendamento ► Resultado cancelamento / não ► Manter agendamento
-Preparar dias → Buscar dias (GET /availability/days) → Resultado dias
-Preparar horários → Buscar horários (GET /availability/slots) → Resultado horários
-Todos os "Resultado …" → Montar mensagem (único nó que monta texto)
+                     └ processar ─► Interpretar (Code, motor) ─► Rota (Switch por $json.route)
+Rota:
+  MEDIA, CMD_HELP, CMD_CONTINUE, REPROMPT, INVALID_1, AMBIGUOUS ─► Repetir passo (reenvia o prompt atual, com o aviso da rota)
+  CMD_MENU, FRESH, INVALID_2 ─► Mostrar menu          CMD_BACK ─► Voltar (trilha)
+  CMD_EXIT, CMD_THANKS ─► Encerrar conversa            RESUME ─► Oferecer retomada
+  CMD_HUMAN ─► Equipe aberta? ─ aberta ► Pedir atendente (no horário) / fechada ► Pedir atendente (fora do horário)
+  STATE ─► Responder passo (Switch por estado) ─► um Switch por estado ("Serviço: opção", "Dia: intenção", "Horário: intenção"...)
+                                                   ─► ramo pequeno (Code) que devolve só PARA ONDE IR e o REMENDO do contexto
+Ramos que desviam ─► Preparar passo (junta o contexto e monta a consulta) ─► Ir para (Switch por $json.goto)
+Ir para:
+  SELECT_SERVICE ► Buscar serviços (GET /catalog/services?contactId) ► Resultado serviços
+  SELECT_PROFESSIONAL ► Buscar profissionais (GET /catalog/services/{id}/professionals) ► Resultado profissionais
+  SELECT_DAY ► Buscar dias (GET /availability/days) ► Resultado dias
+  NEXT_SLOTS ► Buscar próximos horários (GET /availability/next) ► Resultado próximos horários
+  SELECT_TIME ► Buscar horários (GET /availability/slots) ► Resultado horários
+  MY_APPOINTMENTS, LIMIT_REACHED ► Buscar agendamentos (GET /contacts/{id}/appointments) ► Resultado agendamentos
+  NAME_OR_CONFIRM ► Já tem nome? ─ sim ► Mostrar confirmação / não ► Pedir nome
+  ASK_NAME, CONFIRM, CONFIRM_EDIT, APPOINTMENT_ACTION, POST_ACTION, NO_AVAILABILITY, MAIN_MENU ► Pedir nome / Mostrar … / Mostrar menu
+  MENSAGEM ► Montar mensagem        FALHA ► Falha técnica ► Montar mensagem (TECH_ERROR; estado e contexto ficam como estavam)
+Todos os "Resultado …" voltam para Preparar passo → Ir para (podem desviar: 404 → ITEM_UNAVAILABLE, 409 → SLOT_TAKEN...).
+Escritas: Confirmação: opção ─ Preparar reserva ► Reservar horário (POST /appointments) ► Resultado reserva
+                             ├ Preparar remarcação ► Remarcar agendamento (POST /appointments/{id}/reschedule) ► Resultado remarcação
+                             └ Corrigir dados / Escolher outra data
+          Cancelamento: opção ─ sim ► Preparar cancelamento ► Cancelar agendamento (POST /appointments/{id}/cancel) ► Resultado cancelamento
+                              └ não ► Manter agendamento
 Montar mensagem → Salvar sessão (PUT /sessions/{id}) → Resultado da gravação
    ─ 200 ► Sandbox? ─ sim ► Enviar para sandbox (POST /sandbox/outbox)
                     └ não ► Preparar envio ► Separar mensagens ► Enviar pela Evolution (sendText, batch 1)
    ─ 409 ► Descartar (LOCK_LOST)   (não envia)
-   ─ outro ► Falha ao salvar sessão (erro → innochat-erros libera a trava)
+   ─ outro ► Falha ao salvar sessão (erro → innochat-erros libera a trava e o painel avisa o cliente)
 ```
 
-Contrato entre os ramos e o `Montar mensagem`: cada ramo devolve
-`{ result: { nextState, contextPatch, resetContext, textKey, vars, options, handoff, prefixKey, repeatPrompt, invalidCount, end } }`.
-A numeração e a lógica de paginação ficam no `Montar mensagem`. O texto vem de `texts[textKey]` enviado pelo claim.
+**Código dentro do fluxo:**
+- `Interpretar` e `Montar mensagem` levam o motor entre `/* @engine:begin */` e `/* @engine:end */` (bundle IIFE `InnoEngine`).
+- Os outros Code nodes levam uma cola pequena entre `/* @glue:begin */` e `/* @glue:end */` (formatar dia, montar blocos, `go`/`done`).
+- **Não edite esses trechos no n8n nem no JSON**: o `Publicar fluxo` acusa a edição manual como *drift*, e o `npm run build:flow` reescreve tudo. O resto de cada nó é escrito à mão e pode ser editado.
+- Depois de mexer em `src/core/bot/engine/**` (ou na cola), rode `npm run build:flow`. O CI roda `npm run build:flow -- --check` (o teste `src/modules/bot-flow/workflow-structure.test.ts` faz o mesmo).
 
-Os rótulos estruturais vêm de `texts`. Se a chave faltar ou estiver vazia, vale o texto padrão entre parênteses:
-- `LABEL_CONFIRM` ("Confirmar") e `LABEL_OTHER_TIME` ("Escolher outro horário")
-- `LABEL_CANCEL_YES` ("Sim, cancelar") e `LABEL_CANCEL_NO` ("Não, manter")
-- `LABEL_MORE_DAYS` ("Ver mais datas"), `LABEL_MORE_TIMES` ("Mais horários") e `LABEL_MORE` ("Ver mais")
-- `LABEL_BACK_TO_MENU` ("0. Menu principal")
+**Contrato entre os nós:**
+- `Interpretar` devolve `{ route, greet, invalidCount, prefix, fresh, state, kind, optionId, option, date, time, period, name, reason, back, intent, ctx, claim }`. `ctx` já é o contexto v2 (uma sessão gravada pela v1 é normalizada).
+- Um ramo que desvia devolve `{ goto, patch, ctx, prefix, ... }`: `patch` é o remendo do contexto (`null` apaga a chave). `Preparar passo` devolve o mesmo com `ctx` novo e `q` (a consulta).
+- Um ramo final devolve `{ nextState, context, blocks, invalidCount, handoff, handoffReason }` e vai para `Montar mensagem`.
+- `blocks` são `{ key, vars, options, trailing, hasMore, hasPrev, moreKey, footer }`: o ramo **não monta texto**. `Montar mensagem` numera as opções (1..9), renderiza com `renderMessage` do motor e grava `context.options`, `lastTextKey`, `lastVars`, `lastFooter` e `trail`.
+- Paginação: horários 7 por página; dias "Primeiro horário livre" + 6 (+ "Ver mais"); serviços e agendamentos 7; profissionais 6; limite atingido 6 + atendente. Máximo de 9 opções por mensagem.
 
-As opções do menu principal e de "Cancelar/Remarcar" já estão numeradas nos textos `MAIN_MENU` e `APPOINTMENT_ACTIONS`.
+**Remarcar:** reaproveita `SELECT_DAY → SELECT_TIME → CONFIRM` com `context.mode = RESCHEDULE`, sem perguntar o nome e sem trocar serviço nem profissional. O resumo usa `CONFIRM_RESCHEDULE` ("De" riscado). 409 `SLOT_TAKEN` oferece as alternativas do dia; outro 409 (`TOO_LATE`) mostra o texto com atendente/voltar.
 
-**Remarcar:**
-- Reaproveita `SELECT_DAY → SELECT_TIME → CONFIRM` com `context.mode = RESCHEDULE`. Não pergunta o nome e não troca serviço nem profissional.
-- A confirmação usa o mesmo texto `CONFIRM_SUMMARY` do agendamento novo.
-- O 200 volta para o menu com o texto `RESCHEDULED`. Como o 200 só traz `{appointmentId,startsAt}`, `{data}` e `{hora}` saem dos rótulos escolhidos.
-- 409 `SLOT_TAKEN` oferece as alternativas e mantém o modo.
-- Qualquer outro 409 (`TOO_LATE`) volta para o menu com o texto `TOO_LATE`.
-- 422/403 vira `NO_AVAILABILITY` e 404 vira `NO_APPOINTMENTS`.
+**Falhas do painel:** todo nó de consulta/escrita usa resposta completa + *Never error* e `onError: continueRegularOutput` (timeout vira item `{ error }`). O "Resultado …" classifica: 404 → `ITEM_UNAVAILABLE` e refaz a lista; 5xx, timeout ou 403 → **Falha técnica** (`TECH_ERROR`, sessão salva como estava).
+
+**Voltar ao v1:** `n8n/legacy/innochat-bot.v1.json` é o fluxo anterior, para consulta. O caminho de volta em produção é o "Voltar à versão anterior" do Admin → Configurações → Fluxo do bot (snapshot).
 
 ## `innochat-cron`
 
@@ -149,6 +153,6 @@ Diariamente 03:15 ──────────┴► Config cron ► Manutenç
 
 ## Política de retry
 
-- GETs do painel e `Claim`: *Retry on fail* (3×, 1 s), cobrindo 5xx e timeout.
-- Escritas que podem responder 409 (`Salvar sessão`, `Reservar horário`, `Remarcar agendamento`, `Cancelar agendamento`, `Salvar nome`): *Never error* + resposta completa, com retry só em timeout ou falha de rede. **409 nunca é re-tentado.** Um 5xx nessas escritas não é re-tentado dentro da execução: o ramo lança erro e o `innochat-erros` libera a trava.
-- Envio pela Evolution e sandbox: sem retry, porque o envio não é idempotente.
+- `Claim` e os GETs do painel (`Buscar …`): *Retry on fail* (2× no v2), cobrindo 5xx e timeout. Se ainda assim falhar, o "Resultado …" manda para a **Falha técnica**.
+- Escritas (`Salvar sessão`, `Registrar conexão`, `Reservar horário`, `Remarcar agendamento`, `Cancelar agendamento`, `Enviar para sandbox`): sem retry, *Never error* + resposta completa. **409 nunca é re-tentado.** Um 5xx numa reserva/remarcação/cancelamento vira **Falha técnica** (a reserva é idempotente pela chave do evento e pelo trio contato+serviço+início). Falha ao salvar a sessão lança erro: o `innochat-erros` libera a trava e o painel avisa o cliente (`TECH_ERROR`).
+- Envio pela Evolution: sem retry, porque o envio não é idempotente.
