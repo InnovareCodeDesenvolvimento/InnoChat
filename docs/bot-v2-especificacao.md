@@ -1148,3 +1148,10 @@ Nenhuma bloqueante. Ver o plano §7 para as confirmações de baixo risco.
 - **Limite:** no máximo 3 agendamentos futuros por cliente, ajustável por empresa. Acima disso,
   mostra os existentes e oferece remarcar, cancelar ou atendente.
 - **Grade redonda:** 15 ou 30 min por empresa, padrão 30.
+- **Paginação (Atlas, 2026-09-30):** o limite é de 9 opções (keycaps 1️⃣ a 9️⃣).
+  - **`SELECT_TIME`:** páginas de **7 horários**, mais "Mais" e "Anteriores" quando houver.
+  - **`SELECT_DAY`:**
+    - 1ª página: "Primeiro horário livre" + **6 dias** + "Ver mais datas";
+    - páginas seguintes: 6 dias + "Mais" + "Anteriores".
+  
+  Isso substitui o "até 8" das §3.4 e §3.5.
