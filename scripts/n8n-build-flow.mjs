@@ -86,7 +86,24 @@ async function bundleEngine() {
     legalComments: "none",
     logLevel: "silent",
   });
-  return result.outputFiles[0].text.replace(/\r\n/g, "\n").trimEnd();
+  return exportsAsPlainObject(result.outputFiles[0].text.replace(/\r\n/g, "\n").trimEnd());
+}
+
+/**
+ * O task runner de Code node do n8n NÃO preserva getters (provado em produção em 2026-09-30:
+ * `Object.defineProperty(o, "g", { get })` devolve `undefined` lá dentro). O IIFE do esbuild
+ * expõe os exports por getters (`__export` + `__toCommonJS`), então `InnoEngine.x` vinha
+ * `undefined` no n8n real — embora funcionasse no Node/vm do simulador. Aqui trocamos o
+ * `return __toCommonJS(index_exports)` por um objeto literal com as funções diretas.
+ */
+export function exportsAsPlainObject(bundle) {
+  const block = bundle.match(/__export\(index_exports, \{([\s\S]*?)\n\s*\}\);/);
+  if (!block) throw new Error("build:flow: bloco __export(index_exports) não encontrado no bundle");
+  const names = [...block[1].matchAll(/^\s*([A-Za-z_$][\w$]*): \(\) => /gm)].map((m) => m[1]);
+  if (names.length === 0) throw new Error("build:flow: nenhum export encontrado no bundle");
+  const tail = "return __toCommonJS(index_exports);";
+  if (!bundle.includes(tail)) throw new Error("build:flow: fim do IIFE inesperado (sem __toCommonJS)");
+  return bundle.replace(tail, `return { ${names.map((n) => `${n}: ${n}`).join(", ")} };`);
 }
 
 /** Troca o miolo entre os marcadores. Devolve null se o nó não tem o par de marcadores. */

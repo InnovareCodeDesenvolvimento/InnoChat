@@ -211,4 +211,24 @@ describe("n8n/innochat-bot.json (workflow v2)", () => {
   it("guarda o errorWorkflow atual e o Publicar fluxo é quem o troca", () => {
     expect(typeof flow.settings.errorWorkflow).toBe("string");
   });
+
+  // Regressão (produção, 2026-09-30): o task runner do n8n não preserva getters, então o motor
+  // exposto por `__toCommonJS` (getters do esbuild) chegava com `InnoEngine.x === undefined`.
+  it("o motor embutido expõe as funções num objeto literal, sem depender de getters", async () => {
+    const vm = await import("node:vm");
+    for (const name of ["Interpretar", "Montar mensagem"]) {
+      const code = String(flow.nodes.find((n) => n.name === name)?.parameters?.jsCode ?? "");
+      const bundle = code.slice(0, code.indexOf("/* @engine:end */"));
+      expect(bundle).not.toContain("return __toCommonJS(index_exports);");
+      // Simula o runner: getters definidos por defineProperty não sobrevivem.
+      const broken = bundle.replace(
+        "var __defProp = Object.defineProperty;",
+        "var __defProp = function (o, k, d) { if (d && d.get) { o[k] = undefined; return o; } return Object.defineProperty(o, k, d); };",
+      );
+      const engine = vm.runInNewContext(`${broken}\nInnoEngine;`) as Record<string, unknown>;
+      for (const fn of ["interpret", "routeFor", "isResumable", "renderMessage", "normalizeText"]) {
+        expect(typeof engine[fn], `${name}: ${fn}`).toBe("function");
+      }
+    }
+  });
 });
