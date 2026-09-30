@@ -8,6 +8,7 @@ import { useToast } from "@/components/ui/toast";
 import { Button } from "@/components/ui/button";
 import { AppointmentSourceBadge, AppointmentStatusBadge, type AppointmentSource, type AppointmentStatus } from "./appointment-status";
 import { AppointmentTimeline } from "./appointment-timeline";
+import { useClientNotificationToast } from "./client-notification";
 import { Alert } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -71,6 +72,7 @@ export function DetalheAgendamentoDialog({
   // para "Concluir/Faltou" habilitarem sozinhos quando o horário de início chega.
   const [now, setNow] = useState(0);
   const { notify } = useToast();
+  const announceClientNotification = useClientNotificationToast();
 
   const appointmentId = appointment?.id;
   useEffect(() => {
@@ -106,6 +108,7 @@ export function DetalheAgendamentoDialog({
         return;
       }
       onUpdated(result.data);
+      announceClientNotification(result.data);
       close();
     });
   }
@@ -166,6 +169,7 @@ export function DetalheAgendamentoDialog({
         return;
       }
       onUpdated(result.data);
+      announceClientNotification(result.data);
       close();
     });
   }

@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
 import { cn } from "@/components/lib/cn";
 import { createAppointmentAction } from "@/modules/agenda/appointment-actions";
+import { useClientNotificationToast } from "./client-notification";
 import { listAvailableSlotsAction } from "@/modules/agenda/availability-actions";
 import { formatDateTimeLabel, formatTimeLabel } from "@/components/lib/format-date";
 import { formatPhoneDisplay } from "@/components/lib/format-phone";
@@ -70,6 +71,7 @@ export function NovoAgendamentoDialog({
   disabled = false,
   presetContact = null,
 }: Props) {
+  const announceClientNotification = useClientNotificationToast();
   const activeServices = services.filter((s) => s.active);
   const activeProfessionals = professionals.filter((p) => p.active);
 
@@ -168,6 +170,7 @@ export function NovoAgendamentoDialog({
       }
 
       onCreated(result.data);
+      announceClientNotification(result.data);
       onOpenChange(false);
     });
   }

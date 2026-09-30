@@ -1,11 +1,13 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { Headset, Info, Save } from "lucide-react";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/components/lib/cn";
@@ -22,6 +24,8 @@ export type BotRulesValue = {
   slotGranularityMin: 15 | 30;
   handoffResumeMinutes: number;
   humanPauseMin: number;
+  /** Avisa o cliente no WhatsApp quando a equipe agenda, remarca ou cancela pelo painel. */
+  notifyClientOnStaffChanges: boolean;
 };
 
 /** Opções prontas para o tempo sem resposta (o servidor aceita 30..1440, múltiplo de 15). */
@@ -63,6 +67,7 @@ export function AtendimentoCard({
   const [maxFuture, setMaxFuture] = useState(String(initial.maxFutureAppointmentsPerContact));
   const [granularity, setGranularity] = useState<15 | 30>(initial.slotGranularityMin);
   const [resume, setResume] = useState(String(initial.handoffResumeMinutes));
+  const [notifyClient, setNotifyClient] = useState(initial.notifyClientOnStaffChanges);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -73,7 +78,8 @@ export function AtendimentoCard({
   const dirty =
     parsedMax !== saved.maxFutureAppointmentsPerContact ||
     granularity !== saved.slotGranularityMin ||
-    parsedResume !== saved.handoffResumeMinutes;
+    parsedResume !== saved.handoffResumeMinutes ||
+    notifyClient !== saved.notifyClientOnStaffChanges;
 
   const resumeOptions = RESUME_PRESETS.includes(parsedResume) ? RESUME_PRESETS : [...RESUME_PRESETS, parsedResume].sort((a, b) => a - b);
 
@@ -101,6 +107,7 @@ export function AtendimentoCard({
         maxFutureAppointmentsPerContact: parsedMax,
         slotGranularityMin: granularity,
         handoffResumeMinutes: parsedResume,
+        notifyClientOnStaffChanges: notifyClient,
       });
       if (!result.ok) {
         const field = (result.error.details as { field?: string } | undefined)?.field;
@@ -113,6 +120,7 @@ export function AtendimentoCard({
       setMaxFuture(String(result.data.maxFutureAppointmentsPerContact));
       setGranularity(result.data.slotGranularityMin);
       setResume(String(result.data.handoffResumeMinutes));
+      setNotifyClient(result.data.notifyClientOnStaffChanges);
       notify({ variant: "success", title: "Regras do atendimento salvas." });
     });
   }
@@ -238,6 +246,29 @@ export function AtendimentoCard({
                 </Select>
               )}
             </Field>
+          </div>
+
+          <div className="flex items-center justify-between gap-4 rounded-card border border-border p-3">
+            <div className="min-w-0">
+              <p id="bot-notify-client-label" className="text-sm font-semibold text-text">
+                Avisar o cliente no WhatsApp quando a equipe agendar, remarcar ou cancelar
+              </p>
+              <p id="bot-notify-client-hint" className="mt-0.5 text-xs text-text-secondary">
+                {notifyClient ? "O cliente recebe uma mensagem a cada mudança feita pelo painel." : "O cliente não é avisado das mudanças feitas pelo painel."}{" "}
+                O texto de cada aviso fica em{" "}
+                <Link href={`/${tenantSlug}/mensagens-bot`} className="font-medium text-primary underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
+                  Mensagens do bot
+                </Link>
+                .
+              </p>
+            </div>
+            <Switch
+              checked={notifyClient}
+              onCheckedChange={setNotifyClient}
+              disabled={!canEdit || isPending}
+              aria-labelledby="bot-notify-client-label"
+              aria-describedby="bot-notify-client-hint"
+            />
           </div>
 
           <div className="flex items-start gap-2.5 rounded-card border border-border bg-bg p-3 text-sm text-text-secondary">

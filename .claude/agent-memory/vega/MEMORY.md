@@ -46,3 +46,4 @@
 - [B-2: handoff/release/sino do bot v2](botv2_b2_handoff_release_decisions.md) — createMany skipDuplicates, release atômico por lockToken, furos assumidos.
 - [W-1: workflow v2 do bot (hub Preparar passo → Ir para)](botv2_w1_workflow_design.md) — desenho, cola/motor injetados, furo do routeFor, armadilhas do ambiente de teste.
 - [Ajustes finais bot v2](botv2_final_adjustments.md) — flow:undefined vira default no helper, now() sem fuso, ReDoS do normalize, redação de segredos, reseed.
+- [Atendimento pelo painel + aviso da equipe](attendance_panel_and_staff_notify.md) — helper único de envio, PANEL_RESUME, fila por humanUntil, aviso só nas actions.

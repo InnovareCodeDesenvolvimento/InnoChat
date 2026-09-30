@@ -55,22 +55,25 @@ export const TOUR_STEPS: TourStepContent[] = [
     body: "Ao entrar, eu te dou bom dia com o resumo do dia, os próximos agendamentos e o checklist.",
   },
   {
+    id: "atendimento",
+    kind: "step",
+    target: "nav-atendimento",
+    desktopOnly: true,
+    title: "Atendimento",
+    body:
+      "Quando um cliente pede um atendente, ele entra numa fila aqui e um contador no menu avisa. " +
+      "Você responde pelo painel, como no WhatsApp Web, e depois devolve a conversa para mim.",
+  },
+  {
     id: "agenda",
     kind: "step",
     target: "nav-agenda",
     desktopOnly: true,
-    title: "Agenda",
+    title: "Agenda e agendamentos",
     body:
       "O dia ou a semana num só lugar. Clique num agendamento para concluir o atendimento, " +
-      "marcar que o cliente faltou, remarcar ou cancelar.",
-  },
-  {
-    id: "agendamentos",
-    kind: "step",
-    target: "nav-agendamentos",
-    desktopOnly: true,
-    title: "Agendamentos",
-    body: "A lista completa, com filtros. Boa para achar quem faltou ou cancelou.",
+      "marcar que o cliente faltou, remarcar ou cancelar. " +
+      "A lista completa, com filtros, fica em Agendamentos.",
   },
   {
     id: "clientes",

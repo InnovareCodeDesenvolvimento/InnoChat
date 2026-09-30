@@ -141,6 +141,17 @@ export function useNotificationCenterContext(): CenterValue {
   return value;
 }
 
+/** Fila de atendimento: quantos clientes aguardam atendente (badge do menu). 0 fora do provider. */
+export function useAttendanceWaitingCount(): number {
+  return useContext(CenterContext)?.attendanceWaitingCount ?? 0;
+}
+
+/** A tela Atendimento sincroniza o badge com a fila que acabou de ler (sem esperar o próximo poll). */
+export function useSetAttendanceWaitingCount(): (count: number) => void {
+  const set = useContext(CenterContext)?.setAttendanceWaitingCount;
+  return useCallback((count: number) => set?.(count), [set]);
+}
+
 /** Telas com dados no client: `version` para refazer a leitura, `highlightedIds` para realçar. */
 export function useLiveAppointments(): LiveAppointmentsValue {
   return useContext(LiveContext);

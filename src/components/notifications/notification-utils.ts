@@ -149,3 +149,17 @@ export function handoffBody(notification: BellNotification): string {
   const body = notification.body ?? "";
   return isOffHoursHandoff(notification) ? body.replace(OFF_HOURS_SUFFIX_RE, "") : body;
 }
+
+/**
+ * Destino ao clicar na notificação. "Cliente pediu atendente" abre a conversa na tela Atendimento
+ * (`/atendimento?contato=<id>`), onde a equipe responde — não mais a ficha. Feito aqui (e não só
+ * no `href` do servidor) para o sino nunca depender do texto antigo de um backend em transição.
+ */
+export function notificationHref(notification: BellNotification): string | null {
+  const { href } = notification;
+  if ((notification.kind as string) !== "HANDOFF_REQUESTED") return href;
+  const contactId = (notification as { handoff?: { contactId?: string } }).handoff?.contactId;
+  const slug = href?.split("/")[1];
+  if (!contactId || !slug) return href;
+  return `/${slug}/atendimento?contato=${encodeURIComponent(contactId)}`;
+}

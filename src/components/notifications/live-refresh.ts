@@ -33,10 +33,10 @@ export function appointmentIdsToHighlight(fresh: Pick<AppNotification, "kind" | 
   return [...ids];
 }
 
-/** Intervalo de polling: 15 s em telas de agenda/agendamentos (onde o F5 doía), 30 s no resto. */
+/** Intervalo de polling: 15 s em agenda, agendamentos e atendimento (onde o F5 doía), 30 s no resto. */
 export function pollBaseInterval(pathname: string | null | undefined): number {
   const path = pathname ?? "";
-  return /\/(agenda|agendamentos)(\/|$)/.test(path) ? 15_000 : 30_000;
+  return /\/(agenda|agendamentos|atendimento)(\/|$)/.test(path) ? 15_000 : 30_000;
 }
 
 export type RefreshCoordinatorOptions = {

@@ -44,7 +44,8 @@ export type NotificationCenterOptions<T extends BellNotification = AppNotificati
  */
 export type NotificationFeedAdapter<T extends BellNotification> = {
   list: (cursor?: string) => Promise<Result<{ items: T[]; unreadCount: number; nextCursor: string | null }>>;
-  poll: (since: string) => Promise<Result<{ unreadCount: number; fresh: T[] }>>;
+  /** `attendanceWaitingCount` (só o tenant): quantos clientes aguardam atendente — badge do menu. */
+  poll: (since: string) => Promise<Result<{ unreadCount: number; fresh: T[]; attendanceWaitingCount?: number }>>;
   markRead: (input: { ids: string[] } | { all: true }) => Promise<Result<{ unreadCount: number }>>;
 };
 
@@ -82,6 +83,7 @@ export function useNotificationFeed<T extends BellNotification>(
   const [loadingMore, setLoadingMore] = useState(false);
   const [toasts, setToasts] = useState<T[]>([]);
   const [ringing, setRinging] = useState(false);
+  const [attendanceWaitingCount, setAttendanceWaitingCount] = useState(0);
   const onFreshRef = useRef(options.onFresh);
   const baseIntervalRef = useRef(options.getBaseIntervalMs);
   useEffect(() => {
@@ -163,6 +165,7 @@ export function useNotificationFeed<T extends BellNotification>(
         failures = 0;
         const { unreadCount: unread, fresh } = result.data;
         setUnreadCount(unread);
+        if (typeof result.data.attendanceWaitingCount === "number") setAttendanceWaitingCount(result.data.attendanceWaitingCount);
         if (fresh.length > 0) {
           sinceRef.current = latestCreatedAt(fresh, sinceRef.current);
           setItems((current) => mergeNotifications(current, fresh));
@@ -188,8 +191,9 @@ export function useNotificationFeed<T extends BellNotification>(
     }
 
     const start = setTimeout(() => {
+      // Depois da 1ª página, um poll já: o badge do menu (fila de atendimento) não espera 30 s.
       void loadFirstPage({ silent: false }).then(() => {
-        if (!cancelled) schedule();
+        if (!cancelled) void tick();
       });
     }, 0);
     document.addEventListener("visibilitychange", onVisibility);
@@ -286,5 +290,7 @@ export function useNotificationFeed<T extends BellNotification>(
     markRead,
     dismissToast,
     setPanelOpen,
+    attendanceWaitingCount,
+    setAttendanceWaitingCount,
   };
 }

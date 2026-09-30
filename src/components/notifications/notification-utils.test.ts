@@ -7,6 +7,7 @@ import {
   formatRelativeTime,
   groupNotifications,
   handoffBody,
+  notificationHref,
   isOffHoursHandoff,
   latestCreatedAt,
   mergeNotifications,
@@ -168,6 +169,13 @@ describe("pediu atendente (HANDOFF_REQUESTED)", () => {
     const n = handoff(false, "Maria");
     expect(isOffHoursHandoff(n)).toBe(false);
     expect(handoffBody(n)).toBe("Maria");
+  });
+
+  it("o destino é a conversa no Atendimento, com o id do contato", () => {
+    const n = { ...handoff(false, "Maria"), href: "/salao/clientes?contato=c1" } as unknown as AppNotification;
+    expect(notificationHref(n)).toBe("/salao/atendimento?contato=c1");
+    const other = make("a", "2026-09-29T14:00:00.000Z", { href: "/salao/agenda" });
+    expect(notificationHref(other)).toBe("/salao/agenda");
   });
 
   it("outro tipo de notificação nunca ganha o selo", () => {

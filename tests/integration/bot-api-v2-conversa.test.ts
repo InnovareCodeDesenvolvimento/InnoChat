@@ -495,7 +495,7 @@ describe("notificação HANDOFF_REQUESTED (derivada)", () => {
         source: "WHATSAPP",
         title: "Cliente pediu atendente",
         body: "Maria Souza · fora do horário",
-        href: `/${w.tenant.slug}/clientes?contato=${contact.id}`,
+        href: `/${w.tenant.slug}/atendimento?contato=${contact.id}`,
         handoff: { contactId: contact.id, contactName: "Maria Souza", offHours: true, answered: false, ended: false },
         read: false,
       });

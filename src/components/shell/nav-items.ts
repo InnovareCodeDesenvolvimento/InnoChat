@@ -8,6 +8,7 @@ import {
   ClipboardList,
   CreditCard,
   LayoutDashboard,
+  Headset,
   Layers,
   MessageCircle,
   Receipt,
@@ -26,6 +27,9 @@ export type NavItem = {
    * do servidor, nunca um ícone cruzando a fronteira servidor/cliente (ver nota no topo deste
    * arquivo/`sidebar-nav.tsx`). */
   dot?: boolean;
+  /** Contador (badge) que o cliente lê do polling de notificações — hoje só "attendance" (fila de
+   * atendimento). É uma CHAVE, não um número: o valor muda a cada poll e vem do contexto no client. */
+  badge?: "attendance";
 };
 
 export type NavGroup = {
@@ -45,6 +49,7 @@ const TENANT_GROUPS_DEF: { id: string; label: string; items: { label: string; pa
     label: "Operação",
     items: [
       { label: "Início", path: "inicio", icon: LayoutDashboard },
+      { label: "Atendimento", path: "atendimento", icon: Headset },
       { label: "Agenda", path: "agenda", icon: Calendar },
       { label: "Agendamentos", path: "agendamentos", icon: ClipboardList },
       { label: "Clientes", path: "clientes", icon: Users },
@@ -98,6 +103,7 @@ export function tenantNavGroups(
       icon,
       href: `/${tenantSlug}/${path}`,
       dot: path === "whatsapp" && !!options.whatsappNeedsAttention,
+      badge: path === "atendimento" ? ("attendance" as const) : undefined,
     })),
   }));
 }

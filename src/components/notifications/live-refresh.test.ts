@@ -41,9 +41,10 @@ describe("appointmentIdsToHighlight", () => {
 });
 
 describe("pollBaseInterval", () => {
-  it("15 s em agenda e agendamentos, 30 s no resto", () => {
+  it("15 s em agenda, agendamentos e atendimento, 30 s no resto", () => {
     expect(pollBaseInterval("/salao/agenda")).toBe(15_000);
     expect(pollBaseInterval("/salao/agendamentos")).toBe(15_000);
+    expect(pollBaseInterval("/salao/atendimento")).toBe(15_000);
     expect(pollBaseInterval("/salao/inicio")).toBe(30_000);
     expect(pollBaseInterval("/salao/clientes")).toBe(30_000);
     expect(pollBaseInterval(null)).toBe(30_000);

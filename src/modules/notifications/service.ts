@@ -281,7 +281,7 @@ async function loadStateItems(ctx: TenantContext, now: Date, windowStart: Date):
       severity: "warning",
       title: HANDOFF_TITLE,
       body: handoffBody(contactName, h.offHours),
-      href: `/${ctx.tenant.slug}/clientes?contato=${h.contact.id}`,
+      href: `/${ctx.tenant.slug}/atendimento?contato=${h.contact.id}`,
       createdAt: h.requestedAt.toISOString(),
       source: "WHATSAPP",
       handoff: { contactId: h.contact.id, contactName, offHours: h.offHours, answered: h.answeredAt !== null, ended: h.endedAt !== null },

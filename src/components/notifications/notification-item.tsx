@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { cn } from "@/components/lib/cn";
-import { formatRelativeTime, handoffBody, isOffHoursHandoff } from "./notification-utils";
+import { formatRelativeTime, handoffBody, isOffHoursHandoff, notificationHref } from "./notification-utils";
 import { FALLBACK_ICON, ICON_BY_KIND, SEVERITY_TONE, SOURCE_VISUAL } from "./notification-visuals";
 import { Building2, Moon } from "lucide-react";
 import type { BellNotification } from "./types";
@@ -81,8 +81,8 @@ export function NotificationItem({
 
   return (
     <li>
-      {notification.href ? (
-        <Link href={notification.href} className={className} onClick={() => onActivate(notification)}>
+      {notificationHref(notification) ? (
+        <Link href={notificationHref(notification) ?? "#"} className={className} onClick={() => onActivate(notification)}>
           {content}
         </Link>
       ) : (

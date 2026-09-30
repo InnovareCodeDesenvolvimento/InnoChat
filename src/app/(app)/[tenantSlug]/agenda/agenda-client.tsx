@@ -27,6 +27,7 @@ import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, colorForId } from "@/components/ui/avatar";
 import { useToast } from "@/components/ui/toast";
+import { useClientNotificationToast } from "@/components/agenda/client-notification";
 import { cn } from "@/components/lib/cn";
 import {
   capitalizeFirst,
@@ -174,6 +175,7 @@ export function AgendaClient({
   const [rescheduling, setRescheduling] = useState(false);
   const router = useRouter();
   const { notify } = useToast();
+  const announceClientNotification = useClientNotificationToast();
 
   // Paleta de comando (Ctrl+K) e o atalho "Novo agendamento" do Início linkam para
   // `/agenda?novo=1` — abre o diálogo direto, sem precisar clicar de novo no botão da tela.
@@ -283,6 +285,7 @@ export function AgendaClient({
     setRescheduling(false);
     if (result.ok) {
       notify({ variant: "success", title: "Agendamento remarcado", description: formatDateTimeLabel(newStartsAtISO, timezone) });
+      announceClientNotification(result.data);
       load();
     } else if (result.error.code === "SLOT_TAKEN") {
       notify({ variant: "error", title: "Horário ocupado", description: "Esse horário acabou de ser ocupado por outro agendamento." });

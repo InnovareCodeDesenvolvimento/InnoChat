@@ -6,6 +6,7 @@ import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { cn } from "@/components/lib/cn";
 import { FALLBACK_ICON, ICON_BY_KIND, SEVERITY_TONE } from "./notification-visuals";
+import { notificationHref } from "./notification-utils";
 import type { BellNotification } from "./types";
 
 const TOAST_DURATION_MS = 8000;
@@ -44,9 +45,9 @@ function NotificationToast({
       <div className="min-w-0 flex-1">
         <p className="text-sm font-semibold text-text">{notification.title}</p>
         {notification.body ? <p className="mt-0.5 line-clamp-2 text-sm text-text-secondary">{notification.body}</p> : null}
-        {notification.href ? (
+        {notificationHref(notification) ? (
           <Link
-            href={notification.href}
+            href={notificationHref(notification) ?? "#"}
             onClick={() => onView(notification)}
             className="mt-1 inline-flex min-h-[44px] items-center text-sm font-medium text-primary hover:underline sm:min-h-[32px]"
           >

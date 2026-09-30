@@ -8,6 +8,8 @@ import { ChevronDown } from "lucide-react";
 import { cn } from "@/components/lib/cn";
 import { NAV_HOVER_SPRING } from "@/components/lib/motion";
 import { useTour } from "@/components/onboarding/onboarding-tour";
+import { useAttendanceWaitingCount } from "@/components/notifications/notification-center-provider";
+import { badgeText } from "@/components/notifications/notification-utils";
 import {
   adminNavGroups,
   tenantNavGroups,
@@ -36,6 +38,8 @@ function NavRow({ item, onNavigate }: { item: NavItem; onNavigate?: () => void }
   const reduceMotion = useReducedMotion();
   const active = isItemActive(item, pathname);
   const Icon = item.icon;
+  const attendanceWaiting = useAttendanceWaitingCount();
+  const badgeCount = item.badge === "attendance" ? attendanceWaiting : 0;
 
   return (
     <motion.div whileHover={reduceMotion ? undefined : { scale: 1.02 }} whileTap={reduceMotion ? undefined : { scale: 0.98 }} transition={NAV_HOVER_SPRING}>
@@ -58,6 +62,20 @@ function NavRow({ item, onNavigate }: { item: NavItem; onNavigate?: () => void }
         ) : null}
         <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
         <span className="truncate">{item.label}</span>
+        {badgeCount > 0 ? (
+          <>
+            <span
+              data-testid="nav-badge-attendance"
+              aria-hidden="true"
+              className="ml-auto inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-danger px-1.5 text-[11px] font-bold leading-none text-white"
+            >
+              {badgeText(badgeCount)}
+            </span>
+            <span className="sr-only">
+              {badgeCount === 1 ? " — 1 cliente aguardando" : ` — ${badgeCount} clientes aguardando`}
+            </span>
+          </>
+        ) : null}
         {item.dot ? (
           <>
             <span className="ml-auto h-2 w-2 shrink-0 rounded-full bg-danger" aria-hidden="true" title="Precisa de atenção" />

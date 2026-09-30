@@ -9,11 +9,11 @@ export type ConversationMessage = {
   instanceLabel: string | null;
 };
 
-export type ConversationDay = { key: string; label: string; items: ConversationMessage[] };
+export type ConversationDay<T extends ConversationMessage = ConversationMessage> = { key: string; label: string; items: T[] };
 
 /** Junta sem duplicar (por `id`) e mantém a ordem cronológica (mais antigas primeiro). */
-export function mergeConversation(current: ConversationMessage[], incoming: ConversationMessage[]): ConversationMessage[] {
-  const byId = new Map<string, ConversationMessage>();
+export function mergeConversation<T extends ConversationMessage>(current: T[], incoming: T[]): T[] {
+  const byId = new Map<string, T>();
   for (const item of current) byId.set(item.id, item);
   for (const item of incoming) byId.set(item.id, item);
   return [...byId.values()].sort((a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : a.id < b.id ? -1 : 1));
@@ -23,11 +23,11 @@ export function mergeConversation(current: ConversationMessage[], incoming: Conv
  * Agrupa por dia civil NO FUSO DA EMPRESA (a mesma mensagem cai em dias diferentes conforme o
  * fuso). Rótulo: "Hoje", "Ontem" ou "dd/MM/yyyy". Espera a lista já em ordem cronológica.
  */
-export function groupConversationByDay(items: ConversationMessage[], timezone: string, now: Date = new Date()): ConversationDay[] {
+export function groupConversationByDay<T extends ConversationMessage>(items: T[], timezone: string, now: Date = new Date()): ConversationDay<T>[] {
   const dayKey = (d: Date) => formatInTimeZone(d, timezone, "yyyy-MM-dd");
   const today = dayKey(now);
   const yesterday = dayKey(new Date(now.getTime() - 24 * 60 * 60 * 1000));
-  const days: ConversationDay[] = [];
+  const days: ConversationDay<T>[] = [];
   for (const item of items) {
     const key = dayKey(new Date(item.createdAt));
     let day = days[days.length - 1];

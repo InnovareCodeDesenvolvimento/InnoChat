@@ -27,3 +27,4 @@
 - [Login com Google - UI](login-google-ui.md) — botao via form action, /cadastro/google, card admin; min-w-0, asChild sem icon, rate limit do dev@.
 - [Bot v2 L-1/L-2: armadilhas](bot-v2-l1-l2-armadilhas.md) — Tailwind varrendo .next-*, preview de componente, stub frágil, getBotRules OWNER-only.
 - [Admin: Fluxo do bot (L-4)](admin-publicar-fluxo-l4.md) — actions injetáveis, confirmação digitada, como pré-visualizar sem n8n, JSON inlinado no build.
+- [Tela Atendimento (fila+conversa)](tela-atendimento-fila-e-conversa.md) — URL como fonte, badge do menu, envio otimista, ResizeObserver no log, validação sem Evolution.
