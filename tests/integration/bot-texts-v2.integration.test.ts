@@ -123,9 +123,9 @@ describe("parseFlowMajor", () => {
 
 describe("regras do bot da empresa", () => {
   it("padrões, atualização e leitura (humanPauseMin intacto)", async () => {
-    expect(await getBotRules(emptyTenantId)).toEqual({ maxFutureAppointmentsPerContact: 3, slotGranularityMin: 30, handoffResumeMinutes: 120, humanPauseMin: 720 });
+    expect(await getBotRules(emptyTenantId)).toEqual({ maxFutureAppointmentsPerContact: 3, slotGranularityMin: 30, handoffResumeMinutes: 120, humanPauseMin: 720, notifyClientOnStaffChanges: true });
     const updated = await updateBotRules(emptyTenantId, { maxFutureAppointmentsPerContact: 0, slotGranularityMin: 15, handoffResumeMinutes: 45 });
-    expect(updated).toEqual({ maxFutureAppointmentsPerContact: 0, slotGranularityMin: 15, handoffResumeMinutes: 45, humanPauseMin: 720 });
+    expect(updated).toEqual({ maxFutureAppointmentsPerContact: 0, slotGranularityMin: 15, handoffResumeMinutes: 45, humanPauseMin: 720, notifyClientOnStaffChanges: true });
     expect(await getBotRules(emptyTenantId)).toEqual(updated);
   });
 });

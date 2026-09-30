@@ -43,6 +43,8 @@ export type BotRules = {
   handoffResumeMinutes: number;
   /** Só leitura: janela em que o bot fica quieto após a equipe responder pelo WhatsApp. */
   humanPauseMin: number;
+  /** Avisa o cliente no WhatsApp quando a equipe cria/remarca/cancela pelo painel. */
+  notifyClientOnStaffChanges: boolean;
 };
 
 const BOT_RULES_SELECT = {
@@ -50,9 +52,10 @@ const BOT_RULES_SELECT = {
   slotGranularityMin: true,
   handoffResumeMinutes: true,
   humanPauseMin: true,
+  notifyClientOnStaffChanges: true,
 } as const;
 
-function toBotRules(row: { maxFutureAppointmentsPerContact: number; slotGranularityMin: number; handoffResumeMinutes: number; humanPauseMin: number }): BotRules {
+function toBotRules(row: { maxFutureAppointmentsPerContact: number; slotGranularityMin: number; handoffResumeMinutes: number; humanPauseMin: number; notifyClientOnStaffChanges: boolean }): BotRules {
   return { ...row, slotGranularityMin: row.slotGranularityMin === 15 ? 15 : 30 };
 }
 
@@ -64,7 +67,7 @@ export async function getBotRules(tenantId: string): Promise<BotRules> {
 /** Os limites (0..20, 15|30, 30..1440 múltiplo de 15) também têm CHECK no banco; a validação de entrada é da action. */
 export async function updateBotRules(
   tenantId: string,
-  input: { maxFutureAppointmentsPerContact: number; slotGranularityMin: 15 | 30; handoffResumeMinutes: number },
+  input: { maxFutureAppointmentsPerContact: number; slotGranularityMin: 15 | 30; handoffResumeMinutes: number; notifyClientOnStaffChanges?: boolean },
 ): Promise<BotRules> {
   const row = await getPrisma().tenant.update({
     where: { id: tenantId },
@@ -72,6 +75,7 @@ export async function updateBotRules(
       maxFutureAppointmentsPerContact: input.maxFutureAppointmentsPerContact,
       slotGranularityMin: input.slotGranularityMin,
       handoffResumeMinutes: input.handoffResumeMinutes,
+      ...(input.notifyClientOnStaffChanges !== undefined ? { notifyClientOnStaffChanges: input.notifyClientOnStaffChanges } : {}),
     },
     select: BOT_RULES_SELECT,
   });

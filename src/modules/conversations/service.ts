@@ -9,7 +9,41 @@ export type ConversationItem = {
   body: string;
   createdAt: string;
   instanceLabel: string | null;
+  /** Quem escreveu: CLIENT (entrada), AGENT (atendente do painel, `authorUserId`) ou BOT (demais saídas). */
+  author: "CLIENT" | "BOT" | "AGENT";
+  /** Nome do atendente (só quando `author === "AGENT"` e o usuário ainda existe). */
+  authorName: string | null;
 };
+
+export function toConversationItem(r: {
+  id: string;
+  direction: "INBOUND" | "OUTBOUND";
+  body: string;
+  createdAt: Date;
+  authorUserId: string | null;
+  whatsappInstance: { label: string } | null;
+  authorUser: { name: string | null } | null;
+}): ConversationItem {
+  return {
+    id: r.id,
+    direction: r.direction,
+    body: r.body,
+    createdAt: r.createdAt.toISOString(),
+    instanceLabel: r.whatsappInstance?.label ?? null,
+    author: r.direction === "INBOUND" ? "CLIENT" : r.authorUserId ? "AGENT" : "BOT",
+    authorName: r.authorUser ? r.authorUser.name?.trim() || "Atendente" : null,
+  };
+}
+
+export const CONVERSATION_ITEM_SELECT = {
+  id: true,
+  direction: true,
+  body: true,
+  createdAt: true,
+  authorUserId: true,
+  whatsappInstance: { select: { label: true } },
+  authorUser: { select: { name: true } },
+} as const;
 
 function encodeCursor(item: { createdAt: Date; id: string }): string {
   return Buffer.from(`${item.createdAt.toISOString()}|${item.id}`).toString("base64url");
@@ -49,7 +83,7 @@ export async function getConversation(
     },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: CONVERSATION_PAGE_SIZE + 1,
-    select: { id: true, direction: true, body: true, createdAt: true, whatsappInstance: { select: { label: true } } },
+    select: CONVERSATION_ITEM_SELECT,
   });
 
   const hasMore = rows.length > CONVERSATION_PAGE_SIZE;
@@ -57,13 +91,7 @@ export async function getConversation(
   const oldest = page[page.length - 1];
 
   return {
-    items: page.reverse().map((r) => ({
-      id: r.id,
-      direction: r.direction,
-      body: r.body,
-      createdAt: r.createdAt.toISOString(),
-      instanceLabel: r.whatsappInstance?.label ?? null,
-    })),
+    items: page.reverse().map(toConversationItem),
     nextCursor: hasMore && oldest ? encodeCursor(oldest) : null,
   };
 }

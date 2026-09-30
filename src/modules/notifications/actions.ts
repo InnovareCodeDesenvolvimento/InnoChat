@@ -25,7 +25,7 @@ const tenantSlugSchema = z.string().min(1).max(100);
 export async function listNotificationsAction(input: {
   tenantSlug: string;
   cursor?: string;
-}): Promise<Result<{ items: AppNotification[]; unreadCount: number; nextCursor: string | null }>> {
+}): Promise<Result<{ items: AppNotification[]; unreadCount: number; nextCursor: string | null; attendanceWaitingCount: number }>> {
   return runAction(async () => {
     const data = z.object({ tenantSlug: tenantSlugSchema, cursor: z.string().max(200).optional() }).parse(input);
     const ctx = await requireTenantMember(data.tenantSlug);
@@ -36,7 +36,7 @@ export async function listNotificationsAction(input: {
 export async function pollNotificationsAction(input: {
   tenantSlug: string;
   since: string;
-}): Promise<Result<{ unreadCount: number; fresh: AppNotification[] }>> {
+}): Promise<Result<{ unreadCount: number; fresh: AppNotification[]; attendanceWaitingCount: number }>> {
   return runAction(async () => {
     const data = z.object({ tenantSlug: tenantSlugSchema, since: z.coerce.date() }).parse(input);
     const ctx = await requireTenantMember(data.tenantSlug);

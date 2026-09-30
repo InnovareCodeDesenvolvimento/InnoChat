@@ -3,9 +3,11 @@
 import { z } from "zod";
 import { requireTenantMember } from "@/lib/auth/guards";
 import { runAction, type Result } from "@/lib/result";
+import { forTenant } from "@/lib/db/tenant-client";
 import { assertTenantCanWrite } from "@/modules/billing/service";
+import { notifyClientOfStaffChange } from "./staff-notify";
 import {
-  cancelAppointment,
+  cancelAppointmentDetailed,
   createAppointmentManual,
   finishAppointment,
   listAppointments,
@@ -44,7 +46,12 @@ export async function createAppointmentAction(tenantSlug: string, input: unknown
     const { tenant, user } = await requireTenantMember(tenantSlug);
     await assertTenantCanWrite(tenant.id);
     const data = createAppointmentSchema.parse(input);
-    return createAppointmentManual(tenant.id, data, user.id);
+    const result = await createAppointmentManual(tenant.id, data, user.id);
+    // Aviso ao cliente (aditivo): só quando esta chamada CRIOU (repetição idempotente não reavisa).
+    const clientNotification = result.alreadyExisted
+      ? "DISABLED"
+      : await notifyClientOfStaffChange({ tenantId: tenant.id, appointmentId: (result.appointment as { id: string }).id, kind: "BOOKED" });
+    return { ...result, clientNotification };
   });
 }
 
@@ -55,7 +62,9 @@ export async function cancelAppointmentAction(tenantSlug: string, appointmentId:
     const { tenant, user } = await requireTenantMember(tenantSlug);
     await assertTenantCanWrite(tenant.id);
     const data = cancelSchema.parse(input ?? {});
-    return cancelAppointment(tenant.id, appointmentId, user.id, data.note);
+    const { appointment, changed } = await cancelAppointmentDetailed(tenant.id, appointmentId, user.id, data.note);
+    const clientNotification = changed ? await notifyClientOfStaffChange({ tenantId: tenant.id, appointmentId, kind: "CANCELED" }) : "DISABLED";
+    return { ...appointment, clientNotification };
   });
 }
 
@@ -66,7 +75,12 @@ export async function rescheduleAppointmentAction(tenantSlug: string, appointmen
     const { tenant, user } = await requireTenantMember(tenantSlug);
     await assertTenantCanWrite(tenant.id);
     const data = rescheduleSchema.parse(input);
-    return rescheduleAppointment(tenant.id, appointmentId, data.startsAt, user.id);
+    const before = await forTenant(tenant.id).appointment.findFirst({ where: { id: appointmentId }, select: { startsAt: true } });
+    const updated = await rescheduleAppointment(tenant.id, appointmentId, data.startsAt, user.id);
+    // Mesmo horário (arrastou e soltou no lugar): nada mudou para o cliente, não avisa.
+    const moved = !before || before.startsAt.getTime() !== updated.startsAt.getTime();
+    const clientNotification = moved ? await notifyClientOfStaffChange({ tenantId: tenant.id, appointmentId, kind: "RESCHEDULED" }) : "DISABLED";
+    return { ...updated, clientNotification };
   });
 }
 

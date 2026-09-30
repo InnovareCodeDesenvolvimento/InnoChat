@@ -221,7 +221,7 @@ async function loadReminderTemplate(tenantId: string): Promise<string> {
   return row?.text ?? DEFAULT_BOT_TEXTS.REMINDER;
 }
 
-function recipientNumber(contact: { waJid: string; phoneE164: string | null }): string | null {
+export function recipientNumber(contact: { waJid: string; phoneE164: string | null }): string | null {
   if (contact.waJid.endsWith("@s.whatsapp.net")) {
     const digits = digitsFromJid(contact.waJid).replace(/\D/g, "");
     if (digits) return digits;

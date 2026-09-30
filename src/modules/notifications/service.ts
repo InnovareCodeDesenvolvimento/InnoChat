@@ -1,3 +1,4 @@
+import { countWaitingAttendance } from "@/modules/attendance/service";
 import { fromZonedTime } from "date-fns-tz";
 import { getPrisma } from "@/lib/db/prisma";
 import { forTenant } from "@/lib/db/tenant-client";
@@ -371,7 +372,7 @@ function decodeCursor(cursor: string): { createdAt: string; id: string } {
 export async function listNotifications(
   ctx: TenantContext,
   cursor?: string,
-): Promise<{ items: AppNotification[]; unreadCount: number; nextCursor: string | null }> {
+): Promise<{ items: AppNotification[]; unreadCount: number; nextCursor: string | null; attendanceWaitingCount: number }> {
   const now = new Date();
   const windowStart = windowStartOf(now);
   const cur = cursor ? decodeCursor(cursor) : null;
@@ -386,17 +387,19 @@ export async function listNotifications(
   const page = merged.slice(0, PAGE_SIZE);
   const hasMore = merged.length > PAGE_SIZE;
 
-  const [{ unreadCount }, pageReadKeys] = await Promise.all([
+  const [{ unreadCount }, pageReadKeys, attendanceWaitingCount] = await Promise.all([
     countUnread(ctx, { stateItems, readAllAt, windowStart }),
     loadReadKeys(
       ctx.membership.id,
       page.map((p) => p.id),
     ),
+    countWaitingAttendance(ctx.tenant.id),
   ]);
 
   return {
     items: page.map((i) => ({ ...i, read: isRead(i, readAllAt, pageReadKeys) })),
     unreadCount,
+    attendanceWaitingCount,
     nextCursor: hasMore ? encodeCursor(page[page.length - 1]) : null,
   };
 }
@@ -404,7 +407,7 @@ export async function listNotifications(
 export async function pollNotifications(
   ctx: TenantContext,
   since: Date,
-): Promise<{ unreadCount: number; fresh: AppNotification[] }> {
+): Promise<{ unreadCount: number; fresh: AppNotification[]; attendanceWaitingCount: number }> {
   const now = new Date();
   const windowStart = windowStartOf(now);
   const after = new Date(Math.max(since.getTime(), windowStart.getTime()));
@@ -419,14 +422,17 @@ export async function pollNotifications(
     .sort(compareDesc)
     .slice(0, POLL_MAX);
 
-  const { unreadCount, readKeys } = await countUnread(ctx, { stateItems, readAllAt, windowStart });
+  const [{ unreadCount, readKeys }, attendanceWaitingCount] = await Promise.all([
+    countUnread(ctx, { stateItems, readAllAt, windowStart }),
+    countWaitingAttendance(ctx.tenant.id),
+  ]);
   const extraKeys = await loadReadKeys(
     ctx.membership.id,
     fresh.map((f) => f.id).filter((id) => !readKeys.has(id)),
   );
   const allRead = new Set([...readKeys, ...extraKeys]);
 
-  return { unreadCount, fresh: fresh.map((i) => ({ ...i, read: isRead(i, readAllAt, allRead) })) };
+  return { unreadCount, attendanceWaitingCount, fresh: fresh.map((i) => ({ ...i, read: isRead(i, readAllAt, allRead) })) };
 }
 
 export async function markNotificationsRead(

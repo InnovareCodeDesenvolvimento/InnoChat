@@ -332,10 +332,25 @@ export async function cancelAppointment(
   note?: string,
   authorType: "USER" | "CONTACT" | "SYSTEM" = "USER",
 ) {
+  return (await cancelAppointmentDetailed(tenantId, appointmentId, actorId, note, authorType)).appointment;
+}
+
+/**
+ * Igual a `cancelAppointment`, mas diz se ESTA chamada foi quem cancelou (`changed`). A troca de status é
+ * condicional (`updateMany` com `status != CANCELED`), então dois cancelamentos simultâneos geram um
+ * único evento e um único `changed: true` — base para o aviso ao cliente não sair duplicado.
+ */
+export async function cancelAppointmentDetailed(
+  tenantId: string,
+  appointmentId: string,
+  actorId: string,
+  note?: string,
+  authorType: "USER" | "CONTACT" | "SYSTEM" = "USER",
+) {
   const appointment = await loadOwnedAppointment(tenantId, appointmentId);
 
   if (appointment.status === "CANCELED") {
-    return appointment; // idempotente
+    return { appointment, changed: false }; // idempotente
   }
 
   const tenant = await getPrisma().tenant.findUniqueOrThrow({ where: { id: tenantId } });
@@ -346,11 +361,16 @@ export async function cancelAppointment(
   }
 
   return getPrisma().$transaction(async (tx) => {
-    const updated = await tx.appointment.update({ where: { id: appointmentId }, data: { status: "CANCELED" } });
+    const { count } = await tx.appointment.updateMany({
+      where: { id: appointmentId, tenantId, status: { not: "CANCELED" } },
+      data: { status: "CANCELED" },
+    });
+    const updated = await tx.appointment.findFirstOrThrow({ where: { id: appointmentId, tenantId } });
+    if (count === 0) return { appointment: updated, changed: false };
     await tx.appointmentEvent.create({
       data: { appointmentId, action: "CANCELED", authorType, authorId: actorId, note: note ?? null },
     });
-    return updated;
+    return { appointment: updated, changed: true };
   });
 }
 

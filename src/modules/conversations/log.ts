@@ -18,6 +18,8 @@ export type ChatLogEntry = {
   body: string;
   /** Id da mensagem na Evolution — dedup (`@@unique([tenantId, providerMessageId])`). Nulo = sem dedup. */
   providerMessageId?: string | null;
+  /** Atendente do painel que enviou (null = bot ou cliente). */
+  authorUserId?: string | null;
 };
 
 /** Teto de mensagens RECEBIDAS por contato por dia gravadas no histórico (anti-inundação/abuso). */
@@ -65,13 +67,16 @@ export async function contactHasBusinessRelation(tenantId: string, contactId: st
   return (await db.appointment.count({ where: { contactId }, take: 1 })) > 0;
 }
 
-/** `true` se gravou; `false` se era duplicata (P2002) ou se falhou (já logado). Nunca lança. */
-export async function logChatMessage(entry: ChatLogEntry): Promise<boolean> {
+/**
+ * Grava e devolve `{ id, createdAt }`; `null` se era duplicata (P2002), texto vazio, teto atingido ou
+ * falha (já logada). Nunca lança.
+ */
+export async function saveChatMessage(entry: ChatLogEntry): Promise<{ id: string; createdAt: Date } | null> {
   const body = sanitizeChatBody(entry.body);
-  if (!body) return false;
+  if (!body) return null;
   try {
-    if (entry.direction === "INBOUND" && (await inboundCapReached(entry.tenantId, entry.contactId))) return false;
-    await forTenant(entry.tenantId).chatMessage.create({
+    if (entry.direction === "INBOUND" && (await inboundCapReached(entry.tenantId, entry.contactId))) return null;
+    const row = await forTenant(entry.tenantId).chatMessage.create({
       data: {
         tenantId: entry.tenantId, // literal só para o TS; forTenant sobrescreve em runtime
         contactId: entry.contactId,
@@ -79,18 +84,25 @@ export async function logChatMessage(entry: ChatLogEntry): Promise<boolean> {
         direction: entry.direction,
         body,
         providerMessageId: entry.providerMessageId ?? null,
+        authorUserId: entry.authorUserId ?? null,
       },
+      select: { id: true, createdAt: true },
     });
-    return true;
+    return row;
   } catch (error) {
-    if (isUniqueViolation(error)) return false;
+    if (isUniqueViolation(error)) return null;
     logger.warn("conversations.log_failed", {
       direction: entry.direction,
       contactId: entry.contactId,
       ...describeDbError(error), // nunca error.message: o Prisma reproduz o corpo da mensagem nela
     });
-    return false;
+    return null;
   }
+}
+
+/** `true` se gravou; `false` se era duplicata (P2002) ou se falhou (já logado). Nunca lança. */
+export async function logChatMessage(entry: ChatLogEntry): Promise<boolean> {
+  return (await saveChatMessage(entry)) !== null;
 }
 
 /** Saída do bot: uma linha por texto, na ordem (createdAt escalonado em 1ms para manter a ordem estável). */

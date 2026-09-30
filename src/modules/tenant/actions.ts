@@ -51,6 +51,8 @@ const botRulesSchema = z.object({
   maxFutureAppointmentsPerContact: z.number().int().min(0).max(20),
   slotGranularityMin: z.union([z.literal(15), z.literal(30)]),
   handoffResumeMinutes: z.number().int().min(30).max(1440).multipleOf(15),
+  // Opcional: omitido = não altera (compatível com quem ainda não envia o campo).
+  notifyClientOnStaffChanges: z.boolean().optional(),
 });
 
 /** Regras do bot da empresa (limite por cliente, grade 15/30, retomada do atendente). Leitura: qualquer membro; escrita (abaixo): só `OWNER`. */
