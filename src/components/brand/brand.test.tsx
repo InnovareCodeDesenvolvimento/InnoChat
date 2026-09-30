@@ -22,8 +22,8 @@ describe("app-info", () => {
   it("a versão exibida é a do package.json, não um número escrito à mão", () => {
     const pkg = JSON.parse(fonte("package.json")) as { version: string };
     expect(APP_VERSION).toBe(pkg.version);
-    expect(APP_VERSION).toBe("1.0.0");
-    expect(VERSAO_EXIBIDA).toBe("v1.0.0");
+    expect(VERSAO_EXIBIDA).toBe(`v${pkg.version}`);
+    expect(pkg.version).toMatch(/^\d+\.\d+\.\d+$/);
     expect(BUILD_DATE).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(NOME_SISTEMA).toBe("InnoChat");
   });
