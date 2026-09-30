@@ -447,3 +447,20 @@ Se algo estiver vermelho, abra um incidente acima.
 - **Squad técnica:** consulte via GitHub Issues ou Discord
 - **Dono:** para decisões de negócio (preços, planos, recursos novos)
 
+
+## Deploy do bot v2 (painel + "Publicar fluxo")
+
+**Ordem:**
+1. Push do painel. O container novo aplica sozinho, no boot, as migrations `20261001200000_bot_v2_schema` e `20261001200100_bot_v2_port_texts`.
+2. Confira em Admin → Saúde que o painel está no ar e em Admin → Configurações → **Fluxo do bot** que o n8n responde.
+3. **Publicar fluxo:** na primeira vez, digite PUBLICAR.
+4. Teste pelo WhatsApp: "oi", agendar, remarcar, cancelar e "atendente".
+
+**Janela e rollback (revisão O-1, I2):**
+- A migration de porte **insere** linhas em `bot_texts` com chaves novas (`MENU_PROMPT`, `APPOINTMENT_DETAIL`) nas empresas que editaram o menu. A imagem **antiga** lê `bot_texts` sem filtro e quebra ao encontrar essas chaves.
+- A janela de risco é só o intervalo entre a migration e a troca do container. A imagem nova já filtra.
+- **Rollback da imagem do painel:**
+  1. Antes, volte o fluxo no card "Fluxo do bot" (VOLTAR).
+  2. Rode no banco: `DELETE FROM bot_texts WHERE key IN ('MENU_PROMPT','APPOINTMENT_DETAIL');`
+  3. Só então volte a imagem.
+- A migration também faz `UPDATE tenants SET "slotGranularityMin" = 30`. **Isso é irreversível.** Cada empresa pode voltar para 15 em Configurações.
