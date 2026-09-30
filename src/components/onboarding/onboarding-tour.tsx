@@ -316,8 +316,16 @@ export function OnboardingTourProvider({
     if (seen) return;
     autoStarted.current = true;
     // Deixa a página assentar antes de o Inno aparecer.
-    const id = window.setTimeout(() => setOpen(true), 700);
-    return () => window.clearTimeout(id);
+    let fired = false;
+    const id = window.setTimeout(() => {
+      fired = true;
+      setOpen(true);
+    }, 700);
+    return () => {
+      window.clearTimeout(id);
+      // StrictMode (dev) desmonta e remonta o effect antes do timer: libera a 2ª execução para agendar de novo.
+      if (!fired) autoStarted.current = false;
+    };
   }, [autoStart]);
 
   const value = useMemo<TourContextValue>(() => ({ active: open, start, restart }), [open, start, restart]);

@@ -118,9 +118,10 @@ export function AtendimentoClient({
 
   const selectedItem = selectedId ? (items.find((i) => i.contactId === selectedId) ?? null) : null;
 
-  // Abriu um cliente que não está na fila (ex.: link do sino de um atendimento antigo): busca só o nome.
+  // Dados do cliente aberto que a fila não traz: o telefone (aviso "receberá no WhatsApp" do Agendar) e, fora da
+  // fila (ex.: link do sino de um atendimento antigo), o nome.
   useEffect(() => {
-    if (!selectedId || selectedItem || status === "loading" || fallback?.id === selectedId) return;
+    if (!selectedId || status === "loading" || fallback?.id === selectedId) return;
     let cancelled = false;
     const timer = setTimeout(async () => {
       try {
@@ -139,7 +140,7 @@ export function AtendimentoClient({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [selectedId, selectedItem, status, fallback?.id, tenantSlug]);
+  }, [selectedId, status, fallback?.id, tenantSlug]);
 
   // Link do sino com a tela já aberta: leva a aba para onde o cliente está.
   useEffect(() => {

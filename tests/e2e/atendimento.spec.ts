@@ -601,6 +601,166 @@ test.describe("aviso ao cliente (agenda)", () => {
 });
 
 // ---------------------------------------------------------------------------------------------
+// Aviso "o cliente será avisado" DENTRO dos diálogos (data-testid="notify-client-hint")
+// ---------------------------------------------------------------------------------------------
+test.describe("aviso nos diálogos de agendar, remarcar e cancelar", () => {
+  const day = futureTuesday();
+  const HINT_NEW = "O cliente receberá a confirmação no WhatsApp";
+  const HINT_RESCHEDULE = "O cliente será avisado da mudança no WhatsApp";
+  const HINT_CANCEL = "O cliente será avisado do cancelamento no WhatsApp";
+  const hint = (page: Page) => page.getByRole("dialog").getByTestId("notify-client-hint");
+  const setNotify = (on: boolean) => prisma.tenant.update({ where: { id: tenantId }, data: { notifyClientOnStaffChanges: on } });
+
+  let withPhone: Awaited<ReturnType<typeof newContact>>;
+  let withoutPhone: Awaited<ReturnType<typeof newContact>>;
+
+  test.beforeAll(async () => {
+    // Horas próprias (13 e 14) para não colidir com os agendamentos da Ana dos outros testes (exclusion constraint).
+    withPhone = await newContact("Hint Com Fone");
+    withoutPhone = await newContact("Hint Sem Fone", { phone: null });
+    await apptFor(withPhone.id, day, 13);
+    await apptFor(withoutPhone.id, day, 14);
+  });
+
+  test.afterEach(async () => {
+    await setNotify(true);
+  });
+
+  async function openDetail(page: Page, name: string, action: "Remarcar" | "Cancelar agendamento") {
+    await gotoAgendaDay(page, day);
+    await page.getByRole("button").filter({ hasText: name }).click();
+    await page.getByRole("button", { name: action, exact: true }).click();
+  }
+
+  test("agendar: aparece só depois de haver telefone, some ao apagar o telefone e com o switch desligado", async ({ page }) => {
+    await gotoAgendaDay(page, day);
+    await page.getByRole("button", { name: /Novo agendamento com Ana às 16:00/ }).click();
+    const dialog = page.getByRole("dialog");
+    await expect(hint(page)).toHaveCount(0); // sem telefone digitado
+    await dialog.getByLabel("Telefone (opcional)").fill(nextPhone());
+    await expect(hint(page)).toHaveText(HINT_NEW);
+    await dialog.getByLabel("Telefone (opcional)").fill("");
+    await expect(hint(page)).toHaveCount(0);
+  });
+
+  test("agendar com o switch desligado: não aparece nem com telefone", async ({ page }) => {
+    await setNotify(false);
+    await gotoAgendaDay(page, day);
+    await page.getByRole("button", { name: /Novo agendamento com Ana às 16:00/ }).click();
+    await page.getByRole("dialog").getByLabel("Telefone (opcional)").fill(nextPhone());
+    await expect(hint(page)).toHaveCount(0);
+    await expect(page.getByRole("dialog").getByLabel("Telefone (opcional)")).toHaveValue(/\d/); // o campo foi mesmo preenchido
+  });
+
+  test("remarcar: aparece com telefone + switch ligado; some sem telefone e com switch desligado", async ({ page }) => {
+    await openDetail(page, withPhone.name!, "Remarcar");
+    await expect(hint(page)).toHaveText(HINT_RESCHEDULE);
+
+    await openDetail(page, withoutPhone.name!, "Remarcar");
+    await expect(page.getByLabel("Novo horário")).toBeVisible();
+    await expect(hint(page)).toHaveCount(0);
+
+    await setNotify(false);
+    await openDetail(page, withPhone.name!, "Remarcar");
+    await expect(page.getByLabel("Novo horário")).toBeVisible();
+    await expect(hint(page)).toHaveCount(0);
+  });
+
+  test("cancelar: aparece com telefone + switch ligado; some sem telefone e com switch desligado", async ({ page }) => {
+    await openDetail(page, withPhone.name!, "Cancelar agendamento");
+    await expect(hint(page)).toHaveText(HINT_CANCEL);
+
+    await openDetail(page, withoutPhone.name!, "Cancelar agendamento");
+    await expect(page.getByRole("button", { name: "Confirmar cancelamento" })).toBeVisible();
+    await expect(hint(page)).toHaveCount(0);
+
+    await setNotify(false);
+    await openDetail(page, withPhone.name!, "Cancelar agendamento");
+    await expect(page.getByRole("button", { name: "Confirmar cancelamento" })).toBeVisible();
+    await expect(hint(page)).toHaveCount(0);
+  });
+
+  test("'Agendar para este cliente' (Atendimento): aparece para cliente com telefone e some sem telefone", async ({ page }) => {
+    const withFone = await newWaiting("Hint Fila Com");
+    await openConversation(page, withFone.id);
+    await page.getByRole("button", { name: "Agendar para este cliente" }).click();
+    await expect(hint(page)).toHaveText(HINT_NEW);
+
+    const noFone = await newWaiting("Hint Fila Sem", { phone: null });
+    await openConversation(page, noFone.id);
+    await page.getByRole("button", { name: "Agendar para este cliente" }).click();
+    await expect(page.getByRole("dialog").getByText(noFone.name!)).toBeVisible();
+    await expect(hint(page)).toHaveCount(0);
+  });
+
+  // Medição de layout (skill medir-antes-de-afirmar): o aviso não pode estourar o diálogo, vazar da viewport,
+  // gerar rolagem horizontal nem ficar por cima dos botões.
+  for (const vp of [
+    { width: 1440, height: 900 },
+    { width: 390, height: 844 },
+  ]) {
+    test(`layout ${vp.width}px: o aviso cabe dentro do diálogo, sem rolagem horizontal e sem tocar nos botões`, async ({ page }) => {
+      await page.setViewportSize(vp);
+      type M = { dialog: DOMRect; hint: DOMRect; overflowX: boolean; pageOverflowX: boolean; buttons: DOMRect[]; hintHeight: number; lineHeight: number };
+      const measure = async (): Promise<M> =>
+        page.evaluate(() => {
+          const dlg = document.querySelector('[role="dialog"]') as HTMLElement;
+          const h = dlg.querySelector('[data-testid="notify-client-hint"]') as HTMLElement;
+          const hs = getComputedStyle(h);
+          return {
+            dialog: dlg.getBoundingClientRect().toJSON(),
+            hint: h.getBoundingClientRect().toJSON(),
+            overflowX: dlg.scrollWidth > dlg.clientWidth + 1,
+            pageOverflowX: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+            buttons: Array.from(dlg.querySelectorAll("button")).map((b) => b.getBoundingClientRect().toJSON()),
+            hintHeight: h.getBoundingClientRect().height,
+            lineHeight: parseFloat(hs.lineHeight),
+          } as unknown as M;
+        });
+      const check = (label: string, m: M) => {
+        const f = (r: DOMRect) => `${Math.round(r.left)},${Math.round(r.top)} ${Math.round(r.width)}x${Math.round(r.height)}`;
+        // eslint-disable-next-line no-console
+        console.log(`[layout ${vp.width}] ${label}: dialog=${f(m.dialog)} hint=${f(m.hint)} linhas=${(m.hintHeight / m.lineHeight).toFixed(1)}`);
+        expect(m.hint.left, `${label}: aviso vaza à esquerda do diálogo`).toBeGreaterThanOrEqual(m.dialog.left - 0.5);
+        expect(m.hint.right, `${label}: aviso vaza à direita do diálogo`).toBeLessThanOrEqual(m.dialog.right + 0.5);
+        expect(m.hint.right, `${label}: aviso vaza da viewport`).toBeLessThanOrEqual(vp.width + 0.5);
+        expect(m.overflowX, `${label}: diálogo com rolagem horizontal`).toBe(false);
+        expect(m.pageOverflowX, `${label}: página com rolagem horizontal`).toBe(false);
+        expect(m.hintHeight / m.lineHeight, `${label}: aviso ocupa mais de 2 linhas`).toBeLessThanOrEqual(2.1);
+        for (const b of m.buttons) {
+          const overlaps = b.width > 0 && b.height > 0 && b.left < m.hint.right && b.right > m.hint.left && b.top < m.hint.bottom && b.bottom > m.hint.top;
+          expect(overlaps, `${label}: aviso sobreposto a um botão`).toBe(false);
+        }
+      };
+
+      // agendar
+      await gotoAgendaDay(page, day);
+      // No celular a agenda é uma lista por profissional: o botão é "Novo agendamento" (sem célula da grade).
+      await (vp.width < 600
+        ? page.getByRole("button", { name: "Novo agendamento", exact: true })
+        : page.getByRole("button", { name: /Novo agendamento com Ana às 16:00/ })
+      ).click();
+      await page.getByRole("dialog").getByLabel("Telefone (opcional)").fill(nextPhone());
+      await expect(hint(page)).toBeVisible();
+      await page.screenshot({ path: `test-results/hint-novo-${vp.width}.png` });
+      check("agendar", await measure());
+
+      // remarcar
+      await openDetail(page, withPhone.name!, "Remarcar");
+      await expect(hint(page)).toBeVisible();
+      await page.screenshot({ path: `test-results/hint-remarcar-${vp.width}.png` });
+      check("remarcar", await measure());
+
+      // cancelar
+      await openDetail(page, withPhone.name!, "Cancelar agendamento");
+      await expect(hint(page)).toBeVisible();
+      await page.screenshot({ path: `test-results/hint-cancelar-${vp.width}.png` });
+      check("cancelar", await measure());
+    });
+  }
+});
+
+// ---------------------------------------------------------------------------------------------
 // Switch em Configurações
 // ---------------------------------------------------------------------------------------------
 test.describe("switch 'Avisar o cliente' em Configurações", () => {
@@ -620,6 +780,29 @@ test.describe("switch 'Avisar o cliente' em Configurações", () => {
     await page.getByTestId("atendimento-card").getByRole("button", { name: /Salvar/ }).click();
     await expect(page.getByText("Regras do atendimento salvas.", { exact: true }).first()).toBeVisible();
     expect((await prisma.tenant.findUniqueOrThrow({ where: { id: tenantId } })).notifyClientOnStaffChanges).toBe(true);
+  });
+});
+
+test.describe("card de regras: tempo único de silêncio do bot", () => {
+  test("o texto mostra só o tempo de retomada (não o antigo humanPauseMin) e acompanha a mudança salva", async ({ page }) => {
+    const before = await prisma.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { humanPauseMin: true, handoffResumeMinutes: true } });
+    await prisma.tenant.update({ where: { id: tenantId }, data: { humanPauseMin: 720, handoffResumeMinutes: 90 } });
+    try {
+      await page.goto(`/${SEED_TENANT_SLUG}/configuracoes`);
+      const info = page.getByTestId("atendimento-card").locator("p", { hasText: "o bot fica em silêncio" });
+      await expect(info).toContainText("pelo painel ou pelo celular");
+      await expect(info).toContainText("pelo mesmo tempo da retomada acima (1h30)");
+      await expect(info).not.toContainText("12 horas"); // o humanPauseMin (720) não aparece mais
+      expect(await info.count()).toBe(1);
+
+      await page.getByLabel("Bot volta a responder depois de", { exact: false }).selectOption("180");
+      await page.getByTestId("atendimento-card").getByRole("button", { name: /Salvar/ }).click();
+      await expect(page.getByText("Regras do atendimento salvas.", { exact: true }).first()).toBeVisible();
+      await expect(info).toContainText("(3 horas)");
+      expect((await prisma.tenant.findUniqueOrThrow({ where: { id: tenantId } })).humanPauseMin).toBe(720); // campo legado intocado
+    } finally {
+      await prisma.tenant.update({ where: { id: tenantId }, data: before });
+    }
   });
 });
 
