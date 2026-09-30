@@ -41,3 +41,6 @@
 - [Bot v2 A-1: core do painel](botv2_a1_core_painel.md) — grade ancorada, teamOpening, snapshot da spec, T1 depende do B-1, heredoc grande quebra.
 - [Revogação de sessão + base pública confiável + cookie de cadastro](session_revocation_and_trusted_url.md) — sessionVersion/sv, AUTH_URL fixado, IP por último XFF; armadilhas de teste do Auth.js.
 - [Motor do bot v2 (A-2): decisões e furos](bot_engine_a2_decisions.md) — routeFor/fresh, >9 opções, esbuild transitivo, heredoc que quebra.
+- [Publicar fluxo (D-1): hash, snapshot `{}`, bundle do JSON](publish_flow_d1_design.md) — decisões e armadilhas do n8n-publish.
+- [B-1 API agenda/catálogo do bot v2](botv2_b1_agenda_api.md) — limite sob trava de linha, defaults por versão na rota, lastBookableDate, reason.
+- [B-2: handoff/release/sino do bot v2](botv2_b2_handoff_release_decisions.md) — createMany skipDuplicates, release atômico por lockToken, furos assumidos.

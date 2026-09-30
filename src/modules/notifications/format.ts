@@ -51,6 +51,13 @@ export function eventTitle(action: EventAction, source: NotificationSource): str
   }
 }
 
+/** Pedido de atendente (bot v2): título fixo e corpo "<nome>" ou "<nome> · fora do horário". */
+export const HANDOFF_TITLE = "Cliente pediu atendente";
+
+export function handoffBody(contactName: string, offHours: boolean): string {
+  return offHours ? `${contactName} · fora do horário` : contactName;
+}
+
 /** "qui 02/10 às 14:00" no fuso da empresa. */
 const WEEKDAY_ABBR = ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"]; // índice = ISO weekday - 1
 

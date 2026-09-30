@@ -11,6 +11,8 @@ import {
   EVENT_SEVERITY,
   eventSource,
   eventTitle,
+  handoffBody,
+  HANDOFF_TITLE,
   minutesUntil,
   timelineLabel,
   type EventAction,
@@ -44,7 +46,7 @@ const UPCOMING_WINDOW_MIN = 60;
 const TRIAL_WARN_MS = 24 * 60 * 60 * 1000;
 const EVENT_CAP = 200; // teto de eventos considerados no contador (30 dias)
 const EVENT_PAGE_FETCH = 60;
-const KEY_PATTERN = /^(ev|upcoming|wa|trial|pay):[A-Za-z0-9_:-]{1,100}$/;
+const KEY_PATTERN = /^(ev|upcoming|wa|trial|pay|handoff):[A-Za-z0-9_:-]{1,100}$/;
 
 type Item = Omit<AppNotification, "read">;
 
@@ -150,7 +152,7 @@ async function loadStateItems(ctx: TenantContext, now: Date, windowStart: Date):
   const upcomingLimit = new Date(now.getTime() + UPCOMING_WINDOW_MIN * 60_000);
   const trialLimit = new Date(now.getTime() + TRIAL_WARN_MS);
 
-  const [upcoming, instances, subscription, invoices] = await Promise.all([
+  const [upcoming, instances, subscription, invoices, handoffs] = await Promise.all([
     db.appointment.findMany({
       where: { status: "SCHEDULED", startsAt: { gt: now, lte: upcomingLimit } },
       orderBy: { startsAt: "asc" },
@@ -182,6 +184,20 @@ async function loadStateItems(ctx: TenantContext, now: Date, windowStart: Date):
           select: { id: true, paidAt: true, amountCents: true },
         })
       : Promise.resolve([]),
+    // Pedidos de atendente (bot v2) — visíveis a OWNER e STAFF, incluindo os já encerrados (a UI esmaece).
+    db.handoffRequest.findMany({
+      where: { requestedAt: { gte: windowStart } },
+      orderBy: { requestedAt: "desc" },
+      take: 20,
+      select: {
+        id: true,
+        requestedAt: true,
+        offHours: true,
+        answeredAt: true,
+        endedAt: true,
+        contact: { select: { id: true, name: true, pushName: true } },
+      },
+    }),
   ]);
 
   const items: Item[] = [];
@@ -253,6 +269,21 @@ async function loadStateItems(ctx: TenantContext, now: Date, windowStart: Date):
       href: `/${ctx.tenant.slug}/assinatura`,
       createdAt: inv.paidAt.toISOString(),
       source: "SYSTEM",
+    });
+  }
+
+  for (const h of handoffs) {
+    const contactName = contactDisplayName(h.contact);
+    items.push({
+      id: `handoff:${h.id}`,
+      kind: "HANDOFF_REQUESTED",
+      severity: "warning",
+      title: HANDOFF_TITLE,
+      body: handoffBody(contactName, h.offHours),
+      href: `/${ctx.tenant.slug}/clientes?contato=${h.contact.id}`,
+      createdAt: h.requestedAt.toISOString(),
+      source: "WHATSAPP",
+      handoff: { contactId: h.contact.id, contactName, offHours: h.offHours, answered: h.answeredAt !== null, ended: h.endedAt !== null },
     });
   }
 

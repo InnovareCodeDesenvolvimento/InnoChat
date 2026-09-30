@@ -3,7 +3,13 @@ import { getPrisma } from "@/lib/db/prisma";
 import { isUniqueViolation } from "@/lib/db/prisma-errors";
 import type { InboundIgnoreReason } from "@/lib/db/types";
 import { normalizeEvolutionMessage, resolveSenderIdentity, digitsFromJid, type NormalizedMessage } from "@/core/bot/evolution-normalize";
+import { formatInTimeZone } from "date-fns-tz";
+import { addDaysISO } from "@/core/agenda";
+import { normalizeText } from "@/core/bot/engine/normalize";
+import { firstNameForGreeting, formatLeadLabel, formatWhenLabel } from "@/core/bot/format";
+import { computeTenantTeamOpening } from "@/modules/agenda/team-hours-loader";
 import { getMergedBotTexts } from "@/modules/bot-texts/service";
+import { closeOpenHandoff, findOpenHandoff, markHandoffAnswered } from "./handoff";
 import { contactHasBusinessRelation, logChatMessage } from "@/modules/conversations/log";
 import { isTenantBotAllowed } from "./subscription-gate";
 import type { InternalApiContext } from "./internal-auth";
@@ -12,6 +18,15 @@ const LEASE_MS = 20_000;
 const STALE_MS = 5 * 60 * 1000;
 const ECHO_WINDOW_MS = 2 * 60 * 1000;
 const RECENT_OUTBOUND_MAX = 20;
+/** `session.previous` só existe se a sessão expirou há no máximo isto (spec §2.7). */
+const PREVIOUS_MAX_IDLE_MS = 24 * 60 * 60 * 1000;
+
+/** "menu" ou "0" (normalizados) — os únicos textos que devolvem o cliente ao bot durante o atendente. */
+function isMenuCommand(content: NormalizedMessage["content"]): boolean {
+  if (content.type !== "text") return false;
+  const t = normalizeText(content.text);
+  return t === "menu" || t === "0";
+}
 
 export type ClaimProcessResult = {
   action: "process";
@@ -33,8 +48,31 @@ export type ClaimProcessResult = {
   texts: Record<string, string>;
 };
 
+export type ResumedFromHuman = "CLIENT_MENU" | "TIMEOUT";
+
+/** Resposta `process` com `X-InnoChat-Flow: 2` (docs/bot-v2-plano.md §3.4, bloco B-2). */
+export type ClaimProcessResultV2 = Omit<ClaimProcessResult, "contact" | "session" | "tenant"> & {
+  flow: 2;
+  contact: ClaimProcessResult["contact"] & { firstName: string | null };
+  session: ClaimProcessResult["session"] & {
+    previous: { state: string; context: unknown; idleMin: number } | null;
+    resumedFromHuman: ResumedFromHuman | null;
+  };
+  tenant: ClaimProcessResult["tenant"] & {
+    today: string;
+    nowLocal: string;
+    openNow: boolean;
+    teamNextOpenLabel: string | null;
+    handoffUntilLabel: string;
+    changeLeadLabel: string;
+    lastBookableDate: string;
+    slotGranularityMin: number;
+  };
+};
+
 export type ClaimResult =
   | ClaimProcessResult
+  | ClaimProcessResultV2
   | { action: "busy"; retryAfterMs: number }
   | { action: "ignore"; reason: InboundIgnoreReason | "UNSUPPORTED_EVENT" | "GROUP" };
 
@@ -71,7 +109,8 @@ export function appendRecentOutbound(recentOutbound: unknown, texts: string[], n
  * avalia expiração/modo humano/eco/assinatura, e devolve tudo que o n8n precisa para decidir o
  * próximo passo. NUNCA lança para payload irreconhecível — sempre `ignore`.
  */
-export async function claimMessage(ctx: InternalApiContext, rawPayload: unknown): Promise<ClaimResult> {
+export async function claimMessage(ctx: InternalApiContext, rawPayload: unknown, opts: { flow?: 1 | 2 } = {}): Promise<ClaimResult> {
+  const flow = opts.flow ?? 1;
   const prisma = getPrisma();
   const now = new Date();
 
@@ -199,8 +238,43 @@ export async function claimMessage(ctx: InternalApiContext, rawPayload: unknown)
     return finishIgnore("BOT_PAUSED");
   }
 
+  // Atendente pedido pelo cliente (spec §3.10): só há pedido aberto em sessões que o v2 (ou o v1 via
+  // LEGACY_FLOW) colocou em HUMAN; lido só quando importa (estado HUMAN ou fromMe).
+  const openHandoff = locked.state === "HUMAN" || normalized.fromMe ? await findOpenHandoff(session.id) : null;
+  let resumedFromHuman: ResumedFromHuman | null = null;
+
+  // Regra 3: a equipe respondeu pelo celular (fromMe que não é eco do bot) com pedido aberto →
+  // estende a pausa da SESSÃO (não do contato) e marca a 1ª resposta. Vem ANTES do teste de HUMAN_MODE.
+  if (normalized.fromMe && openHandoff && !isRecentOutboundEcho(locked.recentOutbound, normalized.content, now)) {
+    const pause = await prisma.tenant.findUniqueOrThrow({ where: { id: ctx.tenantId }, select: { humanPauseMin: true } });
+    const extendedUntil = new Date(now.getTime() + pause.humanPauseMin * 60_000);
+    try {
+      await prisma.$transaction(async (tx) => {
+        await tx.chatSession.update({ where: { id: session.id }, data: { state: "HUMAN", humanUntil: extendedUntil, lockToken: null, lockedUntil: null } });
+        await markHandoffAnswered(tx, openHandoff.id, now);
+        await tx.inboundEvent.create({
+          data: { whatsappInstanceId: ctx.instance.id, providerMessageId, outcome: "IGNORE", reason: "HUMAN_TOOK_OVER", stateBefore, stateAfter: "HUMAN" },
+        });
+      });
+    } catch (error) {
+      if (!isUniqueViolation(error)) throw error;
+      await prisma.chatSession.update({ where: { id: session.id }, data: { lockToken: null, lockedUntil: null } });
+      return { action: "ignore", reason: "DUPLICATE" };
+    }
+    return { action: "ignore", reason: "HUMAN_TOOK_OVER" };
+  }
+
   if (locked.state === "HUMAN" && locked.humanUntil && locked.humanUntil > now) {
-    return finishIgnore("HUMAN_MODE");
+    // Regra 1: "menu"/"0" do cliente encerra um pedido feito por ele (CLIENT_REQUEST) e devolve o bot
+    // na mesma mensagem. Qualquer outra coisa — e qualquer pedido LEGACY_FLOW — segue ignorada.
+    if (!normalized.fromMe && openHandoff?.reason === "CLIENT_REQUEST" && isMenuCommand(normalized.content)) {
+      resumedFromHuman = "CLIENT_MENU";
+    } else {
+      return finishIgnore("HUMAN_MODE");
+    }
+  } else if (locked.state === "HUMAN" && openHandoff && !normalized.fromMe) {
+    // Regra 2: o prazo do atendente venceu sem "menu": a próxima mensagem já é de sessão nova.
+    resumedFromHuman = "TIMEOUT";
   }
 
   if (normalized.fromMe) {
@@ -245,11 +319,15 @@ export async function claimMessage(ctx: InternalApiContext, rawPayload: unknown)
   }
 
   const tenant = await prisma.tenant.findUniqueOrThrow({ where: { id: ctx.tenantId } });
-  const expired = now.getTime() - locked.lastInboundAt.getTime() > tenant.sessionTimeoutMin * 60_000;
+  const resumed = resumedFromHuman !== null;
+  const idleMs = now.getTime() - locked.lastInboundAt.getTime();
+  // Quem volta do atendente entra como sessão nova por decisão do painel, não por inatividade.
+  const expired = resumed ? false : idleMs > tenant.sessionTimeoutMin * 60_000;
+  const resets = expired || resumed;
 
-  const effectiveState = expired ? "MAIN_MENU" : locked.state;
-  const effectiveContext = expired ? {} : locked.context;
-  const effectiveInvalidCount = expired ? 0 : locked.invalidCount;
+  const effectiveState = resets ? "MAIN_MENU" : locked.state;
+  const effectiveContext = resets ? {} : locked.context;
+  const effectiveInvalidCount = resets ? 0 : locked.invalidCount;
 
   let inboundEventId: string;
   try {
@@ -258,9 +336,11 @@ export async function claimMessage(ctx: InternalApiContext, rawPayload: unknown)
         where: { id: session.id },
         data: {
           lastInboundAt: now,
-          ...(expired ? { state: "MAIN_MENU", context: {}, invalidCount: 0 } : {}),
+          ...(resets ? { state: "MAIN_MENU", context: {}, invalidCount: 0 } : {}),
+          ...(resumed ? { humanUntil: null } : {}),
         },
       });
+      if (resumedFromHuman) await closeOpenHandoff(tx, session.id, resumedFromHuman, now);
       return tx.inboundEvent.create({
         data: {
           whatsappInstanceId: ctx.instance.id,
@@ -278,9 +358,7 @@ export async function claimMessage(ctx: InternalApiContext, rawPayload: unknown)
     return { action: "ignore", reason: "DUPLICATE" };
   }
 
-  const texts = await getMergedBotTexts(ctx.tenantId);
-
-  return {
+  const base: ClaimProcessResult = {
     action: "process",
     inboundEventId,
     instance: { name: ctx.instance.instanceName, sandbox: ctx.instance.sandbox },
@@ -297,6 +375,36 @@ export async function claimMessage(ctx: InternalApiContext, rawPayload: unknown)
       expired,
     },
     tenant: { name: tenant.name, askProfessional: tenant.askProfessional, timezone: tenant.timezone },
+    texts: {},
+  };
+
+  if (flow !== 2) {
+    return { ...base, texts: await getMergedBotTexts(ctx.tenantId) };
+  }
+
+  const [texts, opening] = await Promise.all([getMergedBotTexts(ctx.tenantId, 2), computeTenantTeamOpening(tenant, now)]);
+  const todayISO = formatInTimeZone(now, tenant.timezone, "yyyy-MM-dd");
+  const previous =
+    expired && idleMs <= PREVIOUS_MAX_IDLE_MS && locked.state !== "HUMAN"
+      ? { state: locked.state, context: locked.context, idleMin: Math.floor(idleMs / 60_000) }
+      : null;
+
+  return {
+    ...base,
+    flow: 2,
+    contact: { ...base.contact, firstName: firstNameForGreeting(contact.name, contact.pushName) },
+    session: { ...base.session, previous, resumedFromHuman },
+    tenant: {
+      ...base.tenant,
+      today: todayISO,
+      nowLocal: formatInTimeZone(now, tenant.timezone, "HH:mm"),
+      openNow: opening.openNow,
+      teamNextOpenLabel: opening.nextOpenAt ? formatWhenLabel(opening.nextOpenAt, now, tenant.timezone) : null,
+      handoffUntilLabel: formatWhenLabel(new Date(now.getTime() + tenant.handoffResumeMinutes * 60_000), now, tenant.timezone),
+      changeLeadLabel: formatLeadLabel(tenant.cancelMinLeadMin),
+      lastBookableDate: addDaysISO(todayISO, tenant.maxHorizonDays),
+      slotGranularityMin: tenant.slotGranularityMin,
+    },
     texts,
   };
 }

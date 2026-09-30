@@ -323,6 +323,8 @@ export async function setContactBotPaused(
     await db.$transaction([
       db.contact.update({ where: { id }, data: { botPausedUntil: null } }),
       db.chatSession.updateMany({ where: { contactId: id }, data: { humanUntil: null, state: "MAIN_MENU" } }),
+      // Bot v2: "Retomar bot" também encerra o pedido de atendente aberto (some do "em atendimento").
+      db.handoffRequest.updateMany({ where: { contactId: id, endedAt: null }, data: { endedAt: new Date(), endReason: "PANEL_RESUME" } }),
     ]);
     return { botPausedUntil: null };
   }

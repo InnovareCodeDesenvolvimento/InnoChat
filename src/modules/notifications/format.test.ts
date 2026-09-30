@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { appointmentBody, eventSource, eventTitle, formatWhen, minutesUntil, timelineLabel } from "./format";
+import { appointmentBody, eventSource, handoffBody, HANDOFF_TITLE, eventTitle, formatWhen, minutesUntil, timelineLabel } from "./format";
 
 describe("notifications/format", () => {
   it("título diz a origem", () => {
@@ -39,5 +39,11 @@ describe("notifications/format", () => {
     expect(timelineLabel("REOPENED", "USER", "Ana")).toBe("Atendimento reaberto por Ana");
     expect(timelineLabel("COMPLETED", "SYSTEM")).toBe("Atendimento concluído");
     expect(timelineLabel("NO_SHOW", "USER", null)).toBe("Cliente faltou");
+  });
+
+  it("pedido de atendente: título fixo e corpo com/sem 'fora do horário'", () => {
+    expect(HANDOFF_TITLE).toBe("Cliente pediu atendente");
+    expect(handoffBody("Maria", false)).toBe("Maria");
+    expect(handoffBody("Maria", true)).toBe("Maria · fora do horário");
   });
 });

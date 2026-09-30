@@ -7,7 +7,8 @@ export type NotificationKind =
   | "APPOINTMENT_UPCOMING"
   | "WHATSAPP_DISCONNECTED"
   | "TRIAL_ENDING"
-  | "PAYMENT_CONFIRMED";
+  | "PAYMENT_CONFIRMED"
+  | "HANDOFF_REQUESTED";
 
 export type NotificationSeverity = "info" | "success" | "warning" | "danger";
 
@@ -22,6 +23,8 @@ export type AppNotification = {
   read: boolean;
   source: "WHATSAPP" | "PANEL" | "SYSTEM";
   appointment?: { id: string; startsAt: string; contactName: string; serviceName: string; professionalName: string };
+  /** Só em HANDOFF_REQUESTED: o cliente pediu atendente (bot v2, HandoffRequest). Nunca telefone. */
+  handoff?: { contactId: string; contactName: string; offHours: boolean; answered: boolean; ended: boolean };
   /** Extra (aditivo): o próprio usuário logado fez a ação — a UI pode não exibir toast. */
   byMe?: boolean;
 };

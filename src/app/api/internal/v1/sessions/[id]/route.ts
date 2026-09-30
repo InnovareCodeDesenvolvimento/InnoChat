@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { handleInternalRoute } from "@/lib/api-internal/respond";
-import { UpdateSessionRequestSchema } from "@/lib/api-internal/schemas";
+import { UpdateSessionV2RequestSchema } from "@/lib/api-internal/schemas-conversa";
 import { resolveInternalRequest } from "@/modules/bot-api/internal-auth";
 import { updateSession } from "@/modules/bot-api/session";
 
@@ -9,7 +9,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
   return handleInternalRoute(req, async () => {
     const ctx = await resolveInternalRequest(req);
     const { id } = await params;
-    const body = UpdateSessionRequestSchema.parse(await req.json());
+    const body = UpdateSessionV2RequestSchema.parse(await req.json());
     const result = await updateSession(ctx, id, body);
     return NextResponse.json(result, { status: 200 });
   });

@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { z } from "zod";
 import * as schemas from "../src/lib/api-internal/schemas.ts";
+import * as conversa from "../src/lib/api-internal/schemas-conversa.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const OUT_PATH = path.join(__dirname, "..", "docs", "api-interna.openapi.json");
@@ -50,6 +51,7 @@ function jsonResponse(description, zodSchema) {
 const AUTH_HEADERS = [
   { name: "Authorization", in: "header", required: true, schema: { type: "string" }, description: "Bearer <INTERNAL_API_SECRET> (§6.1)" },
   { name: "X-InnoChat-Instance", in: "header", required: true, schema: { type: "string" }, description: "webhookToken da WhatsappInstance — resolve o tenant (§6.1)" },
+  { name: "X-InnoChat-Flow", in: "header", required: false, schema: { type: "string", enum: ["2"] }, description: "Versão do fluxo do bot. \"2\" liga o contrato v2 (claim enriquecido, limite de agendamentos futuros); ausente = v1." },
 ];
 
 const UNAUTHORIZED = errorResponse("Segredo ausente/errado ou instância não encontrada.", { error: { code: "UNAUTHORIZED", message: "Segredo inválido." } });
@@ -81,11 +83,11 @@ const paths = {
       requestBody: schemas.ClaimRequestSchema,
       responses: {
         "200": {
-          description: "process | busy | ignore — nunca 5xx para payload irreconhecível.",
+          description: "process (v1, ou v2 com X-InnoChat-Flow: 2) | busy | ignore — nunca 5xx para payload irreconhecível.",
           content: {
             "application/json": {
               schema: {
-                oneOf: [toSchema(schemas.ClaimProcessResponseSchema), toSchema(schemas.ClaimBusyResponseSchema), toSchema(schemas.ClaimIgnoreResponseSchema)],
+                oneOf: [toSchema(schemas.ClaimProcessResponseSchema), toSchema(conversa.ClaimProcessV2ResponseSchema), toSchema(schemas.ClaimBusyResponseSchema), toSchema(schemas.ClaimIgnoreResponseSchema)],
               },
             },
           },
@@ -98,7 +100,7 @@ const paths = {
     put: op({
       summary: "Grava e libera a trava da sessão (§6.3)",
       pathParams: ["id"],
-      requestBody: schemas.UpdateSessionRequestSchema,
+      requestBody: conversa.UpdateSessionV2RequestSchema,
       responses: {
         "200": jsonResponse("OK", schemas.UpdateSessionResponseSchema),
         "404": NOT_FOUND,
@@ -109,10 +111,10 @@ const paths = {
   },
   "/sessions/{id}/release": {
     post: op({
-      summary: "Libera a trava sem gravar — sempre idempotente (§6.3)",
+      summary: "Libera a trava sem gravar — sempre idempotente; pode avisar o cliente com TECH_ERROR (§6.3, spec bot v2 §3.11)",
       pathParams: ["id"],
-      requestBody: schemas.ReleaseSessionRequestSchema,
-      responses: { "200": jsonResponse("OK, sempre idempotente", schemas.ReleaseSessionResponseSchema), "404": NOT_FOUND },
+      requestBody: conversa.ReleaseSessionV2RequestSchema,
+      responses: { "200": jsonResponse("OK, sempre idempotente", conversa.ReleaseSessionV2ResponseSchema), "404": NOT_FOUND },
     }),
   },
   "/catalog/services": {

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { handleInternalRoute } from "@/lib/api-internal/respond";
-import { ReleaseSessionRequestSchema } from "@/lib/api-internal/schemas";
+import { ReleaseSessionV2RequestSchema } from "@/lib/api-internal/schemas-conversa";
 import { resolveInternalRequest } from "@/modules/bot-api/internal-auth";
 import { releaseSession } from "@/modules/bot-api/session";
 
@@ -9,8 +9,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   return handleInternalRoute(req, async () => {
     const ctx = await resolveInternalRequest(req);
     const { id } = await params;
-    const body = ReleaseSessionRequestSchema.parse(await req.json());
-    const result = await releaseSession(ctx, id, body.lockToken);
+    const body = ReleaseSessionV2RequestSchema.parse(await req.json());
+    const result = await releaseSession(ctx, id, body.lockToken, { notify: body.notify });
     return NextResponse.json(result, { status: 200 });
   });
 }

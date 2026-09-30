@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { handleInternalRoute } from "@/lib/api-internal/respond";
 import { ClaimRequestSchema } from "@/lib/api-internal/schemas";
 import { claimMessage } from "@/modules/bot-api/claim";
+import { flowVersionOf } from "@/modules/bot-api/flow-version";
 import { resolveInternalRequest } from "@/modules/bot-api/internal-auth";
 
 /**
@@ -13,7 +14,7 @@ export async function POST(req: Request) {
   return handleInternalRoute(req, async () => {
     const ctx = await resolveInternalRequest(req);
     const body = ClaimRequestSchema.parse(await req.json().catch(() => ({})));
-    const result = await claimMessage(ctx, body.payload);
+    const result = await claimMessage(ctx, body.payload, { flow: flowVersionOf(req) });
     return NextResponse.json(result, { status: 200 });
   });
 }
