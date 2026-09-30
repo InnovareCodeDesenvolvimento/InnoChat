@@ -34,7 +34,7 @@ export function AdminShell({ userEmail, userName = null, children }: AdminShellP
     <PlatformNotificationCenterProvider>
     <div className="relative flex min-h-screen">
       <BackgroundGlow />
-      <aside className="relative z-10 hidden w-64 shrink-0 flex-col panel-sidebar-surface px-4 py-6 lg:flex">
+      <aside className="relative z-10 hidden w-64 shrink-0 flex-col panel-sidebar-surface px-4 py-6 lg:sticky! lg:top-0 lg:flex lg:h-screen lg:self-start">
         <div className="mb-8 px-2">
           <AdminBrand />
         </div>
@@ -43,6 +43,7 @@ export function AdminShell({ userEmail, userName = null, children }: AdminShellP
         </div>
         <div className="mt-4 border-t border-white/10 pt-4">
           <UserBlock userEmail={userEmail} userName={userName} accountHref="/admin/minha-conta" />
+          <InnovareCodeBadge className="mt-3" />
         </div>
       </aside>
 
@@ -52,7 +53,12 @@ export function AdminShell({ userEmail, userName = null, children }: AdminShellP
             <MobileNav
               variant="admin"
               brand={<AdminBrand />}
-              footer={<UserBlock userEmail={userEmail} userName={userName} accountHref="/admin/minha-conta" />}
+              footer={
+                <>
+                  <UserBlock userEmail={userEmail} userName={userName} accountHref="/admin/minha-conta" />
+                  <InnovareCodeBadge className="mt-3" />
+                </>
+              }
             />
             <span className="truncate font-display text-sm font-bold text-text lg:hidden">Plataforma</span>
             <AdminSectionLabel />
@@ -71,7 +77,6 @@ export function AdminShell({ userEmail, userName = null, children }: AdminShellP
           <PageTransition>{children}</PageTransition>
         </main>
       </div>
-      <InnovareCodeBadge />
     </div>
     </PlatformNotificationCenterProvider>
   );

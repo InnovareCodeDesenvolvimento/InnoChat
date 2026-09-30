@@ -57,17 +57,10 @@ describe("InnovareCodeBadge", () => {
     expect(html).toContain("/brand/innovarecode.png");
   });
 
-  it("fica no canto, abaixo do tour (z-70) e com alvo de 44px", () => {
+  it("não flutua sobre o conteúdo (mora na barra lateral) e tem alvo de 44px", () => {
     const html = badge();
-    expect(html).toContain("fixed");
-    expect(html).toContain("bottom-4");
-    expect(html).toContain("right-4");
-    expect(html).toContain("z-40");
+    expect(html).not.toMatch(/fixed/);
     expect(html).toContain("min-h-11");
-  });
-
-  it("no celular esconde o texto e mantém logo e versão", () => {
-    expect(badge()).toMatch(/class="hidden flex-col[^"]*sm:flex"/);
   });
 
   it("usa tokens do tema, sem branco ou hex fixos", () => {
@@ -77,8 +70,10 @@ describe("InnovareCodeBadge", () => {
     expect(html).not.toMatch(/bg-white|#[0-9a-fA-F]{3,6}\b/);
   });
 
-  it("o toast sobe para não cobrir o selo", () => {
-    expect(fonte("src/components/ui/toast.tsx")).toContain("bottom-[4.5rem]");
+  it("os painéis põem o selo na barra lateral e na gaveta do celular, nunca solto na tela", () => {
+    for (const arq of ["src/components/shell/panel-shell.tsx", "src/components/shell/admin-shell.tsx"]) {
+      expect(fonte(arq).match(/<InnovareCodeBadge className="mt-3" \/>/g)?.length).toBe(2);
+    }
   });
 });
 

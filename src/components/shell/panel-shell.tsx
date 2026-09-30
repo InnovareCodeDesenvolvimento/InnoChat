@@ -162,7 +162,7 @@ export function PanelShell({
     <NotificationCenterProvider tenantSlug={tenantSlug}>
     <div className="relative flex min-h-screen">
       <BackgroundGlow />
-      <aside data-tour="sidebar" className="relative z-10 hidden w-64 shrink-0 flex-col panel-sidebar-surface px-4 py-6 lg:flex">
+      <aside data-tour="sidebar" className="relative z-10 hidden w-64 shrink-0 flex-col panel-sidebar-surface px-4 py-6 lg:sticky! lg:top-0 lg:flex lg:h-screen lg:self-start">
         <div className="mb-8 px-2">
           <Brand tenantName={tenantName} />
         </div>
@@ -176,6 +176,7 @@ export function PanelShell({
         <div className="mt-4 border-t border-white/10 pt-4">
           <UserBlock userEmail={userEmail} userName={userName} accountHref={`/${tenantSlug}/minha-conta`} />
           <TourReplayButton />
+          <InnovareCodeBadge className="mt-3" />
         </div>
       </aside>
 
@@ -192,6 +193,7 @@ export function PanelShell({
                 <>
                   <UserBlock userEmail={userEmail} userName={userName} accountHref={`/${tenantSlug}/minha-conta`} />
                   <TourReplayButton />
+                  <InnovareCodeBadge className="mt-3" />
                 </>
               }
             />
@@ -213,7 +215,6 @@ export function PanelShell({
           <PageTransition>{children}</PageTransition>
         </main>
       </div>
-      <InnovareCodeBadge />
     </div>
     </NotificationCenterProvider>
     </OnboardingTourProvider>

@@ -19,3 +19,4 @@
 - [I-2/I-3 do bot v2 (2026-09-30)](bot_v2_i2_i3_veredito.md) — receita E2E contra build de produção (banco/porta próprios), specs novas, armadilhas (tour, PNG versionado, toast)
 - [QA Atendimento humano 2026-09-30](atendimento_humano_qa_2026_09_30.md) — Evolution fake prova o envio; armadilhas: toast duplicado aria-live, bolha otimista, waJid obrigatório, limite 4000
 - [QA pausa única + hint 2026-09-30](qa_pausa_unica_hint_2026_09_30.md) — REPROVADO: hint ausente p/ cliente da fila no Atendimento; tour falha em dev StrictMode; mutation da pausa
+- [QA ajuda ⓘ + favicon 2026-09-30](qa_ajuda_favicon_2026_09_30.md) — APROVADO; medição do selo, flakes, lint cru varre worktrees, integração sem expor credencial
