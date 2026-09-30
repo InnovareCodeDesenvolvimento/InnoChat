@@ -57,25 +57,31 @@ describe("InnovareCodeBadge", () => {
     expect(html).toContain("/brand/innovarecode.png");
   });
 
-  it("não flutua sobre o conteúdo (mora na barra lateral) e tem alvo de 44px", () => {
+  it("flutua no canto inferior direito, compacto, abaixo dos diálogos e com alvo de 44px", () => {
     const html = badge();
-    expect(html).not.toMatch(/fixed/);
-    expect(html).toContain("min-h-11");
+    for (const c of ["fixed", "bottom-3", "right-3", "z-40", "min-h-11"]) expect(html).toContain(c);
+    // o nome da desenvolvedora só abre no hover/foco — em repouso a pílula é só logo + versão
+    expect(html).toContain("max-w-0");
+    expect(html).toContain("group-hover:max-w-40");
   });
 
   it("usa tokens do tema, sem branco ou hex fixos", () => {
     const html = badge();
-    expect(html).toContain("bg-surface/80");
+    expect(html).toContain("bg-surface/75");
     expect(html).toContain("ring-border");
     expect(html).not.toMatch(/bg-white|#[0-9a-fA-F]{3,6}\b/);
   });
 
-  it("os painéis põem o selo no rodapé, à direita, uma vez só", () => {
+  it("os painéis têm um selo só, fora do conteúdo, e reservam espaço no fim da página", () => {
     for (const arq of ["src/components/shell/panel-shell.tsx", "src/components/shell/admin-shell.tsx"]) {
       const src = fonte(arq);
       expect(src.match(/<InnovareCodeBadge/g)?.length).toBe(1);
-      expect(src).toMatch(/<footer className="[^"]*justify-end[^"]*">\s*<InnovareCodeBadge/);
+      expect(src).toContain("pb-16");
     }
+  });
+
+  it("o toast sobe para não cobrir o selo", () => {
+    expect(fonte("src/components/ui/toast.tsx")).toContain("bottom-16");
   });
 });
 

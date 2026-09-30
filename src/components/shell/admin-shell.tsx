@@ -67,14 +67,11 @@ export function AdminShell({ userEmail, userName = null, children }: AdminShellP
           </div>
         </header>
 
-        <main className="flex-1 p-4 sm:p-6">
+        <main className="flex-1 p-4 pb-16 sm:p-6 sm:pb-16">
           <PageTransition>{children}</PageTransition>
-          {/* Selo no rodapé, à direita (decisão do dono): fim da página, nunca por cima de botão. */}
-          <footer className="mt-10 flex justify-end">
-            <InnovareCodeBadge className="w-auto" />
-          </footer>
         </main>
       </div>
+      <InnovareCodeBadge />
     </div>
     </PlatformNotificationCenterProvider>
   );
