@@ -2,8 +2,36 @@
 
 Chatbot de agendamento via WhatsApp (n8n + Evolution API) com painel web multiempresa
 para clínicas, salões e qualquer negócio de serviços com horário marcado.
-Repositório: https://github.com/InnovareCode/InnoChat (branch `main`).
+Repositório: https://github.com/InnovareCodeDesenvolvimento/InnoChat (branch `main`; o antigo é o remote `antigo`).
 Decisões do dono: memória `decisoes-iniciais-innochat` e `docs/arquitetura.md` §15.
+
+## Atualização (2026-09-30)
+
+**No ar:**
+- Login com Google. As credenciais ainda não foram cadastradas pelo dono em Admin → Configurações.
+- Bot v2, fluxo 2.0.0 publicado:
+  - menu revisado;
+  - limite de 3 agendamentos futuros por cliente;
+  - horários de 15 ou 30 minutos;
+  - pedido de atendente com pausa, aviso à equipe e retomada;
+  - confirmação e "Posso ajudar em algo mais?" em 2 mensagens.
+- Atendimento humano:
+  - página **Atendimento**, estilo WhatsApp Web: fila, resposta e botão "encerrar e devolver ao bot";
+  - aviso ao cliente no WhatsApp quando a equipe agenda, remarca ou cancela, com switch e textos editáveis;
+  - aviso "o cliente receberá..." nos formulários;
+  - pausa única (`handoffResumeMinutes`) para resposta pelo painel ou pelo celular, só no fluxo v2.
+- Endurecimento pós-Órion:
+  - envio idempotente;
+  - teto de 10 mensagens por hora por contato e 120 por hora por empresa.
+
+**Falta:** o dono validar no WhatsApp as mensagens separadas, o atendimento pelo painel e o aviso da agenda.
+
+**Débitos:**
+- trava de publicação do fluxo, teto de envios e cache de idempotência ficam só em memória (processo único);
+- cooldown do TECH_ERROR;
+- rotacionar a senha do banco de produção;
+- o sandbox do Mercado Pago está com credenciais live;
+- o E2E "Sino do admin" (fase2-ui) está falhando e há uma tarefa separada investigando.
 
 ## Estado atual (2026-09-29)
 
