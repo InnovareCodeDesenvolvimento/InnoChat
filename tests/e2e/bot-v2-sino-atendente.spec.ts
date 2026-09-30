@@ -79,16 +79,15 @@ test.describe("sino: Cliente pediu atendente", () => {
     await expect(panel).not.toContainText(`+55119${suffix}`);
   });
 
-  test("clicar abre a ficha do cliente (onde fica o Retomar bot) e limpa a URL", async ({ page }) => {
+  test("clicar abre a conversa na tela Atendimento (?contato=<id>), onde a equipe responde", async ({ page }) => {
     await page.goto(`/${SEED_TENANT_SLUG}/inicio`);
     await page.getByRole("button", { name: /^Notificações/ }).click();
     const panel = page.getByRole("dialog", { name: "Notificações" });
     await panel.getByRole("link").filter({ hasText: IN_HOURS_NAME }).click();
 
-    await expect(page).toHaveURL(new RegExp(`/${SEED_TENANT_SLUG}/clientes$`));
-    const detail = page.getByRole("dialog").filter({ hasText: IN_HOURS_NAME });
-    await expect(detail).toBeVisible();
-    await expect(detail.getByText("Bot do WhatsApp")).toBeVisible();
+    await expect(page).toHaveURL(new RegExp(`/${SEED_TENANT_SLUG}/atendimento\\?contato=`));
+    await expect(page.getByRole("heading", { name: IN_HOURS_NAME })).toBeVisible();
+    await expect(page.getByTestId("attendance-conversation")).toBeVisible();
   });
 
   test("pedido novo com o painel aberto aparece sem recarregar (toast e sino)", async ({ page }) => {
