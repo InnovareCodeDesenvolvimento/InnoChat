@@ -26,3 +26,4 @@
 - [Inno animado / rosto LED](inno-animado-rosto-led.md) — InnoAnimated: SVG sobre o PNG (coords medidas), máquina de escrever, hook com onceKey, armadilhas.
 - [Login com Google - UI](login-google-ui.md) — botao via form action, /cadastro/google, card admin; min-w-0, asChild sem icon, rate limit do dev@.
 - [Bot v2 L-1/L-2: armadilhas](bot-v2-l1-l2-armadilhas.md) — Tailwind varrendo .next-*, preview de componente, stub frágil, getBotRules OWNER-only.
+- [Admin: Fluxo do bot (L-4)](admin-publicar-fluxo-l4.md) — actions injetáveis, confirmação digitada, como pré-visualizar sem n8n, JSON inlinado no build.

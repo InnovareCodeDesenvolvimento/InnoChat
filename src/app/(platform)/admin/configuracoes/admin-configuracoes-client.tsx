@@ -26,6 +26,7 @@ import {
   updatePlatformLegalInfoAction,
   updatePlatformSettingsAction,
 } from "@/modules/platform/actions";
+import { BotFlowCard } from "@/components/admin/bot-flow-card";
 import { GoogleLoginCard, type GoogleAuthConfig } from "@/components/admin/google-login-card";
 import { MercadoPagoPanel } from "@/components/admin/mercado-pago-panel";
 import type { MercadoPagoConfig } from "@/components/admin/mercado-pago-types";
@@ -462,7 +463,7 @@ export function AdminConfiguracoesClient({
         </form>
       </Card>
 
-      <Card className="rounded-hero">
+      <Card id="n8n-config" className="rounded-hero">
         <CardHeader>
           <CardTitle>n8n</CardTitle>
           <CardDescription>Orquestra as conversas do bot no WhatsApp.</CardDescription>
@@ -528,7 +529,7 @@ export function AdminConfiguracoesClient({
         </form>
       </Card>
 
-      <Card className="rounded-hero">
+      <Card id="bot-n8n" className="rounded-hero">
         <CardHeader>
           <CardTitle>Bot no n8n</CardTitle>
           <CardDescription>
@@ -571,6 +572,8 @@ export function AdminConfiguracoesClient({
           </Button>
         </CardFooter>
       </Card>
+
+      <BotFlowCard />
 
       <GoogleLoginCard initial={initialGoogle} />
 
