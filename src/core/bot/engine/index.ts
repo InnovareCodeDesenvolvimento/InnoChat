@@ -17,7 +17,7 @@ export type {
   Vars,
 } from "./types";
 
-export { normalizeText } from "./normalize";
+export { normalizeText, capInput, MAX_NORMALIZE_CHARS } from "./normalize";
 export { parseInput } from "./parse-input";
 export { validateName, RESERVED_NAME_WORDS } from "./name";
 export { interpret } from "./interpret";

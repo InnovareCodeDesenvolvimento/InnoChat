@@ -5,13 +5,27 @@
 // Escritos contra os contratos do plano §3 ANTES do código existir: enquanto B-1/B-2/B-3/C-1/W-1 não entram, ficam VERMELHOS
 // de propósito. Cada verificação carrega a tarefa que a deixa verde; o resumo agrupa os vermelhos por tarefa.
 // Códigos de saída: 0 tudo verde · 1 há vermelhos · 2 problema de infraestrutura (painel fora, seed velho).
+import { spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { scenarios, state, world, seed, api, closeFake, S } from "./v2-kit.mjs";
-import { closeDb } from "./lib.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
+
+// ---------------------------------------------------------------- seed limpo a cada rodada
+// Alguns cenários (ex.: CA-19) deixam agendamentos/estado no banco; sem recriar o seed a rodada seguinte
+// falha por dado sujo, não por bug. O seed é idempotente (apaga os `botsim-*` e recria, com tokens novos),
+// por isso roda ANTES de qualquer import que leia `.seed.json`. `BOTSIM_NO_RESEED=1` pula (depuração).
+if (process.env.BOTSIM_NO_RESEED !== "1") {
+  const r = spawnSync(process.execPath, [join(here, "seed.mjs")], { encoding: "utf8", env: process.env });
+  if (r.status !== 0) {
+    const tail = String(r.stderr || r.stdout).trim().split(/\r?\n/).slice(-6).join(" | ");
+    console.error(`INFRA: o seed falhou (código ${r.status}). ${tail}`);
+    process.exit(2);
+  }
+}
+const { scenarios, state, world, seed, api, closeFake, S } = await import("./v2-kit.mjs");
+const { closeDb } = await import("./lib.mjs");
 
 // ---------------------------------------------------------------- pré-condições (infra, não é vermelho de produto)
 for (const k of ["dupla", "grade", "limite", "especial", "equipe", "menuedit", "menuport", "semagenda"]) {

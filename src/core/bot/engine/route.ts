@@ -29,8 +29,9 @@ function result(route: Route, invalidCount: number, greet = false): RouteResult 
 /**
  * Decide a rota do Switch "Rota" do fluxo (spec §2.4.1 regra 2, §2.4.3).
  *
- * - `fresh` (sessão nova, expirada ou voltando do humano): saudação/menu → FRESH; há retomada →
- *   RESUME; senão a mensagem foi avaliada contra o MAIN_MENU (o chamador chama `interpret` com
+ * - `fresh` (sessão nova, expirada ou voltando do humano): "menu"/"0" → FRESH (descartam a
+ *   retomada); saudação ou qualquer outra coisa com retomada possível → RESUME; senão a
+ *   mensagem foi avaliada contra o MAIN_MENU (o chamador chama `interpret` com
  *   `state = "MAIN_MENU"`): opção → STATE direto (corrige BUG-13); nada casou → FRESH com
  *   saudação, sem contar inválido. Pedido de atendente e "sair" nunca são engolidos pela oferta
  *   de retomada.
@@ -58,8 +59,10 @@ export function routeFor(input: {
         case "EXIT": return result("CMD_EXIT", 0);
         case "HELP": return result("CMD_HELP", 0);
         case "MENU":
-        case "GREETING":
           return result("FRESH", 0, true);
+        case "GREETING":
+          // "oi" com retomada possível oferece continuar (CA-27); só "menu"/"0" descartam a retomada.
+          return resumable ? result("RESUME", 0, true) : result("FRESH", 0, true);
         default:
           break;
       }

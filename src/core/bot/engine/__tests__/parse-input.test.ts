@@ -23,6 +23,27 @@ describe("normalizeText", () => {
   });
 });
 
+describe("normalizeText: entrada hostil (ReDoS)", () => {
+  it("60 mil '!' seguidos de 'a' normalizam em menos de 50 ms", () => {
+    const hostile = "!".repeat(60000) + "a";
+    const t0 = performance.now();
+    const out = normalizeText(hostile);
+    expect(performance.now() - t0).toBeLessThan(50);
+    expect(out.length).toBeLessThanOrEqual(4000);
+  });
+  it("60 mil '! ' alternados, 60 mil espaços e 'a' + 60 mil '!' também", () => {
+    for (const hostile of ["! ".repeat(30000) + "a", " ".repeat(60000) + "a", "a" + "!".repeat(60000)]) {
+      const t0 = performance.now();
+      normalizeText(hostile);
+      expect(performance.now() - t0).toBeLessThan(50);
+    }
+  });
+  it("continua aparando a pontuação final de texto normal", () => {
+    expect(normalizeText("oi!!! ?.")).toBe("oi");
+    expect(normalizeText("a" + "!".repeat(100))).toBe("a");
+  });
+});
+
 describe("parseInput: número (CA-07)", () => {
   it.each(["2", "2️⃣", "2.", "2)", "#2", "opção 2", "Opcao 2", "nº 2", " 02 ", "n° 2"])("%j -> 2", (raw) => {
     expect(p(raw).number).toBe(2);

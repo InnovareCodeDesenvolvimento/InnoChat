@@ -320,7 +320,10 @@ scenario("M1", "Fuso Tóquio/Honolulu: dias, horários e confirmação coerentes
     const r = await c.pick(/Consulta/);
     const days = parseOptions(c.last);
     const localToday = tzToday(tz).slice(8, 10) + "/" + tzToday(tz).slice(5, 7);
-    check(days[0].label.endsWith(localToday), `${key}: 1º dia da lista é hoje no fuso local (${localToday}) | ${days[0].label}`);
+    // Perto da meia-noite local (ex.: Tóquio às 22:50) não sobra horário hoje, e o 1º dia da lista é o seguinte: os dois valem.
+    const nextDay = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(Date.now() + 86_400_000));
+    const localTomorrow = nextDay.slice(8, 10) + "/" + nextDay.slice(5, 7);
+    check(days[0].label.endsWith(localToday) || days[0].label.endsWith(localTomorrow), `${key}: 1º dia da lista é hoje no fuso local (${localToday}) ou, sem horário sobrando, amanhã (${localTomorrow}) | ${days[0].label}`);
     await c.say("1");
     const times = parseOptions(c.last);
     check(times.length >= 1, `${key}: há horários hoje | ${times.map((t) => t.label).join(",")}`);

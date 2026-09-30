@@ -1,5 +1,5 @@
 import { COMMAND_SYNONYMS, COURTESY, STATE_ALIASES, PAGING_ALIASES } from "./aliases";
-import { normalizeText } from "./normalize";
+import { capInput, normalizeText } from "./normalize";
 
 const MAX_NAME_LENGTH = 60;
 const MIN_NAME_LENGTH = 2;
@@ -28,6 +28,11 @@ function collectReserved(): string[] {
 /** Palavras que nunca valem como nome (comandos, aliases, cortesia, "sim", "não"...), normalizadas. */
 export const RESERVED_NAME_WORDS: readonly string[] = collectReserved();
 
+/** Bidi (U+202A–202E, U+2066–2069) e zero-width (U+200B–200F, U+FEFF): invisíveis que disfarçam o nome (S2). */
+const INVISIBLE_CONTROLS = /[\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g;
+/** Início de nome que uma planilha interpretaria como fórmula (CSV injection). */
+const FORMULA_START = /^[=+\-@]/;
+
 const URL_LIKE = /(https?:|www\.|:\/\/|\.(?:com|net|org|br|io)\b)/i;
 
 /**
@@ -37,7 +42,8 @@ const URL_LIKE = /(https?:|www\.|:\/\/|\.(?:com|net|org|br|io)\b)/i;
 export function validateName(
   raw: string,
 ): { ok: true; name: string } | { ok: false; reason: "TOO_LONG" | "INVALID" } {
-  const cleaned = String(raw ?? "")
+  const cleaned = capInput(String(raw ?? ""))
+    .replace(INVISIBLE_CONTROLS, "")
     .replace(/[\u0000-\u001F\u007F-\u009F<>]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
@@ -46,6 +52,7 @@ export function validateName(
   if (length < MIN_NAME_LENGTH) return { ok: false, reason: "INVALID" };
   const letters = cleaned.match(/\p{L}/gu);
   if (!letters || letters.length < 2) return { ok: false, reason: "INVALID" };
+  if (FORMULA_START.test(cleaned)) return { ok: false, reason: "INVALID" };
   if (cleaned.includes("@") || URL_LIKE.test(cleaned)) return { ok: false, reason: "INVALID" };
   if (RESERVED_NAME_WORDS.includes(normalizeText(cleaned))) return { ok: false, reason: "INVALID" };
   return { ok: true, name: cleaned };

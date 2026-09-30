@@ -1,5 +1,5 @@
 {
- "note": "Veredito dos 61 cenarios de scenarios.mjs + scenarios-r2.mjs com o workflow v1 e o painel do commit af3f854 (I-0, 2026-09-30). A auditoria original (4757b84) contou 25 vermelhos; neste commit sao 24.",
+ "note": "Veredito dos 61 cenarios de scenarios.mjs + scenarios-r2.mjs com o workflow v1 e o painel do commit af3f854 (I-0, 2026-09-30). A auditoria original (4757b84) contou 25 vermelhos; neste commit sao 24. Depois do B-1 (2026-09-30) K1 e R1 passaram de verde para vermelho por mudanca intencional (BUG-09, ver intentionalChanges): 35 verdes e 26 vermelhos.",
  "panel": "af3f854",
  "green": [
   "A1",
@@ -16,7 +16,6 @@
   "H4",
   "I1",
   "I2",
-  "K1",
   "L1",
   "M1",
   "M2",
@@ -27,7 +26,6 @@
   "O1",
   "U1",
   "U2",
-  "R1",
   "Q1",
   "Y1",
   "R5",
@@ -64,6 +62,13 @@
   "J1",
   "X1",
   "X2",
-  "G2"
- ]
+  "G2",
+  "K1",
+  "R1"
+ ],
+ "intentionalChanges": {
+  "note": "K1 e R1 estavam verdes no baseline do af3f854 e passaram a vermelhos POR MUDANÇA INTENCIONAL do B-1 (BUG-09): serviço sem nenhum profissional com expediente não aparece mais na lista de serviços. Isso vale para o painel novo com QUALQUER workflow (a API filtra), então o v1 legado também deixa de listá-los. Não é regressão: são os únicos vermelhos esperados no CA-45.",
+  "K1": "esperava 'Limpeza de pele' (serviço sem profissional) listado na página 2; o B-1 o esconde.",
+  "R1": "esperava 5 serviços restantes na página 2 (13 no total); sem 'Limpeza de pele' e 'Sem expediente' (BUG-09) sobram 3."
+ }
 }

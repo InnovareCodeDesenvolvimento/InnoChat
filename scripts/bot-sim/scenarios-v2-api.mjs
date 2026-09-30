@@ -298,18 +298,18 @@ scenario("API-09", "POST /messages/claim com X-InnoChat-Flow: 2: flow, contact.f
   const a = await claim(tenantKey, ch2, "oi");
   await putSession(tenantKey, a.session, { state: "SELECT_TIME", context: { v: 2, serviceId: S("dupla").services.Corte, date: addDaysISO(todayOf("dupla"), 2) } });
   const cRow = await contactOf(tenantKey, ch2);
-  await sql(`UPDATE chat_sessions SET "lastInboundAt" = now() - interval '40 minutes' WHERE "contactId" = $1`, cRow.id);
+  await sql(`UPDATE chat_sessions SET "lastInboundAt" = (now() at time zone 'utc') - interval '40 minutes' WHERE "contactId" = $1`, cRow.id);
   const b = await claim(tenantKey, ch2, "oi");
   check(b.session && b.session.expired === true && b.session.state === "MAIN_MENU", `sessão expirada volta a MAIN_MENU (state=${b.session && b.session.state})`);
   check(b.session && b.session.previous && b.session.previous.state === "SELECT_TIME" && b.session.previous.context && b.session.previous.context.serviceId === S("dupla").services.Corte && Math.abs(b.session.previous.idleMin - 40) <= 2, `session.previous = { state, context, idleMin ≈ 40 } do ANTES do reset (${J(b.session && b.session.previous).slice(0, 200)})`);
   await release(tenantKey, b.session);
-  await sql(`UPDATE chat_sessions SET "lastInboundAt" = now() - interval '26 hours' WHERE "contactId" = $1`, cRow.id);
+  await sql(`UPDATE chat_sessions SET "lastInboundAt" = (now() at time zone 'utc') - interval '26 hours' WHERE "contactId" = $1`, cRow.id);
   const d = await claim(tenantKey, ch2, "oi");
   check(d.session && d.session.expired === true && d.session.previous === null, `parada há 26 h: previous = null (=${J(d.session && d.session.previous)})`);
   await release(tenantKey, d.session);
   // v1: sem header
   const ch3 = newChat(tenantKey, "Ana Paula");
-  const v1 = await claim(tenantKey, ch3, "oi", { flow: undefined });
+  const v1 = await claim(tenantKey, ch3, "oi", { flow: null });
   check(v1.action === "process" && v1.flow === undefined && !("firstName" in (v1.contact || {})) && v1.texts && "MAIN_MENU" in v1.texts && !("MENU_PROMPT" in v1.texts), `sem o header: resposta v1 (sem flow/firstName; base de textos v1) (flow=${v1.flow}, MENU_PROMPT=${v1.texts && "MENU_PROMPT" in v1.texts})`, "B-3");
   if (v1.session) await release(tenantKey, v1.session);
 });
@@ -342,7 +342,7 @@ scenario("API-10", "Ciclo do atendente na API: pedido, HUMAN_MODE, \"menu\" do c
     const a = await claim(tenantKey, ch, "atendente");
     await putSession(tenantKey, a.session, { handoff: true, handoffReason: "CLIENT_REQUEST" });
     const c = await contactOf(tenantKey, ch);
-    await sql(`UPDATE chat_sessions SET "humanUntil" = now() - interval '1 minute' WHERE "contactId" = $1`, c.id);
+    await sql(`UPDATE chat_sessions SET "humanUntil" = (now() at time zone 'utc') - interval '1 minute' WHERE "contactId" = $1`, c.id);
     const b = await claim(tenantKey, ch, "oi");
     check(b.action === "process" && b.session && b.session.resumedFromHuman === "TIMEOUT", `depois do prazo: process com resumedFromHuman=TIMEOUT (${b.action}, ${b.session && b.session.resumedFromHuman})`);
     const hs = await handoffs(c.id);
@@ -368,14 +368,14 @@ scenario("API-10", "Ciclo do atendente na API: pedido, HUMAN_MODE, \"menu\" do c
   });
   await sub("fluxo v1 (sem handoffReason)", async () => {
     const ch = newChat(tenantKey);
-    const a = await claim(tenantKey, ch, "atendente", { flow: undefined });
+    const a = await claim(tenantKey, ch, "atendente", { flow: null });
     await putSession(tenantKey, a.session, { handoff: true });
     const c = await contactOf(tenantKey, ch);
     const row = await p.chatSession.findFirst({ where: { contactId: c.id } });
     const hs = await handoffs(c.id);
     check(hs && hs.length === 1 && hs[0].reason === "LEGACY_FLOW", `HandoffRequest LEGACY_FLOW (${hs ? J(hs.map((h) => h.reason)) : "tabela ausente"})`, hs ? "B-2" : "C-1");
     check(row.humanUntil && Math.abs(row.humanUntil.getTime() - (Date.now() + tenant.humanPauseMin * 60_000)) < 3 * 60_000, `a pausa continua humanPauseMin (=${row.humanUntil})`);
-    const m = await claim(tenantKey, ch, "menu", { flow: undefined });
+    const m = await claim(tenantKey, ch, "menu", { flow: null });
     check(m.action === "ignore" && m.reason === "HUMAN_MODE", `no fluxo v1 o "menu" NÃO é honrado (${m.action}/${m.reason})`);
   });
 });
@@ -413,12 +413,12 @@ scenario("API-11", "POST /sessions/{id}/release avisa o cliente (TECH_ERROR) só
     await release(tenantKey, b.session);
     const ch3 = newChat(tenantKey);
     const c = await claim(tenantKey, ch3, "oi");
-    await sql(`UPDATE chat_sessions SET "lastInboundAt" = now() - interval '10 minutes' WHERE id = $1`, c.session.id);
+    await sql(`UPDATE chat_sessions SET "lastInboundAt" = (now() at time zone 'utc') - interval '10 minutes' WHERE id = $1`, c.session.id);
     const old = await release(tenantKey, c.session);
     check(body(old).notified === false && (await sentFor(ch3.phone)).length === 0, `última mensagem há 10 min (> 5): não avisa (${J(old.body)})`);
     const ch5 = newChat(tenantKey);
     const e = await claim(tenantKey, ch5, "oi");
-    await sql(`UPDATE chat_sessions SET state = 'HUMAN', "humanUntil" = now() + interval '60 minutes' WHERE id = $1`, e.session.id);
+    await sql(`UPDATE chat_sessions SET state = 'HUMAN', "humanUntil" = (now() at time zone 'utc') + interval '60 minutes' WHERE id = $1`, e.session.id);
     const hum = await release(tenantKey, e.session);
     check(body(hum).notified === false && (await sentFor(ch5.phone)).length === 0, `state=HUMAN: não avisa (${J(hum.body)})`);
   });
@@ -465,7 +465,7 @@ scenario("API-13", "Textos portados aparecem no claim v2 (MENU_PROMPT) e o claim
   check(v2.texts && v2.texts.MENU_PROMPT === header, `claim v2: texts.MENU_PROMPT = cabeçalho portado (${J(v2.texts && v2.texts.MENU_PROMPT)})`, err ? "C-1" : "B-3");
   if (v2.session) await release("menuport", v2.session);
   const ch2 = new Chat(world, t.token, newPhone(), { pushName: "Maria Souza" });
-  const v1 = await claim("menuport", ch2, "oi", { flow: undefined });
+  const v1 = await claim("menuport", ch2, "oi", { flow: null });
   check(v1.texts && v1.texts.MAIN_MENU === t.legacyMainMenu, `claim v1: texts.MAIN_MENU = a edição da empresa, intacta (${J(v1.texts && v1.texts.MAIN_MENU).slice(0, 80)})`, "B-3");
   check(v1.texts && !("MENU_PROMPT" in v1.texts), "claim v1 não recebe chaves do v2", "B-3");
   if (v1.session) await release("menuport", v1.session);

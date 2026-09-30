@@ -160,8 +160,9 @@ A primeira regra que casar vence:
 
 1. Mídia (`message.type = media`) → `ONLY_TEXT` + prompt atual (não conta como inválido).
 2. Sessão nova, expirada ou retomada do humano (§2.7, §3.10):
-   - mensagem é saudação ou `menu` → saudação + menu, **sem** o texto "recomecei";
-   - há `session.previous` retomável → saudação + `RESUME_OFFER`;
+   - mensagem é `menu` ou `0` → saudação + menu, **sem** o texto "recomecei" (e descarta a retomada);
+   - há `session.previous` retomável (inclusive para "oi"/saudação, CA-27) → saudação + `RESUME_OFFER`;
+   - saudação sem retomada → saudação + menu;
    - senão, **a mensagem é avaliada contra o `MAIN_MENU`** (corrige BUG-13): "2", "meus
      agendamentos", "cancelar", "remarcar" levam direto a `MY_APPOINTMENTS`; "agendar",
      "marcar" levam a `SELECT_SERVICE`; nada casou → saudação + menu (sem contar inválido).
@@ -1154,6 +1155,12 @@ Nenhuma bloqueante. Ver o plano §7 para as confirmações de baixo risco.
     - 1ª página: "Primeiro horário livre" + **6 dias** + "Ver mais datas";
     - páginas seguintes: 6 dias + "Mais" + "Anteriores".
   
+  - **Serviços, profissionais e Meus agendamentos** (listas que a API entrega inteiras, paginadas
+    em memória pela cola do fluxo, `pageOf`): se a lista **cabe em 9** opções, **não pagina**. Se não
+    cabe, a 1ª página tem **8 itens + "Ver mais"**, as do meio **7 + "Ver mais" + "Ver anteriores"** e a
+    última traz **o que sobrar + "Ver anteriores"**. Respeita o teto de 9 keycaps; o "7/6" acima é
+    o das páginas do meio (dias e horários, que vêm da API).
+
   Isso substitui o "até 8" das §3.4 e §3.5.
 - **Esclarecimentos para os critérios (Atlas, 2026-09-30):**
   - **CA-41:** o rodapé "Digite *0* para o menu ou *voltar*…" vale para as **telas de escolha** (serviço, profissional, dia, horário, meus agendamentos, ação do agendamento, confirmação). Não vale para `POST_ACTION`, `RESUME_OFFER` e `APPOINTMENT_LOCKED`, que seguem os exemplos da §5.4.

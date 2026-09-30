@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { N8nNode } from "../n8n-client";
-import { canonicalFlowHash, readFlowVersion, sanitizeFlowForDownload, stableStringify } from "../n8n-flow-hash";
+import { canonicalFlowHash, readFlowVersion, redactFlowSecrets, REDACTED, sanitizeFlowForDownload, stableStringify } from "../n8n-flow-hash";
 
 function config(values: { painelUrl: string; evolutionUrl: string; n8nApiUrl: string; flowVersion?: string }): N8nNode {
   const assignments = [
@@ -76,5 +76,64 @@ describe("sanitizeFlowForDownload", () => {
     expect(text).not.toContain("c9");
     expect(text).not.toContain("staticData");
     expect(nodes[0]!.credentials).toBeDefined(); // original intacto
+  });
+});
+
+describe("redactFlowSecrets / download sem segredos (I4)", () => {
+  // Segredos falsos montados com join: nunca literais completos no código.
+  const FAKE_BEARER = ["s3cr3t", "token", "value1234"].join("-");
+  const FAKE_JWT = ["eyJhbGciOiJIUzI1NiJ9", "eyJzdWIiOiJ4eHh4eCJ9", "c2lnbmF0dXJl"].join(".");
+  const FAKE_KEY = ["chave", "falsa", "abcdef12"].join("-");
+
+  const nodes = (): N8nNode[] => [
+    {
+      name: "Claim",
+      type: "n8n-nodes-base.httpRequest",
+      parameters: {
+        url: "={{ painelUrl }}/claim",
+        headerParameters: {
+          parameters: [
+            { name: "Authorization", value: `Bearer ${FAKE_BEARER}` },
+            { name: "apikey", value: FAKE_KEY },
+            { name: "X-API-Key", value: FAKE_KEY },
+            { name: "X-InnoChat-Flow", value: "2" },
+          ],
+        },
+        jsonHeaders: `{"Authorization": "Bearer ${FAKE_BEARER}", "x-api-key": "${FAKE_KEY}"}`,
+        note: `token ${FAKE_JWT} colado`,
+      },
+    },
+    {
+      name: "Outro",
+      type: "n8n-nodes-base.httpRequest",
+      parameters: { headerParameters: { parameters: [{ name: "Authorization", value: "={{ 'Bearer ' + $json.t }}" }] }, authorization: FAKE_KEY },
+    },
+    { name: "Nota", type: "n8n-nodes-base.stickyNote", parameters: { content: "Credenciais Header Auth (Authorization = Bearer <INTERNAL_API_SECRET>)" } },
+  ];
+
+  it("redige Authorization, apikey, x-api-key, Bearer e JWT nos parâmetros, sem mexer no original", () => {
+    const original = nodes();
+    const out = JSON.stringify(redactFlowSecrets(original));
+    for (const secret of [FAKE_BEARER, FAKE_JWT, FAKE_KEY]) expect(out).not.toContain(secret);
+    expect(out).toContain(REDACTED);
+    expect(out).toContain('"value":"2"'); // header comum fica
+    expect(JSON.stringify(original)).toContain(FAKE_BEARER); // original intacto
+  });
+
+  it("preserva expressão do n8n e texto explicativo (não é segredo literal)", () => {
+    const out = JSON.stringify(redactFlowSecrets(nodes()));
+    expect(out).toContain("={{ 'Bearer ' + $json.t }}");
+    expect(out).toContain("Authorization = Bearer <INTERNAL_API_SECRET>");
+  });
+
+  it("fluxo sem segredo literal não muda (hash igual)", () => {
+    const clean = baseNodes();
+    expect(canonicalFlowHash(redactFlowSecrets(clean), {})).toBe(canonicalFlowHash(clean, {}));
+  });
+
+  it("o download não carrega nenhum segredo literal", () => {
+    const out = sanitizeFlowForDownload({ name: "innochat-bot", nodes: nodes(), connections: {} });
+    const text = JSON.stringify(out);
+    for (const secret of [FAKE_BEARER, FAKE_JWT, FAKE_KEY]) expect(text).not.toContain(secret);
   });
 });

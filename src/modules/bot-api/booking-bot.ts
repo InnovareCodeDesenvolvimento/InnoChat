@@ -184,7 +184,7 @@ function hasOpenWindow(tenant: TenantRules, inputs: ProfessionalInputs[], dateIS
 }
 
 /** Último dia oferecido: mesmo limite de `computeAvailableDays` (hoje + horizonte, exclusive). */
-function lastBookableISO(todayISO: string, maxHorizonDays: number): string {
+export function lastBookableISO(todayISO: string, maxHorizonDays: number): string {
   return addDaysISO(todayISO, Math.max(0, maxHorizonDays - 1));
 }
 

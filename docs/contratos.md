@@ -1912,3 +1912,16 @@ Admin (`src/modules/platform/actions.ts`, `requirePlatformAdmin`; **nunca** devo
 - **Token de cadastro (S1):** TTL 10 min; além do `?t=`, o callback grava o cookie httpOnly `innochat_google_signup` (SHA-256 do token, SameSite=Lax, Secure em produção, 10 min). `getGoogleSignUpPrefillAction` e `completeGoogleSignUpAction` exigem que bata (`TOKEN_INVALID` senão).
 - **Cookie de convite (S2):** apagado em `signInWithGoogleAction` e lido+apagado no callback (sucesso ou falha).
 - **IP do cliente (S4):** `clientIp()` usa o ÚLTIMO valor do `X-Forwarded-For` (1 proxy confiável = Traefik do Easypanel, `TRUSTED_PROXY_HOPS`), valida com `isIP`, fallback `X-Real-IP`, depois `"unknown"`.
+
+## Bot v2 — versão do fluxo na API interna (`X-InnoChat-Flow`)
+
+- **Quem manda o quê:** o workflow v2 envia `X-InnoChat-Flow: 2` em TODOS os nós HTTP do painel. O v1 (o que roda em produção até o "Publicar fluxo") NÃO manda o header. Só o valor exato `2` liga o v2 (`flowVersionOf`, `src/modules/bot-api/flow-version.ts`); ausente, vazio, `1` ou lixo = v1.
+- **`POST /messages/claim` sem o header = formato v1 congelado:** mesmas chaves de antes da B-2 (`action, inboundEventId, instance, to, message, contact{id,name,pushName}, session{id,state,context,invalidCount,version,lockToken,expired}, tenant{name,askProfessional,timezone}, texts`), **sem `flow`**, sem `contact.firstName`, `session.previous/resumedFromHuman` e `tenant.today/nowLocal/...`, e `texts` só com as 34 chaves do catálogo v1 (`MAIN_MENU` numerado). Com o header: `flow: 2` e o catálogo v2. Teste que congela: `tests/integration/bot-api-claim-v1-freeze.integration.test.ts`.
+- **`tenant.lastBookableDate` (v2)** sai da mesma função de `/availability/days` (`lastBookableISO`: hoje + `maxHorizonDays` − 1), então os dois nunca divergem.
+- **Mudanças de COMPORTAMENTO que o v1 recebe depois da B-2 (conscientes, aceitas pelo dono; o v2 é publicado logo depois do deploy):**
+  - o `release` de uma execução que falhou avisa o cliente (`TECH_ERROR`);
+  - pedido de atendente feito pelo v1 cria `HandoffRequest` com motivo `LEGACY_FLOW` (aparece no sino do painel);
+  - quando o prazo do atendente vence sem "menu", a próxima mensagem já é de sessão nova (`resumedFromHuman: "TIMEOUT"` só no v2; no v1 a sessão é reiniciada sem o campo).
+  O que NÃO muda é o formato das respostas.
+- **Segredos no fluxo (I4):** o snapshot de rollback (`previous`) e o download do fluxo vivo passam por `redactFlowSecrets` (`n8n-flow-hash.ts`): valores de `Authorization`, `apikey`, `x-api-key`, `Bearer …` e JWT `eyJ…` literais viram `[REDACTED]`. Expressões do n8n (`={{ … }}`) ficam. Rollback de um fluxo que tinha token colado à mão restaura com o placeholder (reponha o token no n8n).
+- **Entrada do cliente (I1/S2):** `normalizeText` corta em 4000 caracteres e apara a pontuação final com laço linear (sem ReDoS); `validateName` remove bidi/zero-width e recusa nome que comece com `=`, `+`, `-` ou `@`.

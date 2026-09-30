@@ -282,6 +282,24 @@ describe("status e download", () => {
     expect(status.error).toMatch(/Sincronize/);
   });
 
+  it("token colado à mão num nó do vivo não vai para o snapshot do banco nem para o download (I4)", async () => {
+    const fakeToken = ["colado", "a", "mao", "123456"].join("-");
+    const { publisher, fake, mem } = setup();
+    fake.edit((w) => {
+      const claim = w.nodes.find((n) => n.name === "Claim")!;
+      (claim.parameters as Record<string, unknown>).headerParameters = { parameters: [{ name: "Authorization", value: `Bearer ${fakeToken}` }] };
+    });
+    await publisher.publish("u1", "PUBLICAR");
+    expect(JSON.stringify(mem.state.previous)).not.toContain(fakeToken);
+    expect(JSON.stringify(mem.state.previous)).toContain("[REDACTED]");
+    fake.edit((w) => {
+      const claim = w.nodes.find((n) => n.name === "Claim")!;
+      (claim.parameters as Record<string, unknown>).headerParameters = { parameters: [{ name: "apikey", value: fakeToken }] };
+    });
+    const { json } = await publisher.downloadLive();
+    expect(json).not.toContain(fakeToken);
+  });
+
   it("download do vivo sai sem credenciais nem pinData", async () => {
     const { publisher, fake } = setup();
     fake.edit((w) => {

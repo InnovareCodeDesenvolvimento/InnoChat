@@ -4,7 +4,7 @@ import { logger } from "@/lib/logger";
 import { getPublicBaseUrl } from "@/lib/public-url";
 import botFlowFile from "../../../n8n/innochat-bot.json";
 import { createN8nClient, N8nApiError, type N8nClient, type N8nNode, type N8nWorkflow } from "./n8n-client";
-import { canonicalFlowHash, readFlowVersion, sanitizeFlowForDownload } from "./n8n-flow-hash";
+import { canonicalFlowHash, readFlowVersion, redactFlowSecrets, sanitizeFlowForDownload } from "./n8n-flow-hash";
 import { mergeFlow, type CredentialIds, type MergedFlow } from "./n8n-flow-merge";
 import { loadPlatformSettingsRow, readGenericSecret } from "./secrets";
 
@@ -180,6 +180,16 @@ export function createFlowPublisher(deps: { store: PublishStore; context: Publis
     };
   }
 
+  /**
+   * O que vai para o BANCO (`previous`): sem segredos literais dos parâmetros dos nós (I4). O snapshot
+   * em memória segue íntegro para `restore` na mesma requisição; o hash é recalculado sobre o que foi
+   * gravado, então o "voltar" continua verificável. Fluxo sem segredo literal = idêntico ao original.
+   */
+  function forStorage(snapshot: FlowSnapshot): FlowSnapshot {
+    const nodes = redactFlowSecrets(snapshot.nodes);
+    return { ...snapshot, nodes, hash: canonicalFlowHash(nodes, snapshot.connections) };
+  }
+
   async function getStatus(): Promise<BotFlowStatus> {
     const state = await store.load();
     let liveHash: string | null = null;
@@ -237,7 +247,7 @@ export function createFlowPublisher(deps: { store: PublishStore; context: Publis
       const merged = merge({ nodes: build.nodes, connections: build.connections }, live); // WEBHOOK_PATH_CHANGED sai daqui, antes de qualquer escrita
       const snapshot = snapshotOf(live, liveHash, state);
 
-      await store.setPrevious(snapshot);
+      await store.setPrevious(forStorage(snapshot));
       try {
         await put(merged);
       } catch (error) {
@@ -260,7 +270,7 @@ export function createFlowPublisher(deps: { store: PublishStore; context: Publis
       }
 
       const publishedAt = now();
-      await store.savePublished({ version: build.version, hash: build.hash, publishedAt, userId, previous: snapshot });
+      await store.savePublished({ version: build.version, hash: build.hash, publishedAt, userId, previous: forStorage(snapshot) });
       logger.info("platform.bot_flow.published", { version: build.version, hash: build.hash, overwroteDrift: drift, first: firstPublish, userId });
       return { version: build.version, hash: build.hash, publishedAt: publishedAt.toISOString(), rolledBack: false };
     });

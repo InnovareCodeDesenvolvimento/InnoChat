@@ -213,7 +213,8 @@ async function sweep() {
   sweepCache = msgs;
   return msgs;
 }
-const allRunMessages = (state) => state.results.flatMap((r) => r.convos || []).flatMap((c) => c.log.flatMap((e) => e.msgs));
+// O CA-44 roda o fluxo v1 (fixture) DE PROPÓSITO para gravar a sessão antiga: as falas dele não valem para as varreduras do v2.
+const allRunMessages = (state) => state.results.filter((r) => r.id !== "CA-44").flatMap((r) => r.convos || []).flatMap((c) => c.log.flatMap((e) => e.msgs));
 
 scenario("CA-38", "Nenhuma mensagem contém {variavel} (bases de texto v1 e v2, e mensagens renderizadas)", "B-3", async () => {
   const msgs = (await sweep()).concat(allRunMessages(state), state.cur.convos.flatMap((c) => c.log.flatMap((e) => e.msgs)));

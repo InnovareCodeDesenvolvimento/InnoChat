@@ -74,10 +74,15 @@ describe("routeFor: fresh (BUG-13, CA-27)", () => {
   it("'2' em sessão nova vai direto ao estado, sem contar inválido", () => {
     expect(routeFor({ ...fresh, intent: opt("MY") })).toEqual({ route: "STATE", invalidCount: 0, greet: false });
   });
-  it("saudação/menu → FRESH, mesmo com retomada disponível", () => {
+  it("\"menu\"/\"0\" → FRESH, mesmo com retomada disponível (descartam a retomada)", () => {
+    const menu: Intent = { kind: "command", command: "MENU" };
+    expect(routeFor({ ...fresh, resumable: true, intent: menu })).toEqual({ route: "FRESH", invalidCount: 0, greet: true });
+    expect(routeFor({ ...fresh, intent: menu }).route).toBe("FRESH");
+  });
+  it("saudação com retomada disponível → RESUME (CA-27); sem retomada → FRESH", () => {
     const g: Intent = { kind: "command", command: "GREETING" };
-    expect(routeFor({ ...fresh, resumable: true, intent: g })).toEqual({ route: "FRESH", invalidCount: 0, greet: true });
-    expect(routeFor({ ...fresh, intent: { kind: "command", command: "MENU" } }).route).toBe("FRESH");
+    expect(routeFor({ ...fresh, resumable: true, intent: g })).toEqual({ route: "RESUME", invalidCount: 0, greet: true });
+    expect(routeFor({ ...fresh, resumable: false, intent: g })).toEqual({ route: "FRESH", invalidCount: 0, greet: true });
   });
   it("retomável e mensagem qualquer → RESUME", () => {
     expect(routeFor({ ...fresh, resumable: true, intent: invalid })).toEqual({ route: "RESUME", invalidCount: 0, greet: true });

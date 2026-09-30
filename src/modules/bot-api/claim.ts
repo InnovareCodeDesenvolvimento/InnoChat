@@ -4,7 +4,7 @@ import { isUniqueViolation } from "@/lib/db/prisma-errors";
 import type { InboundIgnoreReason } from "@/lib/db/types";
 import { normalizeEvolutionMessage, resolveSenderIdentity, digitsFromJid, type NormalizedMessage } from "@/core/bot/evolution-normalize";
 import { formatInTimeZone } from "date-fns-tz";
-import { addDaysISO } from "@/core/agenda";
+import { lastBookableISO } from "./booking-bot";
 import { normalizeText } from "@/core/bot/engine/normalize";
 import { firstNameForGreeting, formatLeadLabel, formatWhenLabel } from "@/core/bot/format";
 import { computeTenantTeamOpening } from "@/modules/agenda/team-hours-loader";
@@ -21,7 +21,10 @@ const RECENT_OUTBOUND_MAX = 20;
 /** `session.previous` só existe se a sessão expirou há no máximo isto (spec §2.7). */
 const PREVIOUS_MAX_IDLE_MS = 24 * 60 * 60 * 1000;
 
-/** "menu" ou "0" (normalizados) — os únicos textos que devolvem o cliente ao bot durante o atendente. */
+/**
+ * "menu" ou "0" (normalizados) — os únicos textos que devolvem o cliente ao bot durante o atendente.
+ * `normalizeText` corta a entrada em 4000 caracteres antes de qualquer regex (Órion I1).
+ */
 function isMenuCommand(content: NormalizedMessage["content"]): boolean {
   if (content.type !== "text") return false;
   const t = normalizeText(content.text);
@@ -75,6 +78,19 @@ export type ClaimResult =
   | ClaimProcessResultV2
   | { action: "busy"; retryAfterMs: number }
   | { action: "ignore"; reason: InboundIgnoreReason | "UNSUPPORTED_EVENT" | "GROUP" };
+
+/**
+ * `upsert` do Prisma não é atômico: duas execuções do MESMO cliente chegando juntas na 1ª mensagem
+ * disputam o INSERT e a perdedora leva P2002. Uma nova tentativa já encontra a linha e só atualiza.
+ */
+async function upsertOnce<T>(run: () => Promise<T>): Promise<T> {
+  try {
+    return await run();
+  } catch (error) {
+    if (!isUniqueViolation(error)) throw error;
+    return run();
+  }
+}
 
 function sha256Hex(text: string): string {
   return createHash("sha256").update(text).digest("hex");
@@ -145,23 +161,28 @@ export async function claimMessage(ctx: InternalApiContext, rawPayload: unknown,
   }
 
   const waJid = identity.waJid ?? contact!.waJid;
-  contact = await prisma.contact.upsert({
-    where: { tenantId_waJid: { tenantId: ctx.tenantId, waJid } },
-    update: {
-      ...(normalized.pushName ? { pushName: normalized.pushName } : {}),
-      ...(identity.lid ? { lid: identity.lid } : {}),
-    },
-    create: { tenantId: ctx.tenantId, waJid, lid: identity.lid, pushName: normalized.pushName },
-  });
+  contact = await upsertOnce(() =>
+    prisma.contact.upsert({
+      where: { tenantId_waJid: { tenantId: ctx.tenantId, waJid } },
+      update: {
+        ...(normalized.pushName ? { pushName: normalized.pushName } : {}),
+        ...(identity.lid ? { lid: identity.lid } : {}),
+      },
+      create: { tenantId: ctx.tenantId, waJid, lid: identity.lid, pushName: normalized.pushName },
+    }),
+  );
 
   // Sessão + trava (lease de 20s, docs/arquitetura.md §2 regra 2). `update: {}` no upsert é
   // proposital: não toca `lastInboundAt` numa sessão já existente, para podermos comparar contra
   // o valor ANTERIOR (detectar expiração) antes de gravar o novo abaixo.
-  const session = await prisma.chatSession.upsert({
-    where: { whatsappInstanceId_contactId: { whatsappInstanceId: ctx.instance.id, contactId: contact.id } },
-    update: {},
-    create: { whatsappInstanceId: ctx.instance.id, contactId: contact.id, state: "MAIN_MENU", lastInboundAt: now },
-  });
+  const contactId = contact.id;
+  const session = await upsertOnce(() =>
+    prisma.chatSession.upsert({
+      where: { whatsappInstanceId_contactId: { whatsappInstanceId: ctx.instance.id, contactId } },
+      update: {},
+      create: { whatsappInstanceId: ctx.instance.id, contactId, state: "MAIN_MENU", lastInboundAt: now },
+    }),
+  );
 
   const lockToken = randomUUID();
   const leaseResult = await prisma.chatSession.updateMany({
@@ -402,7 +423,7 @@ export async function claimMessage(ctx: InternalApiContext, rawPayload: unknown,
       teamNextOpenLabel: opening.nextOpenAt ? formatWhenLabel(opening.nextOpenAt, now, tenant.timezone) : null,
       handoffUntilLabel: formatWhenLabel(new Date(now.getTime() + tenant.handoffResumeMinutes * 60_000), now, tenant.timezone),
       changeLeadLabel: formatLeadLabel(tenant.cancelMinLeadMin),
-      lastBookableDate: addDaysISO(todayISO, tenant.maxHorizonDays),
+      lastBookableDate: lastBookableISO(todayISO, tenant.maxHorizonDays),
       slotGranularityMin: tenant.slotGranularityMin,
     },
     texts,

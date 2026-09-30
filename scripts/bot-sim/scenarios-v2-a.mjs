@@ -205,7 +205,8 @@ scenario("CA-09", "Horário digitado em SELECT_TIME: 15h/15:00/15h00/3 da tarde;
       const c = conv();
       await start(c, { named: true });
       await toTime(c, { day: 5 });
-      check(timeOpts(c.last).some((o) => o.label.trim() === "15:00"), `existe 15:00 na lista | ${brief(c.last)}`);
+      // A página de horários tem 7 itens (decisão do Atlas, spec 12.4): o 15:00 pode estar em outra página e continua valendo digitado.
+      check(timeOpts(c.last).length > 0 && timeOpts(c.last).length <= 7, `a página tem de 1 a 7 horários (${timeOpts(c.last).length}) | ${brief(c.last)}`);
       const r = await say(c, w);
       const ctx = await ctxOf(c);
       check(ctx.startsAt && localHM(new Date(ctx.startsAt), tz) === "15:00", `"${w}" escolhe 15:00 (startsAt=${ctx.startsAt}) | ${brief(r.text)}`);
@@ -453,7 +454,7 @@ scenario("CA-18", "Paginação (serviços, dias, horários, agendamentos): 1..n 
     await start(c, { named: true });
     await toTime(c, { service: /Corte feminino/, pro: /Ana/, day: 2 });
     const p1 = opts(c);
-    check(contig(p1) && timeOpts(c.last).length === 8 && p1.some((x) => /Mais horários/.test(x.label)) && !p1.some((x) => /anteriores/i.test(x.label)), `horários pág. 1: 8 + "Mais horários" (${p1.map((x) => x.label).join(",")})`);
+    check(contig(p1) && timeOpts(c.last).length === 7 && p1.some((x) => /Mais horários/.test(x.label)) && !p1.some((x) => /anteriores/i.test(x.label)), `horários pág. 1: 7 + "Mais horários" (${p1.map((x) => x.label).join(",")})`);
     await c.pick(/Mais horários/);
     const p2 = opts(c);
     check(contig(p2) && p2.some((x) => /anteriores/i.test(x.label)), `horários pág. 2: numeração recomeça em 1 e tem "Ver anteriores" (${p2.map((x) => `${x.n}:${x.label}`).join(",")})`);

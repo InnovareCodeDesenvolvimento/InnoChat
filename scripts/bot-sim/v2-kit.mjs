@@ -187,10 +187,10 @@ export async function handoffs(contactId) {
 }
 /** Envelhece a sessão: como se a última mensagem do cliente tivesse sido há `minutes`. */
 export async function ageSession(c, minutes) {
-  await sql(`UPDATE chat_sessions SET "lastInboundAt" = now() - ($2 || ' minutes')::interval WHERE "contactId" = $1`, await c.contactId(), String(minutes));
+  await sql(`UPDATE chat_sessions SET "lastInboundAt" = (now() at time zone 'utc') - ($2 || ' minutes')::interval WHERE "contactId" = $1`, await c.contactId(), String(minutes));
 }
 export async function setHumanUntil(c, minutesFromNow) {
-  await sql(`UPDATE chat_sessions SET "humanUntil" = now() + ($2 || ' minutes')::interval WHERE "contactId" = $1`, await c.contactId(), String(minutesFromNow));
+  await sql(`UPDATE chat_sessions SET "humanUntil" = (now() at time zone 'utc') + ($2 || ' minutes')::interval WHERE "contactId" = $1`, await c.contactId(), String(minutesFromNow));
 }
 /** Grava o expediente da equipe do tenant (todas as datas 00:00-23:59 = aberto agora; ou só amanhã 09-18 = fechado agora). */
 export async function setTeamHours(tenantKey, mode) {
