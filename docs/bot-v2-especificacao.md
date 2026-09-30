@@ -550,6 +550,16 @@ export const DEFAULT_BOT_TEXTS_V2 = {
   GOODBYE: "Atendimento encerrado. Obrigado pelo contato, {nome}! 👋\n_Quando precisar, é só mandar uma mensagem._",
   TECH_ERROR: "Tive um problema técnico para concluir isso agora. Tente de novo em instantes ou digite *atendente*.",   // novo
   // REMINDER: enviado pelo tick de lembretes, fora do fluxo. Não muda.
+
+  // ── Atendimento humano (equipe age pelo painel; STAFF_* só saem se `notifyClientOnStaffChanges`) ──
+  STAFF_BOOKED:                                                                 // novo (atendimento humano)
+    "Olá, {nome}! ✅ Seu horário foi agendado pela equipe da *{empresa}*: *{servico}* com {profissional}, {quando} às *{hora}*. Para remarcar ou cancelar, responda *menu*.",
+  STAFF_RESCHEDULED:                                                                 // novo (atendimento humano)
+    "Olá, {nome}! 🔄 Seu horário foi remarcado pela equipe da *{empresa}*: *{servico}* com {profissional}, {quando} às *{hora}*. Para remarcar ou cancelar, responda *menu*.",
+  STAFF_CANCELED:                                                                 // novo (atendimento humano)
+    "Olá, {nome}. Seu agendamento de *{servico}* com {profissional}, {quando} às {hora}, foi *cancelado* pela equipe da *{empresa}*. Para marcar um novo horário, responda *menu*.",
+  HANDOFF_CLOSED:                                                                 // novo (atendimento humano)
+    "Atendimento encerrado pela equipe da *{empresa}*. Obrigado pelo contato, {nome}! 👋\n_Para agendar ou ver seus horários, é só responder *menu*._",
 };
 ```
 

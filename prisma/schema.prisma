@@ -43,6 +43,7 @@ model User {
   platformNotificationReads PlatformNotificationRead[]
   memberships       Membership[]
   authTokens        AuthToken[]
+  chatMessagesAuthored ChatMessage[] @relation("ChatMessageAuthor")
   platformSettingsUpdates PlatformSettings[] @relation("PlatformSettingsUpdatedBy")
 
   @@map("users")
@@ -127,6 +128,8 @@ model Tenant {
   reminderHoursBefore Int     @default(24)
   // Bot v2. 0 = sem limite de agendamentos futuros por contato no WhatsApp (CHECK 0..20).
   maxFutureAppointmentsPerContact Int @default(3)
+  // Atendimento humano: avisa o cliente no WhatsApp quando a EQUIPE agenda/remarca/cancela pelo painel.
+  notifyClientOnStaffChanges Boolean @default(true)
   // Minutos até o bot retomar após atendimento humano (CHECK 30..1440).
   handoffResumeMinutes            Int @default(120)
 
@@ -764,6 +767,11 @@ enum BotTextKey {
   LABEL_BACK
   LABEL_OTHER_SERVICE
   LABEL_PREVIOUS
+  // Atendimento humano (equipe age pelo painel)
+  STAFF_BOOKED
+  STAFF_RESCHEDULED
+  STAFF_CANCELED
+  HANDOFF_CLOSED
 }
 
 model BotText {
@@ -1006,11 +1014,14 @@ model ChatMessage {
   body               String
   // Id da mensagem no provedor (Evolution) — dedup de webhook repetido. Nulo permite vários.
   providerMessageId  String?
+  // Atendente que enviou pelo painel (null = bot ou cliente). SetNull preserva o histórico se o usuário for apagado.
+  authorUserId       String?
   createdAt          DateTime      @default(now())
 
   tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   contact          Contact           @relation(fields: [contactId], references: [id], onDelete: Cascade)
   whatsappInstance WhatsappInstance? @relation(fields: [whatsappInstanceId], references: [id], onDelete: SetNull)
+  authorUser       User?             @relation("ChatMessageAuthor", fields: [authorUserId], references: [id], onDelete: SetNull)
 
   @@unique([tenantId, providerMessageId])
   @@index([tenantId, contactId, createdAt])

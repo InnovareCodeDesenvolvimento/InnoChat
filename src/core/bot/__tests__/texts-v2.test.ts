@@ -17,14 +17,14 @@ const V1_KEYS = BOT_TEXT_KEYS as readonly string[];
 const KEYS = BOT_TEXT_KEYS_V2 as readonly string[];
 
 describe("BOT_TEXT_KEYS_V2", () => {
-  it("são as chaves v1 não legadas + as 46 novas (75 no total, sem repetição)", () => {
+  it("são as chaves v1 não legadas + as 50 novas (79 no total, sem repetição)", () => {
     const keptFromV1 = V1_KEYS.filter((k) => !(LEGACY_V1_KEYS as readonly string[]).includes(k));
     expect(keptFromV1).toHaveLength(29);
     for (const k of keptFromV1) expect(KEYS).toContain(k);
     const novas = KEYS.filter((k) => !V1_KEYS.includes(k));
-    expect(novas).toHaveLength(46);
+    expect(novas).toHaveLength(50);
     expect(novas.filter((k) => k.startsWith("LABEL_"))).toHaveLength(20);
-    expect(KEYS).toHaveLength(75);
+    expect(KEYS).toHaveLength(79);
     expect(new Set(KEYS).size).toBe(KEYS.length);
   });
 

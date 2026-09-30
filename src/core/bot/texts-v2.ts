@@ -43,7 +43,7 @@ const KEPT_V1_KEYS = [
   "LABEL_MORE",
 ] as const;
 
-/** As 46 chaves novas (26 mensagens + 20 rótulos) — plano §3.1. */
+/** As 46 chaves novas da v2 (26 mensagens + 20 rótulos, plano §3.1) + 4 do Atendimento humano. */
 const NEW_V2_KEYS = [
   "MENU_PROMPT",
   "MENU_HINT",
@@ -91,6 +91,11 @@ const NEW_V2_KEYS = [
   "LABEL_BACK",
   "LABEL_OTHER_SERVICE",
   "LABEL_PREVIOUS",
+  // Atendimento humano (equipe age pelo painel)
+  "STAFF_BOOKED",
+  "STAFF_RESCHEDULED",
+  "STAFF_CANCELED",
+  "HANDOFF_CLOSED",
 ] as const;
 
 export const BOT_TEXT_KEYS_V2 = [...KEPT_V1_KEYS, ...NEW_V2_KEYS] as const;
@@ -218,6 +223,16 @@ export const DEFAULT_BOT_TEXTS_V2: Record<BotTextKeyV2, string> = {
   REMINDER:
     "Olá, {nome}! Lembrete: você tem {servico} com {profissional} {quando} às {hora}.\nPara remarcar ou cancelar, responda *menu*.",
 
+  // ── Atendimento humano (equipe age pelo painel) ────────
+  STAFF_BOOKED:
+    "Olá, {nome}! ✅ Seu horário foi agendado pela equipe da *{empresa}*: *{servico}* com {profissional}, {quando} às *{hora}*. Para remarcar ou cancelar, responda *menu*.",
+  STAFF_RESCHEDULED:
+    "Olá, {nome}! 🔄 Seu horário foi remarcado pela equipe da *{empresa}*: *{servico}* com {profissional}, {quando} às *{hora}*. Para remarcar ou cancelar, responda *menu*.",
+  STAFF_CANCELED:
+    "Olá, {nome}. Seu agendamento de *{servico}* com {profissional}, {quando} às {hora}, foi *cancelado* pela equipe da *{empresa}*. Para marcar um novo horário, responda *menu*.",
+  HANDOFF_CLOSED:
+    "Atendimento encerrado pela equipe da *{empresa}*. Obrigado pelo contato, {nome}! 👋\n_Para agendar ou ver seus horários, é só responder *menu*._",
+
   // ── Rótulos de opção (sem variáveis) ───────────────────
   LABEL_MENU_BOOK: "Agendar horário",
   LABEL_MENU_MY: "Meus agendamentos",
@@ -274,6 +289,7 @@ function buildAllowedVars(): Record<BotTextKeyV2, readonly string[]> {
     VARS_APPOINTMENT,
   );
   set(["HUMAN_HANDOFF", "HUMAN_HANDOFF_OFF_HOURS"], VARS_HANDOFF);
+  set(["STAFF_BOOKED", "STAFF_RESCHEDULED", "STAFF_CANCELED"], ["servico", "profissional", "data", "hora", "quando"]);
   set(["APPOINTMENT_LIMIT"], ["limite"]);
   set(["REMINDER"], ["servico", "profissional", "hora", "quando"]);
 
@@ -332,6 +348,9 @@ export const BOT_TEXT_CATALOG: Record<BotTextKeyV2, { group: BotTextGroup; title
   CONFIRM_EDIT: { group: "agendamento", title: "O que corrigir", description: "Pergunta qual dado o cliente quer corrigir na confirmação." },
   BOOKED: { group: "agendamento", title: "Agendamento confirmado", description: "Mensagem enviada quando a reserva é feita." },
   SLOT_TAKEN: { group: "agendamento", title: "Horário ocupado", description: "Quando outra pessoa reservou o horário primeiro." },
+  STAFF_BOOKED: { group: "agendamento", title: "Agendado pela equipe", description: "Aviso ao cliente quando a equipe cria um agendamento pelo painel (só se o aviso estiver ligado)." },
+  STAFF_RESCHEDULED: { group: "agendamento", title: "Remarcado pela equipe", description: "Aviso ao cliente quando a equipe remarca um agendamento pelo painel (só se o aviso estiver ligado)." },
+  STAFF_CANCELED: { group: "agendamento", title: "Cancelado pela equipe", description: "Aviso ao cliente quando a equipe cancela um agendamento pelo painel (só se o aviso estiver ligado)." },
   POST_ACTION_MENU: { group: "agendamento", title: "Posso ajudar em algo mais?", description: "Pergunta ao final de uma reserva, remarcação ou cancelamento." },
   // meus agendamentos
   MY_APPOINTMENTS: { group: "meus", title: "Lista de agendamentos", description: "Título da lista de agendamentos futuros do cliente." },
@@ -348,6 +367,7 @@ export const BOT_TEXT_CATALOG: Record<BotTextKeyV2, { group: BotTextGroup; title
   HUMAN_HANDOFF: { group: "atendente", title: "Chamando atendente", description: "Resposta quando o cliente pede atendente dentro do horário da equipe." },
   HUMAN_HANDOFF_OFF_HOURS: { group: "atendente", title: "Atendente fora do horário", description: "Resposta quando o cliente pede atendente com a equipe fora do expediente." },
   BOT_RESUMED: { group: "atendente", title: "Atendimento automático de volta", description: "Aviso quando o bot volta a responder depois de um atendente." },
+  HANDOFF_CLOSED: { group: "atendente", title: "Atendimento encerrado pela equipe", description: "Aviso enviado quando a equipe encerra o atendimento e devolve a conversa ao bot." },
   // rótulos
   LABEL_MENU_BOOK: { group: "rotulos", title: "Menu: agendar", description: "Opção do menu principal." },
   LABEL_MENU_MY: { group: "rotulos", title: "Menu: meus agendamentos", description: "Opção do menu principal." },
