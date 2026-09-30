@@ -6,6 +6,8 @@ import {
   minutesUntilStart,
   formatRelativeTime,
   groupNotifications,
+  handoffBody,
+  isOffHoursHandoff,
   latestCreatedAt,
   mergeNotifications,
   nextPollDelay,
@@ -145,5 +147,32 @@ describe("contador do próximo atendimento", () => {
     expect(isImminent(15)).toBe(true);
     expect(isImminent(16)).toBe(false);
     expect(isImminent(-2)).toBe(true);
+  });
+});
+
+describe("pediu atendente (HANDOFF_REQUESTED)", () => {
+  const handoff = (offHours: boolean, body: string) =>
+    ({
+      ...make("h1", "2026-09-29T14:00:00.000Z", { severity: "warning", body }),
+      kind: "HANDOFF_REQUESTED",
+      handoff: { contactId: "c1", contactName: "Maria", offHours, answered: false, ended: false },
+    }) as unknown as AppNotification;
+
+  it("fora do horário: detecta e tira o sufixo do corpo (o selo mostra)", () => {
+    const n = handoff(true, "Maria · fora do horário");
+    expect(isOffHoursHandoff(n)).toBe(true);
+    expect(handoffBody(n)).toBe("Maria");
+  });
+
+  it("dentro do horário: corpo intacto e sem selo", () => {
+    const n = handoff(false, "Maria");
+    expect(isOffHoursHandoff(n)).toBe(false);
+    expect(handoffBody(n)).toBe("Maria");
+  });
+
+  it("outro tipo de notificação nunca ganha o selo", () => {
+    const n = make("a", "2026-09-29T14:00:00.000Z", { body: "x · fora do horário" });
+    expect(isOffHoursHandoff(n)).toBe(false);
+    expect(handoffBody(n)).toBe("x · fora do horário");
   });
 });

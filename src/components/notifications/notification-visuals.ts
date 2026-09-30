@@ -6,6 +6,7 @@ import {
   CalendarX,
   CheckCircle2,
   Building2,
+  Headset,
   Hourglass,
   Timer,
   ShieldAlert,
@@ -22,7 +23,8 @@ import {
 import type { AdminNotificationKind, NotificationKind, NotificationSeverity, NotificationSource } from "./types";
 
 /** Ícone por tipo de notificação. */
-export const KIND_ICON: Record<NotificationKind, LucideIcon> = {
+export const KIND_ICON: Record<NotificationKind | "HANDOFF_REQUESTED", LucideIcon> = {
+  HANDOFF_REQUESTED: Headset,
   APPOINTMENT_CREATED: CalendarPlus,
   APPOINTMENT_RESCHEDULED: CalendarClock,
   APPOINTMENT_CANCELED: CalendarX,

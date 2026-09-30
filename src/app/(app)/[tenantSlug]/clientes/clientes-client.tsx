@@ -113,6 +113,19 @@ export function ClientesClient({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
+  // O sino ("Cliente pediu atendente") linka para `/clientes?contato=<id>` — abre a ficha do
+  // contato (onde está o "Retomar bot") e limpa a URL para o F5 não reabrir.
+  useEffect(() => {
+    const contactId = searchParams.get("contato");
+    if (!contactId) return;
+    const id = setTimeout(() => {
+      setDetailId(contactId);
+      router.replace(`/${tenantSlug}/clientes`, { scroll: false });
+    }, 0);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
   // Debounce da busca — só depois de o usuário parar de digitar por 350ms é que ela
   // dispara uma nova consulta (evita uma requisição por tecla).
   useEffect(() => {

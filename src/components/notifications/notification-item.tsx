@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { cn } from "@/components/lib/cn";
-import { formatRelativeTime } from "./notification-utils";
+import { formatRelativeTime, handoffBody, isOffHoursHandoff } from "./notification-utils";
 import { FALLBACK_ICON, ICON_BY_KIND, SEVERITY_TONE, SOURCE_VISUAL } from "./notification-visuals";
-import { Building2 } from "lucide-react";
+import { Building2, Moon } from "lucide-react";
 import type { BellNotification } from "./types";
 
 /**
@@ -54,8 +54,14 @@ export function NotificationItem({
             <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-primary" aria-hidden="true" />
           ) : null}
         </span>
-        {notification.body ? (
-          <span className="mt-0.5 line-clamp-2 block text-sm text-text-secondary">{notification.body}</span>
+        {handoffBody(notification) ? (
+          <span className="mt-0.5 line-clamp-2 block text-sm text-text-secondary">{handoffBody(notification)}</span>
+        ) : null}
+        {isOffHoursHandoff(notification) ? (
+          <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-warning-bg px-2 py-0.5 text-xs font-medium text-warning">
+            <Moon className="h-3 w-3 shrink-0" aria-hidden="true" />
+            Fora do horário
+          </span>
         ) : null}
         <span className="mt-1 flex items-center gap-2 text-xs text-text-secondary">
           <span className="tabular-nums">{formatRelativeTime(notification.createdAt, now)}</span>

@@ -7,9 +7,11 @@ import { auth } from "@/lib/auth";
 import { ConfiguracoesGrid, type ConfigSection } from "./configuracoes-grid";
 import { EmpresaDocumentForm } from "./empresa-document-form";
 import { LembreteCard } from "./lembrete-card";
+import { AtendimentoCard } from "./atendimento-card";
 import { Alert } from "@/components/ui/alert";
 import { isTenantWriteBlocked } from "../_lib/write-blocked";
 import { getReminderSettingsAction } from "@/modules/reminders/actions";
+import { getBotRulesAction } from "@/modules/tenant/actions";
 
 const SECTIONS: ConfigSection[] = [
   {
@@ -72,8 +74,9 @@ export default async function ConfiguracoesPage({
       })
     : null;
 
-  const [reminder, writeBlocked] = await Promise.all([
+  const [reminder, botRules, writeBlocked] = await Promise.all([
     getReminderSettingsAction({ tenantSlug }),
+    getBotRulesAction(tenantSlug),
     isTenantWriteBlocked(tenant.id),
   ]);
 
@@ -97,6 +100,19 @@ export default async function ConfiguracoesPage({
       ) : (
         <Alert variant="danger" title="Não deu para carregar o lembrete automático">
           {reminder.error.message} Recarregue a página para tentar de novo.
+        </Alert>
+      )}
+
+      {botRules.ok ? (
+        <AtendimentoCard
+          tenantSlug={tenantSlug}
+          initial={botRules.data}
+          isOwner={membership?.role === "OWNER"}
+          writeBlocked={writeBlocked}
+        />
+      ) : (
+        <Alert variant="danger" title="Não deu para carregar as regras do atendimento">
+          {botRules.error.message} Recarregue a página para tentar de novo.
         </Alert>
       )}
 

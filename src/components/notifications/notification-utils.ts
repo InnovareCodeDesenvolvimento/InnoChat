@@ -130,3 +130,22 @@ export function formatCountdown(minutes: number): string {
 export function isImminent(minutes: number): boolean {
   return minutes <= IMMINENT_MINUTES;
 }
+
+/** Sufixo que o servidor põe no corpo do "pediu atendente" fora do horário (B-2). */
+const OFF_HOURS_SUFFIX_RE = /\s*·\s*fora do horário\s*$/i;
+
+/**
+ * `handoff.offHours` (contrato B-2, §3.5 do plano) sem depender de o tipo já ter o campo: o
+ * servidor manda o dado; aqui só lemos. Notificação de outro tipo → `false`.
+ */
+export function isOffHoursHandoff(notification: BellNotification): boolean {
+  if ((notification.kind as string) !== "HANDOFF_REQUESTED") return false;
+  const handoff = (notification as { handoff?: { offHours?: boolean } }).handoff;
+  return handoff?.offHours === true;
+}
+
+/** Corpo sem o "· fora do horário" quando a linha já mostra o selo próprio (não repetir). */
+export function handoffBody(notification: BellNotification): string {
+  const body = notification.body ?? "";
+  return isOffHoursHandoff(notification) ? body.replace(OFF_HOURS_SUFFIX_RE, "") : body;
+}
