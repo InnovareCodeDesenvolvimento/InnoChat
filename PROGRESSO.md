@@ -24,7 +24,15 @@ Decisões do dono: memória `decisoes-iniciais-innochat` e `docs/arquitetura.md`
   - envio idempotente;
   - teto de 10 mensagens por hora por contato e 120 por hora por empresa.
 
-**Falta:** o dono validar no WhatsApp as mensagens separadas, o atendimento pelo painel e o aviso da agenda.
+**Validado pelo dono:** aviso ao cliente na agenda.
+
+**Publicado também:**
+- ajuda ⓘ com exemplos em todas as telas (44 entradas);
+- favicon;
+- selo flutuante compacto que sai do caminho dos botões;
+- versionamento semântico com CHANGELOG. **No ar: v1.1.1.**
+
+**Ideia registrada:** campanha no Meta Ads. Funil em 3 etapas mais anúncio de mensagem com número de demonstração do bot. Antes, precisa de pixel/CAPI, landing page por nicho e dados da empresa para os termos. O dono decide nicho, orçamento e oferta.
 
 **Débitos:**
 - trava de publicação do fluxo, teto de envios e cache de idempotência ficam só em memória (processo único);
