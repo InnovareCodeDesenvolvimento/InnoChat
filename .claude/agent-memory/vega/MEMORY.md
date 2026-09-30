@@ -38,5 +38,6 @@
 - [upsert não é atômico + CAS do recentOutbound + logs sem message](prisma_upsert_race_and_echo_cas.md) — lembrete/histórico da Fase 2, correções pré-deploy.
 - [Evolution 2.3.7: botões/lista/enquete](evolution_interactive_messages_2_3_7.md) — formatos lidos do código (não provados em aparelho); eco fromMe pausa o bot.
 - [Login com Google: decisões e armadilhas do Auth.js](google_login_design.md) — checks pkce+state+nonce explícitos, sub != userId, import dinâmico de @/lib/auth, smoke sem Google.
+- [Bot v2 A-1: core do painel](botv2_a1_core_painel.md) — grade ancorada, teamOpening, snapshot da spec, T1 depende do B-1, heredoc grande quebra.
 - [Revogação de sessão + base pública confiável + cookie de cadastro](session_revocation_and_trusted_url.md) — sessionVersion/sv, AUTH_URL fixado, IP por último XFF; armadilhas de teste do Auth.js.
 - [Motor do bot v2 (A-2): decisões e furos](bot_engine_a2_decisions.md) — routeFor/fresh, >9 opções, esbuild transitivo, heredoc que quebra.

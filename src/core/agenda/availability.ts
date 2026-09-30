@@ -75,10 +75,33 @@ export function subtractRanges(
 }
 
 /**
+ * Grade ANCORADA na meia-noite local (spec bot v2 §3.5): os candidatos de um dia são os múltiplos
+ * de `stepMin` contados desde 00:00 LOCAL (09:00, 09:30, ...), nunca relativos ao início da janela
+ * livre. Um serviço de 45 min às 09:00 deixa livre 10:00 (grade 30), nunca 09:45 (BUG-16).
+ * Montada por relógio de parede (HH:mm), então em dia de troca de horário de verão cada candidato
+ * continua sendo o "HH:mm" local, e instantes repetidos/inexistentes são deduplicados.
+ */
+function anchoredGrid(dateISO: string, timezone: string, stepMin: number): Date[] {
+  const step = Math.max(1, Math.floor(stepMin));
+  const seen = new Set<number>();
+  const grid: Date[] = [];
+  for (let minute = 0; minute < 24 * 60; minute += step) {
+    const hh = String(Math.floor(minute / 60)).padStart(2, "0");
+    const mm = String(minute % 60).padStart(2, "0");
+    const instant = localTimeToUtc(dateISO, `${hh}:${mm}`, timezone);
+    if (seen.has(instant.getTime())) continue;
+    seen.add(instant.getTime());
+    grid.push(instant);
+  }
+  return grid.sort((a, b) => a.getTime() - b.getTime());
+}
+
+/**
  * Horários candidatos (instante de início) para um serviço em um dia específico, para UM
- * profissional. Passo de `slotGranularityMin` a partir do início de cada janela livre;
- * exige que o serviço (SEM o buffer — o buffer é intervalo administrativo, pode ultrapassar
- * o fim do expediente) termine dentro da janela.
+ * profissional. Candidatos = múltiplos de `slotGranularityMin` desde a meia-noite LOCAL de
+ * `dateISO` (grade ancorada), dentro das janelas livres; uma janela que começa 09:10 só oferece
+ * 09:30 em diante. Exige que o serviço (SEM o buffer — o buffer é intervalo administrativo, pode
+ * ultrapassar o fim do expediente) termine dentro da janela.
  *
  * `professionalEligible = false` (profissional não faz o serviço) sempre devolve `[]`.
  */
@@ -101,17 +124,17 @@ export function computeAvailableSlots(params: {
     openWindows,
     params.busy.map((b) => ({ startsAt: b.startsAt, endsAt: b.blockEndsAt })),
   );
+  if (freeWindows.length === 0) return [];
 
   const earliestStart = addMinutes(params.now, params.minLeadTimeMin);
+  const grid = anchoredGrid(params.dateISO, params.timezone, params.slotGranularityMin);
   const slots: Date[] = [];
 
   for (const window of freeWindows) {
-    let candidate = window.start;
-    while (addMinutes(candidate, params.serviceDurationMin) <= window.end) {
-      if (candidate >= earliestStart) {
-        slots.push(candidate);
-      }
-      candidate = addMinutes(candidate, params.slotGranularityMin);
+    for (const candidate of grid) {
+      if (candidate < window.start) continue;
+      if (addMinutes(candidate, params.serviceDurationMin) > window.end) break;
+      if (candidate >= earliestStart) slots.push(candidate);
     }
   }
 
