@@ -128,7 +128,7 @@ type World = Awaited<ReturnType<typeof makeWorld>>;
 let seq = 0;
 async function makeContact(w: World, opts: { name?: string; noPhone?: boolean; botPausedUntil?: Date } = {}) {
   seq += 1;
-  const digits = `5511${String(900000000 + seq * 13 + Math.floor(Math.random() * 1000))}`;
+  const digits = `5511${String(900000000 + seq * 1000 + Math.floor(Math.random() * 1000))}`;
   return prisma.contact.create({
     data: {
       tenantId: w.tenant.id,

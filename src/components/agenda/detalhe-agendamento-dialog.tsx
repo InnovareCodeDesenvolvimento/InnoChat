@@ -42,6 +42,8 @@ type Props = {
   onUpdated: (appointment: unknown) => void;
   /** Assinatura suspensa/cancelada (refinamento de UX — o servidor já bloqueia). */
   disabled?: boolean;
+  /** `Tenant.notifyClientOnStaffChanges`: com ele ligado e o cliente com telefone, mostra que ele será avisado no WhatsApp. */
+  notifyClient?: boolean;
 };
 
 function toDateTimeLocal(iso: string): string {
@@ -57,6 +59,7 @@ export function DetalheAgendamentoDialog({
   onOpenChange,
   onUpdated,
   disabled = false,
+  notifyClient = false,
 }: Props) {
   const [mode, setMode] = useState<"view" | "reschedule" | "cancel">("view");
   const [newStartsAt, setNewStartsAt] = useState("");
@@ -224,6 +227,11 @@ export function DetalheAgendamentoDialog({
                 onChange={(e) => setNewStartsAt(e.target.value)}
                 required
               />
+              {notifyClient && appointment.contact.phoneE164 ? (
+                <p className="text-xs text-text-secondary" data-testid="notify-client-hint">
+                  O cliente será avisado da mudança no WhatsApp
+                </p>
+              ) : null}
               <div className="flex justify-end gap-2">
                 <Button type="button" variant="secondary" icon={ArrowLeft} onClick={() => setMode("view")}>
                   Voltar
@@ -240,6 +248,11 @@ export function DetalheAgendamentoDialog({
               <Label htmlFor="cancel-note">Motivo do cancelamento (opcional)</Label>
               <Input id="cancel-note" value={cancelNote} onChange={(e) => setCancelNote(e.target.value)} />
               <p className="text-sm text-text-secondary">Tem certeza que quer cancelar este agendamento?</p>
+              {notifyClient && appointment.contact.phoneE164 ? (
+                <p className="text-xs text-text-secondary" data-testid="notify-client-hint">
+                  O cliente será avisado do cancelamento no WhatsApp
+                </p>
+              ) : null}
               <div className="flex justify-end gap-2">
                 <Button type="button" variant="secondary" icon={ArrowLeft} onClick={() => setMode("view")}>
                   Voltar

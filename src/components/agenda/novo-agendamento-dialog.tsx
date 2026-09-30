@@ -46,6 +46,8 @@ type Props = {
    * de nome/telefone e manda `contactId` em vez de `contactName`/`contactPhoneE164`.
    */
   presetContact?: { id: string; name: string; phone: string | null } | null;
+  /** `Tenant.notifyClientOnStaffChanges`: com ele ligado e o cliente com telefone, mostra o aviso de que haverá mensagem no WhatsApp. */
+  notifyClient?: boolean;
 };
 
 function todayISO(): string {
@@ -70,6 +72,7 @@ export function NovoAgendamentoDialog({
   timezone,
   disabled = false,
   presetContact = null,
+  notifyClient = false,
 }: Props) {
   const announceClientNotification = useClientNotificationToast();
   const activeServices = services.filter((s) => s.active);
@@ -291,6 +294,12 @@ export function NovoAgendamentoDialog({
             </>
           )}
           </fieldset>
+
+          {notifyClient && (presetContact ? !!presetContact.phone : contactPhone.trim() !== "") ? (
+            <p className="text-xs text-text-secondary" data-testid="notify-client-hint">
+              O cliente receberá a confirmação no WhatsApp
+            </p>
+          ) : null}
 
           <DialogFooter>
             <Button icon={X} type="button" variant="secondary" onClick={() => onOpenChange(false)}>

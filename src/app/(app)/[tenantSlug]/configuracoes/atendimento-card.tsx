@@ -274,9 +274,9 @@ export function AtendimentoCard({
           <div className="flex items-start gap-2.5 rounded-card border border-border bg-bg p-3 text-sm text-text-secondary">
             <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
             <p>
-              Se a sua equipe responder o cliente, o bot fica em silêncio por{" "}
-              <strong className="font-semibold text-text">{formatMinutes(saved.humanPauseMin)}</strong> a cada resposta. O cliente
-              pode digitar <strong className="font-semibold text-text">menu</strong> a qualquer momento para voltar.
+              Se a sua equipe responder o cliente, pelo painel ou pelo celular, o bot fica em silêncio pelo mesmo tempo da
+              retomada acima (<strong className="font-semibold text-text">{formatMinutes(saved.handoffResumeMinutes)}</strong>) a cada
+              resposta. O cliente pode digitar <strong className="font-semibold text-text">menu</strong> a qualquer momento para voltar.
             </p>
           </div>
 

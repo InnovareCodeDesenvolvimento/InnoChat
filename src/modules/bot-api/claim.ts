@@ -120,6 +120,15 @@ export function appendRecentOutbound(recentOutbound: unknown, texts: string[], n
 }
 
 /**
+ * Tempo de pausa quando a equipe responde pelo celular. v2: o MESMO tempo editável da empresa
+ * (`handoffResumeMinutes`), igual ao da resposta pelo painel. v1 (sem o header de fluxo) continua em
+ * `humanPauseMin`: o claim v1 é legado congelado e não muda de comportamento.
+ */
+function humanPauseMinutesFor(flow: 1 | 2, tenant: { humanPauseMin: number; handoffResumeMinutes: number }): number {
+  return flow === 2 ? tenant.handoffResumeMinutes : tenant.humanPauseMin;
+}
+
+/**
  * `POST /messages/claim` (docs/arquitetura.md §6.2): normaliza o payload da Evolution,
  * deduplica, resolve o remetente (inclusive `@lid`), adquire a trava (lease de 20s) da sessão,
  * avalia expiração/modo humano/eco/assinatura, e devolve tudo que o n8n precisa para decidir o
@@ -267,8 +276,8 @@ export async function claimMessage(ctx: InternalApiContext, rawPayload: unknown,
   // Regra 3: a equipe respondeu pelo celular (fromMe que não é eco do bot) com pedido aberto →
   // estende a pausa da SESSÃO (não do contato) e marca a 1ª resposta. Vem ANTES do teste de HUMAN_MODE.
   if (normalized.fromMe && openHandoff && !isRecentOutboundEcho(locked.recentOutbound, normalized.content, now)) {
-    const pause = await prisma.tenant.findUniqueOrThrow({ where: { id: ctx.tenantId }, select: { humanPauseMin: true } });
-    const extendedUntil = new Date(now.getTime() + pause.humanPauseMin * 60_000);
+    const pause = await prisma.tenant.findUniqueOrThrow({ where: { id: ctx.tenantId }, select: { humanPauseMin: true, handoffResumeMinutes: true } });
+    const extendedUntil = new Date(now.getTime() + humanPauseMinutesFor(flow, pause) * 60_000);
     try {
       await prisma.$transaction(async (tx) => {
         await tx.chatSession.update({ where: { id: session.id }, data: { state: "HUMAN", humanUntil: extendedUntil, lockToken: null, lockedUntil: null } });
@@ -304,7 +313,7 @@ export async function claimMessage(ctx: InternalApiContext, rawPayload: unknown,
     }
 
     const tenant = await prisma.tenant.findUniqueOrThrow({ where: { id: ctx.tenantId } });
-    const humanUntil = new Date(now.getTime() + tenant.humanPauseMin * 60_000);
+    const humanUntil = new Date(now.getTime() + humanPauseMinutesFor(flow, tenant) * 60_000);
     try {
       await prisma.$transaction([
         prisma.chatSession.update({

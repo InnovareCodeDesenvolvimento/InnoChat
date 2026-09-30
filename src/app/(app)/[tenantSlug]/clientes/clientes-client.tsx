@@ -73,9 +73,11 @@ export function ClientesClient({
   initialLoadError,
   professionals,
   services,
+  notifyClient = false,
 }: {
   tenantSlug: string;
   timezone: string;
+  notifyClient?: boolean;
   isOwner: boolean;
   writeBlocked: boolean;
   initialContacts: ContactListItem[];
@@ -413,6 +415,7 @@ export function ClientesClient({
         services={services}
         onOpenChange={(open) => !open && setDetailId(null)}
         onChanged={load}
+        notifyClient={notifyClient}
       />
     </div>
   );

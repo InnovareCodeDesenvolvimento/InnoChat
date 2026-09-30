@@ -351,7 +351,7 @@ topo). "voltar" desempilha e reentra no anterior, **buscando as opções de novo
    `menu`/`0`, que encerram o pedido (`CLIENT_MENU`) e voltam o bot na mesma mensagem com
    `BOT_RESUMED` + menu.
 5. **A equipe respondeu** (mensagem `fromMe` que não é eco do bot): o painel marca `answeredAt` e
-   **estende** a pausa para `agora + humanPauseMin` (padrão 720) a cada resposta da equipe. O
+   **estende** a pausa para `agora + handoffResumeMinutes` (padrão 120, o mesmo tempo da resposta pelo painel) a cada resposta da equipe. O
    "menu" do cliente continua valendo.
 6. **Ninguém respondeu:** vencido o `humanUntil`, a próxima mensagem do cliente encerra o pedido
    (`TIMEOUT`) e o bot responde com `BOT_RESUMED` + menu. Não há mensagem ativa quando o prazo
@@ -366,11 +366,11 @@ tenant, menos as `ScheduleException` da empresa (`isOpenNow` / `nextOpening`, `s
 
 **Diferença para o dono assumindo por conta própria:** se a empresa responde pelo celular sem o
 cliente ter pedido, o comportamento da v1 continua: `HUMAN_TOOK_OVER`, `Contact.botPausedUntil`
-por `humanPauseMin`, e "menu" **não** é honrado (o cliente nunca recebeu esse aviso).
+por `handoffResumeMinutes` (no claim v1, sem o header de fluxo: `humanPauseMin`), e "menu" **não** é honrado (o cliente nunca recebeu esse aviso).
 
 **Fluxo v1 durante a transição:** `PUT /sessions` com `handoff: true` **sem** `handoffReason`
 cria `HandoffRequest` com `reason = LEGACY_FLOW` (o sino passa a funcionar já no deploy do painel),
-mas mantém a pausa de `humanPauseMin` e não honra "menu".
+mas mantém a pausa legada de `humanPauseMin` e não honra "menu".
 
 ### 3.11 Falha técnica (corrige D13/BUG-04)
 
@@ -1051,7 +1051,7 @@ os marcados com (E2E), no navegador. O id do cenário no simulador é o próprio
 **Atendente, limite e grade (decisões do dono)**
 - **CA-32** Em `HUMAN` por pedido do cliente, "menu" encerra o pedido (`CLIENT_MENU`) e responde `BOT_RESUMED` + menu na mesma mensagem.
 - **CA-33** Sem resposta da equipe, após `handoffResumeMinutes` a próxima mensagem encerra o pedido (`TIMEOUT`) e o bot responde.
-- **CA-34** `fromMe` da equipe durante o pedido marca `answeredAt` e estende `humanUntil` para `humanPauseMin`; "menu" do cliente continua funcionando. `fromMe` sem pedido do cliente mantém o comportamento v1 (menu não honrado).
+- **CA-34** `fromMe` da equipe durante o pedido marca `answeredAt` e estende `humanUntil` para `handoffResumeMinutes`; "menu" do cliente continua funcionando. `fromMe` sem pedido do cliente mantém o comportamento v1 (menu não honrado).
 - **CA-35** Cliente com 3 agendamentos futuros escolhe "Agendar" → `LIMIT_REACHED` com os 3 + atendente. `POST /appointments` direto com 3 existentes → 422 `LIMIT_REACHED`. Com `maxFutureAppointmentsPerContact=0`, sem limite. Remarcar não é barrado.
 - **CA-36** Grade 30: depois de uma Escova (45 min) às 09:00, o próximo horário é 10:00; nenhum horário fora de :00/:30. Grade 15: :00/:15/:30/:45.
 - **CA-37** Serviço sem profissional com expediente e profissional sem expediente não aparecem; empresa sem serviço agendável → `NO_SERVICES` + atendente.

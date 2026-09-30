@@ -12,7 +12,7 @@ export default async function AgendamentosPage({
 }) {
   const { tenantSlug } = await params;
 
-  const tenant = await getPrisma().tenant.findUnique({ where: { slug: tenantSlug }, select: { timezone: true } });
+  const tenant = await getPrisma().tenant.findUnique({ where: { slug: tenantSlug }, select: { timezone: true, notifyClientOnStaffChanges: true } });
   if (!tenant) {
     notFound();
   }
@@ -29,6 +29,7 @@ export default async function AgendamentosPage({
     <AgendamentosClient
       tenantSlug={tenantSlug}
       timezone={tenant.timezone}
+      notifyClient={tenant.notifyClientOnStaffChanges}
       professionals={professionals}
       services={services}
     />

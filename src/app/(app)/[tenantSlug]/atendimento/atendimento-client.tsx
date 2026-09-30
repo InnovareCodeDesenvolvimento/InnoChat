@@ -31,9 +31,11 @@ export function AtendimentoClient({
   writeBlocked,
   professionals,
   services,
+  notifyClient = false,
 }: {
   tenantSlug: string;
   timezone: string;
+  notifyClient?: boolean;
   writeBlocked: boolean;
   professionals: AgendaProfessional[];
   services: AgendaService[];
@@ -240,6 +242,7 @@ export function AtendimentoClient({
             disabled={writeBlocked}
             presetContact={{ id: contact.id, name: contact.name, phone: contactPhone }}
             onCreated={() => void loadQueue(true)}
+            notifyClient={notifyClient}
           />
           <CloseAttendanceDialog
             tenantSlug={tenantSlug}

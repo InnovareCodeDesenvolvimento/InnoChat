@@ -49,9 +49,11 @@ export function AgendamentosClient({
   timezone,
   professionals,
   services,
+  notifyClient = false,
 }: {
   tenantSlug: string;
   timezone: string;
+  notifyClient?: boolean;
   professionals: ProfessionalRow[];
   services: ServiceRow[];
 }) {
@@ -242,6 +244,7 @@ export function AgendamentosClient({
         open={novoOpen}
         onOpenChange={setNovoOpen}
         onCreated={() => load()}
+        notifyClient={notifyClient}
       />
       <DetalheAgendamentoDialog
         tenantSlug={tenantSlug}
@@ -249,6 +252,7 @@ export function AgendamentosClient({
         timezone={timezone}
         onOpenChange={(open) => !open && setDetail(null)}
         onUpdated={() => load()}
+        notifyClient={notifyClient}
       />
     </div>
   );

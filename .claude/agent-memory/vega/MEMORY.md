@@ -48,3 +48,4 @@
 - [Ajustes finais bot v2](botv2_final_adjustments.md) — flow:undefined vira default no helper, now() sem fuso, ReDoS do normalize, redação de segredos, reseed.
 - [Atendimento pelo painel + aviso da equipe](attendance_panel_and_staff_notify.md) — helper único de envio, PANEL_RESUME, fila por humanUntil, aviso só nas actions.
 - [Endurecimento do atendimento: dedup, tetos, corrida](attendance_hardening_dedup_caps.md) — clientMessageId, 10/h contato e 120/h empresa, sanitizar antes do envio.
+- [Pausa unificada em handoffResumeMinutes (v2/painel); v1 fica em humanPauseMin](pause_unified_handoff_resume.md) — decisão 2026-09-30, gate por flow no claim.

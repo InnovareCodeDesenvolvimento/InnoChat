@@ -15,7 +15,7 @@ export default async function ClientesPage({
 }) {
   const { tenantSlug } = await params;
 
-  const tenant = await getPrisma().tenant.findUnique({ where: { slug: tenantSlug }, select: { id: true, timezone: true } });
+  const tenant = await getPrisma().tenant.findUnique({ where: { slug: tenantSlug }, select: { id: true, timezone: true, notifyClientOnStaffChanges: true } });
   if (!tenant) {
     notFound();
   }
@@ -44,6 +44,7 @@ export default async function ClientesPage({
     <ClientesClient
       tenantSlug={tenantSlug}
       timezone={tenant.timezone}
+      notifyClient={tenant.notifyClientOnStaffChanges}
       isOwner={membership?.role === "OWNER"}
       writeBlocked={writeBlocked}
       initialContacts={initialContacts}

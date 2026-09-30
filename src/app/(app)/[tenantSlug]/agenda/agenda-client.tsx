@@ -149,9 +149,11 @@ export function AgendaClient({
   professionals,
   services,
   writeBlocked = false,
+  notifyClient = false,
 }: {
   tenantSlug: string;
   timezone: string;
+  notifyClient?: boolean;
   professionals: ProfessionalRow[];
   services: ServiceRow[];
   writeBlocked?: boolean;
@@ -456,6 +458,7 @@ export function AgendaClient({
         prefill={novoPrefill}
         onCreated={() => load()}
         disabled={writeBlocked}
+        notifyClient={notifyClient}
       />
       <DetalheAgendamentoDialog
         tenantSlug={tenantSlug}
@@ -464,6 +467,7 @@ export function AgendaClient({
         onOpenChange={(open) => !open && setDetail(null)}
         onUpdated={() => load()}
         disabled={writeBlocked}
+        notifyClient={notifyClient}
       />
     </div>
   );

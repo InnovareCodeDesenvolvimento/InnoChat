@@ -350,7 +350,7 @@ exceto quando indicado):
 2. `state=HUMAN`, `humanUntil <= agora`, pedido aberto → encerra (`TIMEOUT`) e processa como
    sessão nova com `resumedFromHuman="TIMEOUT"`.
 3. `fromMe` que não é eco, com pedido aberto → `answeredAt` (se nulo), `humanUntil = agora +
-   humanPauseMin`, `ignore/HUMAN_TOOK_OVER`. **Não** grava `Contact.botPausedUntil`. Precisa ser
+   handoffResumeMinutes` (v2; v1 segue em `humanPauseMin`), `ignore/HUMAN_TOOK_OVER`. **Não** grava `Contact.botPausedUntil`. Precisa ser
    avaliado **antes** do teste de `HUMAN_MODE` (hoje o `fromMe` em `HUMAN` cai em `HUMAN_MODE`).
 4. `fromMe` sem pedido aberto → comportamento v1 inalterado.
 5. Expirou (`sessionTimeoutMin`) e a última atividade foi há ≤ 24 h → `session.previous` com o

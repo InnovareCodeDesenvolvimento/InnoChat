@@ -247,9 +247,9 @@ describe("ciclo do atendente (§3.10)", () => {
     expect(ended.endReason).toBe("TIMEOUT");
   });
 
-  it("pedir → equipe responde (fromMe) → estende por humanPauseMin, marca answeredAt e não pausa o contato; 'menu' ainda vale", async () => {
+  it("pedir → equipe responde (fromMe) → estende por handoffResumeMinutes (não humanPauseMin), marca answeredAt e não pausa o contato; 'menu' ainda vale", async () => {
     const w = await world("answer");
-    await prisma.tenant.update({ where: { id: w.tenant.id }, data: { humanPauseMin: 600 } });
+    await prisma.tenant.update({ where: { id: w.tenant.id }, data: { humanPauseMin: 5000, handoffResumeMinutes: 600 } });
     const sessionId = await requestHuman(w, "CLIENT_REQUEST");
 
     const first = await claimMessage(w.ctx, payload({ instance: w.ctx.instance.instanceName, jid: w.jid, text: "Já vou te atender", fromMe: true }), { flow: 2 });
@@ -259,6 +259,7 @@ describe("ciclo do atendente (§3.10)", () => {
     expect(session.lockToken).toBeNull();
     const minutes = Math.round((session.humanUntil!.getTime() - Date.now()) / MIN);
     expect(minutes).toBeGreaterThanOrEqual(599);
+    expect(minutes).toBeLessThanOrEqual(601);
     const req = await prisma.handoffRequest.findFirstOrThrow({ where: { chatSessionId: sessionId } });
     expect(req.answeredAt).not.toBeNull();
     const contact = await prisma.contact.findFirstOrThrow({ where: { tenantId: w.tenant.id } });
@@ -284,14 +285,18 @@ describe("ciclo do atendente (§3.10)", () => {
     expect(before.answeredAt).toBeNull();
   });
 
-  it("fromMe SEM pedido aberto: comportamento v1 (HUMAN_TOOK_OVER + Contact.botPausedUntil)", async () => {
+  it("fromMe SEM pedido aberto: comportamento v1 (HUMAN_TOOK_OVER + Contact.botPausedUntil), pausa por handoffResumeMinutes", async () => {
     const w = await world("v1fromme");
+    await prisma.tenant.update({ where: { id: w.tenant.id }, data: { humanPauseMin: 5000, handoffResumeMinutes: 90 } });
     const first = expectProcess(await say(w, "oi"));
     await prisma.chatSession.update({ where: { id: first.session.id }, data: { lockToken: null, lockedUntil: null } });
     const r = await claimMessage(w.ctx, payload({ instance: w.ctx.instance.instanceName, jid: w.jid, text: "Oi, aqui é a Ana", fromMe: true }), { flow: 2 });
     expect(r).toEqual({ action: "ignore", reason: "HUMAN_TOOK_OVER" });
     const contact = await prisma.contact.findFirstOrThrow({ where: { tenantId: w.tenant.id } });
     expect(contact.botPausedUntil).not.toBeNull();
+    const pausedMin = Math.round((contact.botPausedUntil!.getTime() - Date.now()) / MIN);
+    expect(pausedMin).toBeGreaterThanOrEqual(89);
+    expect(pausedMin).toBeLessThanOrEqual(91);
     expect(await prisma.handoffRequest.count({ where: { tenantId: w.tenant.id } })).toBe(0);
   });
 

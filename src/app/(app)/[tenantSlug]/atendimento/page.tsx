@@ -9,7 +9,7 @@ import type { ServiceRow } from "../servicos/servicos-client";
 export default async function AtendimentoPage({ params }: { params: Promise<{ tenantSlug: string }> }) {
   const { tenantSlug } = await params;
 
-  const tenant = await getPrisma().tenant.findUnique({ where: { slug: tenantSlug }, select: { id: true, timezone: true } });
+  const tenant = await getPrisma().tenant.findUnique({ where: { slug: tenantSlug }, select: { id: true, timezone: true, notifyClientOnStaffChanges: true } });
   if (!tenant) notFound();
 
   // Serviços e profissionais só alimentam o diálogo "Agendar para este cliente".
@@ -23,6 +23,7 @@ export default async function AtendimentoPage({ params }: { params: Promise<{ te
     <AtendimentoClient
       tenantSlug={tenantSlug}
       timezone={tenant.timezone}
+      notifyClient={tenant.notifyClientOnStaffChanges}
       writeBlocked={writeBlocked}
       professionals={professionalsResult.ok ? (professionalsResult.data as ProfessionalRow[]) : []}
       services={servicesResult.ok ? (servicesResult.data as ServiceRow[]) : []}

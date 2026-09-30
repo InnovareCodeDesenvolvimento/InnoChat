@@ -132,7 +132,7 @@ existe quando o eco `fromMe` chegar (§2, regra 7).
    - Sessão em `HUMAN` (até `humanUntil`) ou `Contact.botPausedUntil` no futuro → `ignore`.
    - `fromMe` cujo texto bate com o hash de uma saída registrada no `save` dos últimos 2 min →
      `ignore/FROM_ME_ECHO`.
-   - Outro `fromMe` (o dono respondendo pelo celular) → pausa o contato por `humanPauseMin` e
+   - Outro `fromMe` (o dono respondendo pelo celular) → pausa o contato por `handoffResumeMinutes` (v2; o claim v1, sem o header de fluxo, segue em `humanPauseMin`) e
      devolve `ignore/HUMAN_TOOK_OVER`.
    - A emissão de `fromMe` pela Evolution **precisa ser validada na Fase 0**.
 8. **Assinatura.** O `claim` devolve `ignore/TENANT_SUSPENDED` se a assinatura não dá direito ao

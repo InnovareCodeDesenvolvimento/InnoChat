@@ -84,6 +84,8 @@ type Props = {
   onOpenChange: (open: boolean) => void;
   /** Algo mudou (agendamento criado, bot pausado, editado, excluído…) — recarrega a lista pai. */
   onChanged: () => void;
+  /** `Tenant.notifyClientOnStaffChanges` — repassado ao diálogo "Agendar para este cliente". */
+  notifyClient?: boolean;
 };
 
 /**
@@ -94,6 +96,7 @@ type Props = {
 export function ContactDetailDialog({
   tenantSlug,
   timezone,
+  notifyClient = false,
   isOwner,
   writeBlocked,
   contactId,
@@ -457,6 +460,7 @@ export function ContactDetailDialog({
           onOpenChange={setScheduleOpen}
           disabled={writeBlocked}
           presetContact={{ id: detail.id, name: detail.displayName, phone: detail.phoneE164 }}
+          notifyClient={notifyClient}
           onCreated={() => {
             load();
             onChanged();
