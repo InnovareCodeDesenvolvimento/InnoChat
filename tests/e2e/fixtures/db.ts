@@ -23,3 +23,19 @@ export async function ensureBotPlan() {
     data: { code: "e2e-plan", name: "Plano E2E", priceCents: 0, maxWhatsappNumbers: 3, maxProfessionals: null, active: false, sortOrder: 999 },
   });
 }
+
+/**
+ * Fixa a versão do fluxo do bot "publicada" (`PlatformSettings.n8nBotFlowVersion`), que decide se a
+ * tela "Mensagens do bot" mostra o catálogo v1 ou v2. Devolve o valor anterior para o teste
+ * restaurar no `afterAll`/`finally` (a linha única de `PlatformSettings` é compartilhada com as
+ * outras specs de admin).
+ */
+export async function setPublishedFlowVersion(version: string | null): Promise<string | null> {
+  const before = await prisma.platformSettings.findUnique({ where: { id: 1 }, select: { n8nBotFlowVersion: true } });
+  await prisma.platformSettings.upsert({
+    where: { id: 1 },
+    update: { n8nBotFlowVersion: version },
+    create: { id: 1, n8nBotFlowVersion: version },
+  });
+  return before?.n8nBotFlowVersion ?? null;
+}

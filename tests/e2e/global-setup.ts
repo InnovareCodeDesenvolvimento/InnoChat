@@ -26,6 +26,15 @@ export default async function globalSetup() {
   const generated = generateRunFixtures();
   const plan = await ensureBotPlan();
 
+  // Banco recém-semeado: o dono de seed ainda não concluiu o tour do Inno, que abre sozinho 700 ms depois
+  // da página e cobre a tela inteira (`data-tour-overlay`), interceptando qualquer clique. No banco de dev
+  // de longa data alguém já o tinha fechado; num banco novo (CI, banco dedicado) faltava e specs
+  // aleatórias falhavam por "overlay intercepta cliques". As fixtures abaixo já nascem com o tour concluído.
+  await prisma.user.updateMany({
+    where: { email: SEED_OWNER_EMAIL, onboardingTourCompletedAt: null },
+    data: { onboardingTourCompletedAt: new Date() },
+  });
+
   // Empresa B — isolada, com seu próprio OWNER.
   const tenantB = await prisma.tenant.create({
     data: {

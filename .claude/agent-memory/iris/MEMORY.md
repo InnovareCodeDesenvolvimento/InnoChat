@@ -16,3 +16,4 @@
 - [Achados da rodada 2026-09-29 (notificações + espera)](bugs_found_log_round4.md) — tour intercepta clique, loading.tsx => 200 no notFound, sync n8n exige nó Webhook, drag flaky por autoscroll, overflow 360px.
 - [Auditoria do bot 2026-09-30](bot_audit_2026_09_30.md) — simulador scripts/bot-sim, 17 bugs, armadilhas de ambiente
 - [Simulador v2: I-0/I-1 (2026-09-30)](bot_v2_simulador_i0_i1.md) — baseline 37/24, cenários CA/API por tarefa, armadilhas de edição e de worktree
+- [I-2/I-3 do bot v2 (2026-09-30)](bot_v2_i2_i3_veredito.md) — receita E2E contra build de produção (banco/porta próprios), specs novas, armadilhas (tour, PNG versionado, toast)

@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { SEED_TENANT_SLUG, SEED_OWNER_EMAIL, E2E_RUN_PREFIX } from "./fixtures/test-data";
 import { OWNER_STORAGE_STATE, STAFF_STORAGE_STATE } from "./fixtures/storage-state";
-import { prisma } from "./fixtures/db";
+import { prisma, setPublishedFlowVersion } from "./fixtures/db";
 
 /**
  * Fase 2 (UI): Minha conta + nome, lembrete de véspera, aba Conversa na ficha do cliente e sino do
@@ -113,12 +113,26 @@ test.describe("Lembrete automático (Configurações)", () => {
       await expect(page.getByTestId("lembrete-card").getByLabel("Enviar com quantas horas de antecedência", { exact: false })).toBeDisabled();
     });
 
-    test("Mensagens do bot tem a seção Lembretes com as variáveis", async ({ page }) => {
-      await page.goto(`/${SEED_TENANT_SLUG}/mensagens-bot`);
-      const section = page.locator("#lembretes");
-      await expect(section.getByRole("heading", { name: "Lembretes" })).toBeVisible();
-      for (const v of ["{nome}", "{servico}", "{profissional}", "{data}", "{hora}", "{quando}"]) {
-        await expect(section.getByText(v, { exact: true })).toBeVisible();
+    test("Mensagens do bot: o lembrete é um item da aba \"Meus agendamentos\" e as variáveis ficam no editor", async ({ page }) => {
+      // Catálogo v1 (fluxo ainda não publicado): a lista tem o item #lembretes; as variáveis só aparecem
+      // dentro do diálogo de edição (não mais numa seção própria da página).
+      const previous = await setPublishedFlowVersion(null);
+      try {
+        await page.goto(`/${SEED_TENANT_SLUG}/mensagens-bot#lembretes`);
+        const item = page.locator("#lembretes");
+        await expect(item).toBeVisible();
+        await expect(page.getByRole("tab", { name: /^Meus agendamentos/ })).toHaveAttribute("aria-selected", "true");
+        await expect(item.getByRole("heading", { name: /Lembrete/ })).toBeVisible();
+        // Fora do diálogo, a página não lista as variáveis.
+        await expect(item.getByText("{quando}", { exact: true })).toHaveCount(0);
+
+        await item.getByRole("button", { name: /^Editar / }).click();
+        const chips = page.getByRole("dialog").getByRole("group", { name: "Variáveis desta mensagem" });
+        for (const v of ["{nome}", "{servico}", "{profissional}", "{data}", "{hora}", "{quando}"]) {
+          await expect(chips.getByRole("button", { name: v, exact: true })).toBeVisible();
+        }
+      } finally {
+        await setPublishedFlowVersion(previous);
       }
     });
   });
