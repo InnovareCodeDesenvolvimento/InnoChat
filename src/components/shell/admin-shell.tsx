@@ -43,7 +43,6 @@ export function AdminShell({ userEmail, userName = null, children }: AdminShellP
         </div>
         <div className="mt-4 border-t border-white/10 pt-4">
           <UserBlock userEmail={userEmail} userName={userName} accountHref="/admin/minha-conta" />
-          <InnovareCodeBadge className="mt-3" />
         </div>
       </aside>
 
@@ -53,12 +52,7 @@ export function AdminShell({ userEmail, userName = null, children }: AdminShellP
             <MobileNav
               variant="admin"
               brand={<AdminBrand />}
-              footer={
-                <>
-                  <UserBlock userEmail={userEmail} userName={userName} accountHref="/admin/minha-conta" />
-                  <InnovareCodeBadge className="mt-3" />
-                </>
-              }
+              footer={<UserBlock userEmail={userEmail} userName={userName} accountHref="/admin/minha-conta" />}
             />
             <span className="truncate font-display text-sm font-bold text-text lg:hidden">Plataforma</span>
             <AdminSectionLabel />
@@ -73,8 +67,12 @@ export function AdminShell({ userEmail, userName = null, children }: AdminShellP
           </div>
         </header>
 
-        <main className="flex-1 p-4 pb-20 sm:p-6 sm:pb-20">
+        <main className="flex-1 p-4 sm:p-6">
           <PageTransition>{children}</PageTransition>
+          {/* Selo no rodapé, à direita (decisão do dono): fim da página, nunca por cima de botão. */}
+          <footer className="mt-10 flex justify-end">
+            <InnovareCodeBadge className="w-auto" />
+          </footer>
         </main>
       </div>
     </div>

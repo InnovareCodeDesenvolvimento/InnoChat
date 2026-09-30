@@ -2,12 +2,10 @@ import { cn } from "@/components/lib/cn";
 import { APP_VERSION, BUILD_DATE, DESENVOLVEDORA, DESENVOLVEDORA_URL, VERSAO_EXIBIDA } from "@/lib/app-info";
 
 /**
- * Selo da desenvolvedora, no rodapé da barra lateral dos painéis (tenant e admin) e da gaveta do celular.
- *
- * Antes era fixo no canto inferior direito da tela e cobria botões de ação (Salvar de Configurações,
- * "Avançar" do onboarding, o ⓘ do Início) — o dono reclamou. Na barra lateral fica sempre visível sem
- * sobrepor nada. Discreto: a SUPERFÍCIE fica translúcida em repouso e opaca no hover; o conteúdo
- * (texto/versão) nunca perde opacidade, para manter contraste AA. A área clicável tem no mínimo 44px.
+ * Selo da desenvolvedora, no rodapé dos painéis (tenant e admin), alinhado à DIREITA — decisão do dono
+ * (2026-09-30). Fica no fim da página, dentro do fluxo: já foi fixo no canto da tela e cobria botões
+ * de ação (Salvar, Avançar, o ⓘ do Início). Discreto: a SUPERFÍCIE fica translúcida em repouso e opaca
+ * no hover; o conteúdo (texto/versão) nunca perde opacidade, para manter contraste AA. Alvo de 44px.
  */
 export function InnovareCodeBadge({ className }: { className?: string }) {
   return (

@@ -70,9 +70,11 @@ describe("InnovareCodeBadge", () => {
     expect(html).not.toMatch(/bg-white|#[0-9a-fA-F]{3,6}\b/);
   });
 
-  it("os painéis põem o selo na barra lateral e na gaveta do celular, nunca solto na tela", () => {
+  it("os painéis põem o selo no rodapé, à direita, uma vez só", () => {
     for (const arq of ["src/components/shell/panel-shell.tsx", "src/components/shell/admin-shell.tsx"]) {
-      expect(fonte(arq).match(/<InnovareCodeBadge className="mt-3" \/>/g)?.length).toBe(2);
+      const src = fonte(arq);
+      expect(src.match(/<InnovareCodeBadge/g)?.length).toBe(1);
+      expect(src).toMatch(/<footer className="[^"]*justify-end[^"]*">\s*<InnovareCodeBadge/);
     }
   });
 });

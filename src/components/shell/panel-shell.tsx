@@ -176,7 +176,6 @@ export function PanelShell({
         <div className="mt-4 border-t border-white/10 pt-4">
           <UserBlock userEmail={userEmail} userName={userName} accountHref={`/${tenantSlug}/minha-conta`} />
           <TourReplayButton />
-          <InnovareCodeBadge className="mt-3" />
         </div>
       </aside>
 
@@ -193,7 +192,6 @@ export function PanelShell({
                 <>
                   <UserBlock userEmail={userEmail} userName={userName} accountHref={`/${tenantSlug}/minha-conta`} />
                   <TourReplayButton />
-                  <InnovareCodeBadge className="mt-3" />
                 </>
               }
             />
@@ -211,8 +209,12 @@ export function PanelShell({
         <SubscriptionBanner tenantSlug={tenantSlug} status={subscriptionStatus} trialHoursLeft={trialHoursLeft} />
         {!emailVerified ? <EmailVerificationBanner /> : null}
 
-        <main className="flex-1 p-4 pb-20 sm:p-6 sm:pb-20">
+        <main className="flex-1 p-4 sm:p-6">
           <PageTransition>{children}</PageTransition>
+          {/* Selo no rodapé, à direita (decisão do dono): fim da página, nunca por cima de botão. */}
+          <footer className="mt-10 flex justify-end">
+            <InnovareCodeBadge className="w-auto" />
+          </footer>
         </main>
       </div>
     </div>
