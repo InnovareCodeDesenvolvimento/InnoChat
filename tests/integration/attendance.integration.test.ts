@@ -20,7 +20,12 @@ vi.mock("@/lib/auth/guards", () => ({
 }));
 
 type Sent = { instanceName: string; number: string; text: string };
-const evo: { sent: Sent[]; fail: boolean | Error; available: boolean } = { sent: [], fail: false, available: true };
+const evo: { sent: Sent[]; fail: boolean | Error; available: boolean; beforeSend: (() => Promise<void>) | null } = {
+  sent: [],
+  fail: false,
+  available: true,
+  beforeSend: null,
+};
 vi.mock("@/modules/whatsapp/evolution-client", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/modules/whatsapp/evolution-client")>();
   return {
@@ -29,6 +34,11 @@ vi.mock("@/modules/whatsapp/evolution-client", async (importOriginal) => {
       if (!evo.available) throw new Error("sem evolution");
       return {
         sendText: async (instanceName: string, number: string, text: string) => {
+          if (evo.beforeSend) {
+            const hook = evo.beforeSend;
+            evo.beforeSend = null; // dispara uma vez (o encerrar do teste também envia)
+            await hook();
+          }
           if (evo.fail) throw evo.fail instanceof Error ? evo.fail : new original.EvolutionApiError("fora do ar", 503);
           evo.sent.push({ instanceName, number, text });
           return { messageId: `MSG-${randomUUID()}` };
@@ -38,7 +48,9 @@ vi.mock("@/modules/whatsapp/evolution-client", async (importOriginal) => {
   };
 });
 
+import { __resetIdempotencyForTests } from "@/lib/idempotency";
 import { __resetRateLimitsForTests } from "@/lib/rate-limit";
+import { OUTBOUND_LIMIT_PER_CONTACT_PER_HOUR, OUTBOUND_LIMIT_PER_TENANT_PER_HOUR, sendTextToContact } from "@/modules/attendance/outbound";
 import {
   closeAttendanceAction,
   getAttendanceConversationAction,
@@ -158,8 +170,10 @@ beforeEach(() => {
   evo.sent = [];
   evo.fail = false;
   evo.available = true;
+  evo.beforeSend = null;
   session.ctx = null;
   __resetRateLimitsForTests();
+  __resetIdempotencyForTests();
 });
 
 afterAll(async () => {
@@ -312,8 +326,8 @@ describe("responder pelo painel", () => {
       return r.ok ? "ok" : r.error.code;
     };
     expect(await code("   ")).toBe("TEXT_EMPTY");
-    expect(await code("a".repeat(4097))).toBe("TEXT_TOO_LONG");
-    expect(await code("a".repeat(4096))).toBe("ok");
+    expect(await code("a".repeat(4001))).toBe("TEXT_TOO_LONG");
+    expect(await code("a".repeat(4000))).toBe("ok");
     const noPhone = await makeContact(w, { noPhone: true });
     expect(await code("oi", noPhone.id)).toBe("CONTACT_HAS_NO_PHONE");
     evo.fail = true;
@@ -343,12 +357,14 @@ describe("responder pelo painel", () => {
 
   it("limite de envio: 20 por minuto por usuário; a 21ª volta RATE_LIMITED", async () => {
     const w = await makeWorld("rate");
-    const contact = await makeContact(w);
     as(w);
+    // Um contato por mensagem: o teto por contato (10/h) é outro limite, testado no bloco de endurecimento.
     for (let i = 0; i < 20; i += 1) {
+      const contact = await makeContact(w);
       const r = await sendAgentMessageAction({ tenantSlug: w.tenant.slug, contactId: contact.id, text: `msg ${i}` });
       expect(r.ok).toBe(true);
     }
+    const contact = await makeContact(w);
     const blocked = await sendAgentMessageAction({ tenantSlug: w.tenant.slug, contactId: contact.id, text: "msg 21" });
     expect(blocked).toMatchObject({ ok: false, error: { code: "RATE_LIMITED" } });
     expect(evo.sent).toHaveLength(20);
@@ -576,5 +592,213 @@ describe("configurações: notifyClientOnStaffChanges", () => {
     as(staff);
     expect((await getBotRulesAction(staff.tenant.slug)).ok).toBe(true);
     expect(await updateBotRulesAction(staff.tenant.slug, { ...base, notifyClientOnStaffChanges: false })).toMatchObject({ ok: false, error: { code: "FORBIDDEN" } });
+  });
+});
+
+describe("endurecimento pós-revisão (Órion)", () => {
+  const send = (w: World, contactId: string, text: string, clientMessageId?: string) =>
+    sendAgentMessageAction({ tenantSlug: w.tenant.slug, contactId, text, clientMessageId });
+
+  describe("1. dedup por clientMessageId", () => {
+    it("repetir o mesmo id devolve a mesma resposta e envia UMA vez", async () => {
+      const w = await makeWorld("dedup");
+      const contact = await makeContact(w);
+      as(w);
+      const id = randomUUID();
+      const first = await send(w, contact.id, "Já te respondo", id);
+      const again = await send(w, contact.id, "Já te respondo", id);
+      expect(first.ok && again.ok).toBe(true);
+      if (!first.ok || !again.ok) return;
+      expect(again.data.message.id).toBe(first.data.message.id);
+      expect(evo.sent).toHaveLength(1);
+      expect(await prisma.chatMessage.count({ where: { contactId: contact.id, direction: "OUTBOUND" } })).toBe(1);
+      // Outro id = outra mensagem.
+      await send(w, contact.id, "Já te respondo", randomUUID());
+      expect(evo.sent).toHaveLength(2);
+    });
+
+    it("duas chamadas simultâneas com o mesmo id: uma execução só, ambas recebem o mesmo resultado", async () => {
+      const w = await makeWorld("dedupconc");
+      const contact = await makeContact(w);
+      as(w);
+      const id = randomUUID();
+      const [a, b] = await Promise.all([send(w, contact.id, "Oi", id), send(w, contact.id, "Oi", id)]);
+      expect(a.ok && b.ok).toBe(true);
+      if (!a.ok || !b.ok) return;
+      expect(a.data.message.id).toBe(b.data.message.id);
+      expect(evo.sent).toHaveLength(1);
+    });
+
+    it("falha não fica guardada: repetir o mesmo id depois de SEND_FAILED envia de verdade", async () => {
+      const w = await makeWorld("dedupfail");
+      const contact = await makeContact(w);
+      as(w);
+      const id = randomUUID();
+      evo.fail = true;
+      expect(await send(w, contact.id, "Oi", id)).toMatchObject({ ok: false, error: { code: "SEND_FAILED" } });
+      evo.fail = false;
+      expect((await send(w, contact.id, "Oi", id)).ok).toBe(true);
+      expect(evo.sent).toHaveLength(1);
+    });
+
+    it("a repetição deduplicada não gasta o teto de 20/min; id que não é uuid é INVALID_PAYLOAD", async () => {
+      const w = await makeWorld("dedupcap");
+      const contact = await makeContact(w);
+      as(w);
+      const id = randomUUID();
+      for (let i = 0; i < 30; i += 1) expect((await send(w, contact.id, "Oi", id)).ok).toBe(true);
+      expect(evo.sent).toHaveLength(1);
+      expect(await send(w, contact.id, "Oi", "nao-e-uuid")).toMatchObject({ ok: false, error: { code: "INVALID_PAYLOAD" } });
+    });
+
+    it("a chave inclui empresa e usuário: o mesmo id em OUTRA empresa não é deduplicado", async () => {
+      const w1 = await makeWorld("dedupu1");
+      const w2 = await makeWorld("dedupu2");
+      const c1 = await makeContact(w1);
+      const c2 = await makeContact(w2);
+      const id = randomUUID();
+      as(w1);
+      await send(w1, c1.id, "Oi", id);
+      as(w2);
+      await send(w2, c2.id, "Oi", id);
+      expect(evo.sent).toHaveLength(2);
+    });
+  });
+
+  describe("2. teto por contato e por empresa", () => {
+    it("envio manual: passou do teto por contato na hora dá RATE_LIMITED com retryAfterMs; outro contato segue", async () => {
+      const w = await makeWorld("capmanual");
+      const contact = await makeContact(w);
+      const other = await makeContact(w);
+      as(w);
+      for (let i = 0; i < OUTBOUND_LIMIT_PER_CONTACT_PER_HOUR; i += 1) expect((await send(w, contact.id, `m${i}`)).ok).toBe(true);
+      const blocked = await send(w, contact.id, "estourou");
+      expect(blocked.ok).toBe(false);
+      if (blocked.ok) return;
+      expect(blocked.error.code).toBe("RATE_LIMITED");
+      const details = blocked.error.details as { retryAfterMs: number };
+      expect(details.retryAfterMs).toBeGreaterThan(0);
+      expect(evo.sent).toHaveLength(OUTBOUND_LIMIT_PER_CONTACT_PER_HOUR);
+      expect(await prisma.chatMessage.count({ where: { contactId: contact.id, body: "estourou" } })).toBe(0);
+      expect((await send(w, other.id, "outro")).ok).toBe(true);
+    });
+
+    it("aviso automático estourado: não envia, devolve RATE_LIMITED e o agendamento é salvo mesmo assim", async () => {
+      const w = await makeWorld("capnotify");
+      const contact = await makeContact(w);
+      as(w);
+      for (let i = 0; i < OUTBOUND_LIMIT_PER_CONTACT_PER_HOUR; i += 1) await send(w, contact.id, `m${i}`);
+      const at = new Date(Date.now() + 5 * 24 * HOUR);
+      at.setUTCHours(15, 0, 0, 0);
+      const r = await createAppointmentAction(w.tenant.slug, {
+        contactId: contact.id,
+        serviceId: w.service.id,
+        professionalId: w.professional.id,
+        startsAt: at.toISOString(),
+      });
+      expect(r).toMatchObject({ ok: true, data: { clientNotification: "RATE_LIMITED" } });
+      expect(evo.sent).toHaveLength(OUTBOUND_LIMIT_PER_CONTACT_PER_HOUR);
+      expect(await prisma.appointment.count({ where: { contactId: contact.id, status: "SCHEDULED" } })).toBe(1);
+    });
+
+    it("HANDOFF_CLOSED estourado: encerra do mesmo jeito, clientNotified=false, nada enviado", async () => {
+      const w = await makeWorld("capclose");
+      const contact = await makeContact(w);
+      const handoff = await makeHandoff(w, contact.id);
+      as(w);
+      for (let i = 0; i < OUTBOUND_LIMIT_PER_CONTACT_PER_HOUR; i += 1) await send(w, contact.id, `m${i}`);
+      const r = await closeAttendanceAction({ tenantSlug: w.tenant.slug, contactId: contact.id });
+      expect(r).toEqual({ ok: true, data: { closed: true, clientNotified: false } });
+      expect(evo.sent).toHaveLength(OUTBOUND_LIMIT_PER_CONTACT_PER_HOUR);
+      expect((await prisma.handoffRequest.findUniqueOrThrow({ where: { id: handoff.id } })).endedAt).not.toBeNull();
+    });
+
+    it("teto da empresa vale para todos os contatos e não vaza para outra empresa", async () => {
+      const w = await makeWorld("captenant");
+      const other = await makeWorld("captenant2");
+      const perContact = OUTBOUND_LIMIT_PER_CONTACT_PER_HOUR;
+      const contacts = [];
+      for (let i = 0; i < OUTBOUND_LIMIT_PER_TENANT_PER_HOUR / perContact; i += 1) contacts.push(await makeContact(w));
+      for (const c of contacts) {
+        for (let i = 0; i < perContact; i += 1) {
+          const r = await sendTextToContact({ tenantId: w.tenant.id, contactId: c.id, text: `x${i}` });
+          expect(r.outcome).toBe("SENT");
+        }
+      }
+      const extra = await makeContact(w);
+      const blocked = await sendTextToContact({ tenantId: w.tenant.id, contactId: extra.id, text: "estourou" });
+      expect(blocked).toMatchObject({ outcome: "RATE_LIMITED", scope: "TENANT" });
+      const otherContact = await makeContact(other);
+      expect((await sendTextToContact({ tenantId: other.tenant.id, contactId: otherContact.id, text: "livre" })).outcome).toBe("SENT");
+    }, 60_000);
+  });
+
+  describe("3. corrida enviar x encerrar", () => {
+    it("envio concorrente com o encerrar (pedido aberto) NÃO re-pausa o bot", async () => {
+      const w = await makeWorld("racecl");
+      const contact = await makeContact(w);
+      const handoff = await makeHandoff(w, contact.id);
+      // Como no bot real: a sessão em HUMAN tem humanUntil (é o que o "Encerrar" limpa).
+      await prisma.chatSession.updateMany({ where: { contactId: contact.id }, data: { humanUntil: new Date(Date.now() + HOUR) } });
+      as(w);
+      // O "Encerrar" acontece enquanto a Evolution ainda está enviando a mensagem do atendente.
+      evo.beforeSend = async () => {
+        const r = await closeAttendanceAction({ tenantSlug: w.tenant.slug, contactId: contact.id });
+        expect(r.ok).toBe(true);
+      };
+      const sent = await send(w, contact.id, "Só um instante");
+      expect(sent.ok).toBe(true);
+      const s = await prisma.chatSession.findFirstOrThrow({ where: { contactId: contact.id } });
+      expect(s.state).toBe("MAIN_MENU");
+      expect(s.humanUntil).toBeNull();
+      const h = await prisma.handoffRequest.findUniqueOrThrow({ where: { id: handoff.id } });
+      expect(h.endedAt).not.toBeNull();
+      expect(h.answeredAt).toBeNull();
+      expect((await prisma.contact.findUniqueOrThrow({ where: { id: contact.id } })).botPausedUntil).toBeNull();
+    });
+
+    it("sem corrida, com pedido aberto, continua estendendo a pausa e marcando a resposta", async () => {
+      const w = await makeWorld("raceok");
+      const contact = await makeContact(w);
+      const handoff = await makeHandoff(w, contact.id);
+      as(w);
+      await send(w, contact.id, "Oi");
+      const s = await prisma.chatSession.findFirstOrThrow({ where: { contactId: contact.id } });
+      expect(s.state).toBe("HUMAN");
+      expect(s.humanUntil!.getTime()).toBeGreaterThan(Date.now());
+      expect((await prisma.handoffRequest.findUniqueOrThrow({ where: { id: handoff.id } })).answeredAt).not.toBeNull();
+    });
+
+    it("sem pedido aberto o envio manual continua pausando (comportamento anterior)", async () => {
+      const w = await makeWorld("racenoreq");
+      const contact = await makeContact(w);
+      as(w);
+      await send(w, contact.id, "Oi");
+      expect((await prisma.contact.findUniqueOrThrow({ where: { id: contact.id } })).botPausedUntil!.getTime()).toBeGreaterThan(Date.now());
+      expect((await prisma.chatSession.findFirstOrThrow({ where: { contactId: contact.id } })).state).toBe("HUMAN");
+    });
+  });
+
+  describe("4. texto sanitizado", () => {
+    it("a Evolution recebe o mesmo texto sanitizado que vai para o histórico (sem caracteres de controle)", async () => {
+      const w = await makeWorld("sanit");
+      const contact = await makeContact(w);
+      as(w);
+      const res = await send(w, contact.id, "  Ol\u0000á\u0007, tudo\u001F bem?  ");
+      expect(res.ok).toBe(true);
+      expect(evo.sent).toHaveLength(1);
+      expect(evo.sent[0].text).toBe("Olá, tudo bem?");
+      const row = await prisma.chatMessage.findFirstOrThrow({ where: { contactId: contact.id, direction: "OUTBOUND" } });
+      expect(row.body).toBe(evo.sent[0].text);
+      if (res.ok) expect(res.data.message.body).toBe(evo.sent[0].text);
+    });
+
+    it("só caracteres de controle vira TEXT_EMPTY (nada enviado)", async () => {
+      const w = await makeWorld("sanitempty");
+      const contact = await makeContact(w);
+      as(w);
+      expect(await send(w, contact.id, "\u0000\u0007")).toMatchObject({ ok: false, error: { code: "TEXT_EMPTY" } });
+      expect(evo.sent).toHaveLength(0);
+    });
   });
 });

@@ -27,6 +27,8 @@ export type AttendanceMessage = ConversationMessage & {
   local?: "sending" | "failed";
   /** Só no cliente, junto de `local: "failed"`: código do erro do contrato. */
   errorCode?: string;
+  /** Só no cliente: uuid do envio, reutilizado no "Tentar de novo" para o servidor não duplicar. */
+  clientMessageId?: string;
 };
 
 export type AttendanceTab = "waiting" | "active" | "recent";
@@ -112,7 +114,7 @@ export function canClose(item: Pick<AttendanceItem, "status" | "botPausedUntil">
 // Compositor
 // ---------------------------------------------------------------------------------------------
 
-export const MAX_MESSAGE_LENGTH = 4096;
+export const MAX_MESSAGE_LENGTH = 4000;
 /** O contador só aparece a partir de 90% do limite (não polui a digitação normal). */
 export const COUNTER_FROM = Math.floor(MAX_MESSAGE_LENGTH * 0.9);
 
@@ -152,7 +154,15 @@ export function retryAfterSeconds(details: unknown): number | null {
 /** Mensagem humana para cada erro do contrato de envio; o resto cai no texto genérico. */
 export function sendErrorMessage(code: string | undefined, details?: unknown): string {
   if (code === "RATE_LIMITED") {
+    // Teto por hora (contato/empresa) protege o número de banimento; a espera pode passar de 1 min.
+    const scope = (details as { scope?: unknown } | null | undefined)?.scope;
     const seconds = retryAfterSeconds(details);
+    if (scope === "CONTACT" || scope === "TENANT") {
+      const minutes = seconds !== null ? Math.max(1, Math.ceil(seconds / 60)) : null;
+      const who = scope === "CONTACT" ? "para este cliente" : "pela empresa";
+      const wait = minutes !== null ? ` Tente de novo em ${minutes} ${minutes === 1 ? "minuto" : "minutos"}.` : " Tente mais tarde.";
+      return `Limite de mensagens por hora atingido ${who}, para proteger o número de bloqueio no WhatsApp.${wait}`;
+    }
     if (seconds !== null) {
       return `Você está enviando rápido demais. Tente de novo em ${seconds} ${seconds === 1 ? "segundo" : "segundos"}.`;
     }
@@ -188,6 +198,7 @@ export function makeLocalMessage(text: string, authorName: string | null, now: D
     author: "AGENT",
     authorName,
     local: "sending",
+    clientMessageId: crypto.randomUUID(),
   };
 }
 

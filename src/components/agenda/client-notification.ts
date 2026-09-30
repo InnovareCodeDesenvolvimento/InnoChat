@@ -4,9 +4,9 @@ import { useCallback } from "react";
 import { useToast } from "@/components/ui/toast";
 
 /** Resultado do aviso ao cliente que as ações de criar/remarcar/cancelar passam a devolver. */
-export type ClientNotification = "SENT" | "DISABLED" | "NO_WHATSAPP" | "NO_PHONE" | "FAILED";
+export type ClientNotification = "SENT" | "DISABLED" | "NO_WHATSAPP" | "NO_PHONE" | "FAILED" | "RATE_LIMITED";
 
-const KNOWN: ReadonlySet<string> = new Set(["SENT", "DISABLED", "NO_WHATSAPP", "NO_PHONE", "FAILED"]);
+const KNOWN: ReadonlySet<string> = new Set(["SENT", "DISABLED", "NO_WHATSAPP", "NO_PHONE", "FAILED", "RATE_LIMITED"]);
 
 /** Lê `clientNotification` de um retorno qualquer (as actions tipam `data` como `unknown`). */
 export function readClientNotification(data: unknown): ClientNotification | null {
@@ -34,6 +34,12 @@ export function clientNotificationToast(value: ClientNotification): ClientNotifi
       return { variant: "info", title: "Cliente sem WhatsApp conectado", description: "O agendamento foi salvo, mas o cliente não foi avisado." };
     case "NO_PHONE":
       return { variant: "info", title: "Cliente sem telefone cadastrado", description: "O agendamento foi salvo, mas o cliente não foi avisado." };
+    case "RATE_LIMITED":
+      return {
+        variant: "error",
+        title: "Aviso não enviado: limite de mensagens",
+        description: "Este cliente ou a empresa recebeu muitas mensagens na última hora. O agendamento foi salvo; avise o cliente por outro meio.",
+      };
     case "FAILED":
       return { variant: "error", title: "Não foi possível avisar o cliente", description: "O agendamento foi salvo. Avise o cliente por outro meio." };
   }

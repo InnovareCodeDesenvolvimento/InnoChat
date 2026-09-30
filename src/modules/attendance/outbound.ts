@@ -1,7 +1,8 @@
 import { forTenant } from "@/lib/db/tenant-client";
 import { DomainError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
-import { saveChatMessage } from "@/modules/conversations/log";
+import { checkRateLimit } from "@/lib/rate-limit";
+import { saveChatMessage, sanitizeChatBody } from "@/modules/conversations/log";
 import { recipientNumber, registerOutboundEcho } from "@/modules/reminders/tick";
 import { EvolutionApiError, getEvolutionClient, type EvolutionClient } from "@/modules/whatsapp/evolution-client";
 
@@ -13,11 +14,21 @@ import { EvolutionApiError, getEvolutionClient, type EvolutionClient } from "@/m
  * desfecho para o chamador decidir (a operação principal nunca é desfeita por causa disto).
  */
 
-export type OutboundOutcome = "SENT" | "NO_PHONE" | "NO_WHATSAPP" | "BUSY" | "FAILED";
+export type OutboundOutcome = "SENT" | "NO_PHONE" | "NO_WHATSAPP" | "BUSY" | "FAILED" | "RATE_LIMITED";
 
 export type OutboundResult =
   | { outcome: "SENT"; message: { id: string; createdAt: Date }; instanceId: string }
-  | { outcome: Exclude<OutboundOutcome, "SENT"> };
+  | { outcome: "RATE_LIMITED"; retryAfterMs: number; scope: "CONTACT" | "TENANT" }
+  | { outcome: Exclude<OutboundOutcome, "SENT" | "RATE_LIMITED"> };
+
+/**
+ * Tetos de envio ao cliente, valem para TODO caminho (atendente, aviso da equipe, encerramento) — um laço
+ * de remarcar/cancelar não pode virar WhatsApp em massa e derrubar o número. Em memória, janela fixa
+ * (mesma premissa de `rate-limit.ts`: processo único). Só contam envios que chegaram até a Evolution.
+ */
+export const OUTBOUND_LIMIT_PER_CONTACT_PER_HOUR = 10;
+export const OUTBOUND_LIMIT_PER_TENANT_PER_HOUR = 120;
+const OUTBOUND_WINDOW_MS = 3_600_000;
 
 const ECHO_TRIES = 3;
 const ECHO_WAIT_MS = 400;
@@ -51,7 +62,10 @@ export async function sendTextToContact(params: {
   preferredInstanceId?: string | null;
   evolution?: EvolutionClient;
 }): Promise<OutboundResult> {
-  const { tenantId, contactId, text } = params;
+  const { tenantId, contactId } = params;
+  // O que vai à Evolution é EXATAMENTE o que fica no histórico.
+  const text = sanitizeChatBody(params.text);
+  if (!text.trim()) return { outcome: "FAILED" };
   const db = forTenant(tenantId);
 
   const contact = await db.contact.findFirst({ where: { id: contactId }, select: { id: true, waJid: true, phoneE164: true } });
@@ -74,6 +88,19 @@ export async function sendTextToContact(params: {
 
   const evolution = await resolveEvolution(params.evolution);
   if (!evolution) return { outcome: "NO_WHATSAPP" };
+
+  // Teto por contato e por empresa. O do contato é checado primeiro; se o da empresa estourar, o token do
+  // contato já gasto é um custo aceitável (o caminho é raro e conservador).
+  const perContact = checkRateLimit(`outbound-contact:${tenantId}:${contactId}`, OUTBOUND_LIMIT_PER_CONTACT_PER_HOUR, OUTBOUND_WINDOW_MS);
+  if (!perContact.allowed) {
+    logger.warn("attendance.outbound_rate_limited", { tenantId, contactId, scope: "CONTACT" });
+    return { outcome: "RATE_LIMITED", retryAfterMs: perContact.retryAfterMs, scope: "CONTACT" };
+  }
+  const perTenant = checkRateLimit(`outbound-tenant:${tenantId}`, OUTBOUND_LIMIT_PER_TENANT_PER_HOUR, OUTBOUND_WINDOW_MS);
+  if (!perTenant.allowed) {
+    logger.warn("attendance.outbound_rate_limited", { tenantId, contactId, scope: "TENANT" });
+    return { outcome: "RATE_LIMITED", retryAfterMs: perTenant.retryAfterMs, scope: "TENANT" };
+  }
 
   const now = new Date();
   let echo: "ok" | "busy" = "busy";

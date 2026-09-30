@@ -209,7 +209,7 @@ export function AttendanceConversation({
     setSending(true);
     setLiveMessage("Enviando mensagem…");
     try {
-      const result = await sendAgentMessageAction({ tenantSlug, contactId, text: local.body });
+      const result = await sendAgentMessageAction({ tenantSlug, contactId, text: local.body, clientMessageId: local.clientMessageId });
       if (!result.ok) {
         fail(local, result.error.code, result.error.details);
         return;

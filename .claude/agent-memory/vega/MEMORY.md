@@ -47,3 +47,4 @@
 - [W-1: workflow v2 do bot (hub Preparar passo → Ir para)](botv2_w1_workflow_design.md) — desenho, cola/motor injetados, furo do routeFor, armadilhas do ambiente de teste.
 - [Ajustes finais bot v2](botv2_final_adjustments.md) — flow:undefined vira default no helper, now() sem fuso, ReDoS do normalize, redação de segredos, reseed.
 - [Atendimento pelo painel + aviso da equipe](attendance_panel_and_staff_notify.md) — helper único de envio, PANEL_RESUME, fila por humanUntil, aviso só nas actions.
+- [Endurecimento do atendimento: dedup, tetos, corrida](attendance_hardening_dedup_caps.md) — clientMessageId, 10/h contato e 120/h empresa, sanitizar antes do envio.

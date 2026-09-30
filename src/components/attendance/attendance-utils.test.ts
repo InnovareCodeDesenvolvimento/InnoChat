@@ -94,7 +94,7 @@ describe("compositor", () => {
     expect(counterState(3700).visible).toBe(true);
     expect(counterState(MAX_MESSAGE_LENGTH).over).toBe(false);
     expect(counterState(MAX_MESSAGE_LENGTH + 1).over).toBe(true);
-    expect(counterState(4000).text).toBe("4.000 / 4.096");
+    expect(counterState(4000).text).toBe("4.000 / 4.000");
   });
   it("canSend recusa vazio, só espaços e acima do limite", () => {
     expect(canSend("")).toBe(false);
@@ -143,5 +143,15 @@ describe("compositor", () => {
   it("perto do fim", () => {
     expect(isNearBottom({ scrollHeight: 1000, scrollTop: 480, clientHeight: 500 })).toBe(true);
     expect(isNearBottom({ scrollHeight: 1000, scrollTop: 100, clientHeight: 500 })).toBe(false);
+  });
+});
+
+describe("sendErrorMessage — teto por hora", () => {
+  it("fala em minutos e no escopo quando o teto é por contato/empresa", () => {
+    expect(sendErrorMessage("RATE_LIMITED", { retryAfterMs: 125_000, scope: "CONTACT" })).toBe(
+      "Limite de mensagens por hora atingido para este cliente, para proteger o número de bloqueio no WhatsApp. Tente de novo em 3 minutos.",
+    );
+    expect(sendErrorMessage("RATE_LIMITED", { scope: "TENANT" })).toContain("pela empresa");
+    expect(sendErrorMessage("RATE_LIMITED", { retryAfterMs: 3000 })).toContain("3 segundos");
   });
 });

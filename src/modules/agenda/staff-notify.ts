@@ -15,7 +15,7 @@ import type { EvolutionClient } from "@/modules/whatsapp/evolution-client";
  */
 
 export type StaffChangeKind = "BOOKED" | "RESCHEDULED" | "CANCELED";
-export type ClientNotification = "SENT" | "DISABLED" | "NO_WHATSAPP" | "NO_PHONE" | "FAILED";
+export type ClientNotification = "SENT" | "DISABLED" | "NO_WHATSAPP" | "NO_PHONE" | "FAILED" | "RATE_LIMITED";
 
 const TEXT_KEY = { BOOKED: "STAFF_BOOKED", RESCHEDULED: "STAFF_RESCHEDULED", CANCELED: "STAFF_CANCELED" } as const;
 
@@ -60,7 +60,9 @@ export async function notifyClientOfStaffChange(
       preferredInstanceId: appointment.whatsappInstanceId,
       evolution: deps.evolution,
     });
-    return sent.outcome === "SENT" ? "SENT" : sent.outcome === "NO_PHONE" || sent.outcome === "NO_WHATSAPP" ? sent.outcome : "FAILED";
+    return sent.outcome === "SENT" || sent.outcome === "NO_PHONE" || sent.outcome === "NO_WHATSAPP" || sent.outcome === "RATE_LIMITED"
+      ? sent.outcome
+      : "FAILED";
   } catch (error) {
     logger.warn("agenda.staff_notify_failed", { tenantId, appointmentId, kind, errorName: error instanceof Error ? error.name : "unknown" });
     return "FAILED";

@@ -4,10 +4,12 @@ import { renderTemplate } from "@/core/bot/texts";
 import { getPrisma } from "@/lib/db/prisma";
 import { forTenant } from "@/lib/db/tenant-client";
 import { DomainError } from "@/lib/errors";
+import { runIdempotent } from "@/lib/idempotency";
 import { logger } from "@/lib/logger";
-import { markHandoffAnswered } from "@/modules/bot-api/handoff";
+import { checkRateLimit } from "@/lib/rate-limit";
 import { CONVERSATION_ITEM_SELECT, toConversationItem, type ConversationItem } from "@/modules/conversations/service";
 import type { EvolutionClient } from "@/modules/whatsapp/evolution-client";
+import { sanitizeChatBody } from "@/modules/conversations/log";
 import { sendTextToContact } from "./outbound";
 
 /**
@@ -16,7 +18,10 @@ import { sendTextToContact } from "./outbound";
  * próprio) só é tocada filtrando pela instância da empresa.
  */
 
-export const AGENT_MESSAGE_MAX = 4096;
+/** = CHAT_BODY_MAX: o texto enviado é o mesmo gravado no histórico, então o teto é um só. */
+export const AGENT_MESSAGE_MAX = 4000;
+/** Quanto tempo uma repetição do mesmo `clientMessageId` devolve a resposta guardada. */
+const SEND_DEDUP_TTL_MS = 10 * 60_000;
 export const AGENT_SEND_LIMIT_PER_MINUTE = 20;
 const RECENT_WINDOW_MS = 24 * 3_600_000;
 const QUEUE_ACTIVE_TAKE = 100;
@@ -169,17 +174,23 @@ async function loadOpenHandoff(tenantId: string, contactId: string) {
 
 /**
  * Prolonga a pausa do bot depois de a equipe falar. Com pedido aberto: marca a 1ª resposta e estende a
- * pausa da SESSÃO (mesma mecânica do `fromMe` pelo celular, spec §3.10). Sem pedido (a equipe puxou a
- * conversa): pausa a sessão E o contato. Nunca ENCURTA uma pausa maior já existente.
+ * pausa da SESSÃO (mesma mecânica do `fromMe` pelo celular, spec §3.10) — mas SÓ se a sessão ainda está em
+ * HUMAN ou o pedido ainda está aberto (checado na própria UPDATE, atômico): um envio concorrente com o
+ * "Encerrar" não pode re-pausar o bot depois de devolvido. Sem pedido (a equipe puxou a conversa): pausa a
+ * sessão E o contato. Nunca ENCURTA uma pausa maior já existente.
  */
 async function extendBotPause(tenantId: string, contactId: string, openHandoffId: string | null, until: Date, now: Date): Promise<void> {
   const prisma = getPrisma();
+  const stillHandled = openHandoffId
+    ? { AND: [{ OR: [{ state: "HUMAN" as const }, { handoffRequests: { some: { id: openHandoffId, endedAt: null } } }] }] }
+    : {};
   await prisma.chatSession.updateMany({
-    where: { contactId, whatsappInstance: { tenantId }, OR: [{ humanUntil: null }, { humanUntil: { lt: until } }] },
+    where: { contactId, whatsappInstance: { tenantId }, OR: [{ humanUntil: null }, { humanUntil: { lt: until } }], ...stillHandled },
     data: { state: "HUMAN", humanUntil: until },
   });
   if (openHandoffId) {
-    await markHandoffAnswered(prisma, openHandoffId, now);
+    // Só marca a resposta se o pedido ainda está aberto.
+    await prisma.handoffRequest.updateMany({ where: { id: openHandoffId, endedAt: null, answeredAt: null }, data: { answeredAt: now } });
   } else {
     await prisma.contact.updateMany({
       where: { id: contactId, tenantId, OR: [{ botPausedUntil: null }, { botPausedUntil: { lt: until } }] },
@@ -188,15 +199,37 @@ async function extendBotPause(tenantId: string, contactId: string, openHandoffId
   }
 }
 
+/**
+ * Envia a mensagem do atendente. Com `clientMessageId` (uuid do composer, o MESMO no "Tentar de novo"),
+ * a repetição não reenvia: se já concluiu devolve a mesma resposta; se ainda está em andamento espera a
+ * mesma execução. Chave = empresa + usuário + id. Só sucesso é guardado: falha (nada foi enviado) deixa
+ * repetir. O teto de 20/min por usuário conta uma vez por tentativa real, não por repetição deduplicada.
+ */
 export async function sendAgentMessage(
-  params: { tenantId: string; userId: string; contactId: string; text: string },
+  params: { tenantId: string; userId: string; contactId: string; text: string; clientMessageId?: string },
   deps: { evolution?: EvolutionClient; now?: Date } = {},
 ): Promise<{ message: ConversationItem }> {
+  if (!params.clientMessageId) return sendAgentMessageOnce(params, deps);
+  const key = `attendance-send:${params.tenantId}:${params.userId}:${params.clientMessageId}`;
+  return runIdempotent(key, SEND_DEDUP_TTL_MS, () => sendAgentMessageOnce(params, deps));
+}
+
+async function sendAgentMessageOnce(
+  params: { tenantId: string; userId: string; contactId: string; text: string },
+  deps: { evolution?: EvolutionClient; now?: Date },
+): Promise<{ message: ConversationItem }> {
   const { tenantId, userId, contactId } = params;
-  const text = params.text.trim();
-  if (!text) throw new DomainError("TEXT_EMPTY", "Escreva uma mensagem antes de enviar.");
-  if (text.length > AGENT_MESSAGE_MAX) {
+  // O teto é conferido ANTES de sanitizar (que também corta em CHAT_BODY_MAX): senão um texto grande demais
+  // seria truncado em silêncio em vez de recusado.
+  if (params.text.trim().length > AGENT_MESSAGE_MAX) {
     throw new DomainError("TEXT_TOO_LONG", `A mensagem passa de ${AGENT_MESSAGE_MAX} caracteres.`, { max: AGENT_MESSAGE_MAX });
+  }
+  const text = sanitizeChatBody(params.text).trim();
+  if (!text) throw new DomainError("TEXT_EMPTY", "Escreva uma mensagem antes de enviar.");
+
+  const rate = checkRateLimit(`attendance-send:${userId}`, AGENT_SEND_LIMIT_PER_MINUTE, 60_000);
+  if (!rate.allowed) {
+    throw new DomainError("RATE_LIMITED", "Muitas mensagens em pouco tempo. Aguarde um instante.", { retryAfterMs: rate.retryAfterMs });
   }
 
   const now = deps.now ?? new Date();
@@ -213,6 +246,12 @@ export async function sendAgentMessage(
     evolution: deps.evolution,
   });
 
+  if (result.outcome === "RATE_LIMITED") {
+    throw new DomainError("RATE_LIMITED", "Limite de mensagens para este cliente atingido. Tente de novo mais tarde.", {
+      retryAfterMs: result.retryAfterMs,
+      scope: result.scope,
+    });
+  }
   if (result.outcome === "NO_PHONE") throw new DomainError("CONTACT_HAS_NO_PHONE", "Este cliente não tem telefone de WhatsApp cadastrado.");
   if (result.outcome === "NO_WHATSAPP") throw new DomainError("WHATSAPP_NOT_CONNECTED", "Nenhum número de WhatsApp conectado. Conecte um número para responder.");
   if (result.outcome === "BUSY") throw new DomainError("CONVERSATION_BUSY", "O assistente está respondendo esse cliente agora. Tente de novo em instantes.");
