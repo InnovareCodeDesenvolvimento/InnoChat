@@ -70,6 +70,7 @@ const HELP_ENTRIES = {
       "Você quer saber quem faltou na semana passada: escolha as datas e a situação \"Faltou\".",
       "A coluna de origem mostra se o horário foi marcado pelo WhatsApp (pelo bot) ou pelo painel (pela equipe).",
     ],
+    tip: "Remarcar e cancelar só é possível até 2 horas antes do horário marcado — vale para a equipe no painel e para o cliente no WhatsApp. Ex.: um horário das 15h pode ser mudado até as 13h.",
   },
   "pagina.atendimento": {
     title: "Atendimento",
