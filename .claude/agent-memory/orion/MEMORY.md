@@ -6,3 +6,4 @@
 - [Ordem do lock ProviderEvent](provider_event_lock_ordering.md) — achado Médio 2026-09-29, markInvoicePaidManually inverteu a ordem do padrão do webhook
 - [Revisão fase 2](fase2_revisao_2026-09-29.md) — sem CRÍTICO; padrões: log de erro Prisma com body, RMW recentOutbound, default true em envio proativo
 - [Revisão login Google](google_login_review_2026-09-30.md) — sem CRÍTICO; JWT sem revogação no pre-hijacking, host de x-forwarded em links, convite não-atômico
+- [Revisão bot v2 O-1](botv2_review_2026-09-30.md) — sem CRÍTICO; ReDoS normalizeText, migration de textos vs imagem antiga, snapshot n8n sem redação
