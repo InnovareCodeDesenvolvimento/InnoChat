@@ -17,6 +17,8 @@ export type {
   InboundOutcome,
   InboundIgnoreReason,
   BotTextKey,
+  HandoffReason,
+  HandoffEndReason,
   InvoiceStatus,
   SubscriptionStatus,
   MercadoPagoEnvironment,

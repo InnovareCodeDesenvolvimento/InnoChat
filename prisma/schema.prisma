@@ -110,7 +110,8 @@ model Tenant {
   theme     PanelTheme @default(INDIGO_CLINICO)
 
   // Regras de agenda/bot em colunas escalares (§5).
-  slotGranularityMin        Int     @default(15)
+  // Grade de horários ancorada (bot v2): 15 ou 30 (CHECK no banco). Padrão 30 desde o bot v2.
+  slotGranularityMin        Int     @default(30)
   minLeadTimeMin            Int     @default(60)
   maxHorizonDays            Int     @default(30)
   cancelMinLeadMin          Int     @default(120)
@@ -124,6 +125,10 @@ model Tenant {
   // Lembrete de véspera ao cliente por WhatsApp.
   reminderEnabled     Boolean @default(true)
   reminderHoursBefore Int     @default(24)
+  // Bot v2. 0 = sem limite de agendamentos futuros por contato no WhatsApp (CHECK 0..20).
+  maxFutureAppointmentsPerContact Int @default(3)
+  // Minutos até o bot retomar após atendimento humano (CHECK 30..1440).
+  handoffResumeMinutes            Int @default(120)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -139,6 +144,7 @@ model Tenant {
   subscription       Subscription?
   trialClaims        TrialClaim[]
   chatMessages       ChatMessage[]
+  handoffRequests    HandoffRequest[]
 
   @@map("tenants")
 }
@@ -231,6 +237,13 @@ model PlatformSettings {
   // n8n-sync.ts) — opcional: pode não existir ainda no n8n do dono, `syncN8n` não falha por
   // isso, só avisa no resumo.
   n8nWorkflowCronId   String?
+
+  // Publicação do fluxo do bot pelo painel (bot v2, docs/bot-v2-plano.md §3.1/§3.6).
+  n8nBotFlowVersion           String?   // Config.flowVersion do JSON publicado, ex.: "2.0.0"
+  n8nBotFlowHash              String?   // hash canônico do que foi publicado
+  n8nBotFlowPublishedAt       DateTime?
+  n8nBotFlowPublishedByUserId String?   // sem FK (auditoria simples)
+  n8nBotFlowPrevious          Json?     // { version, hash, nodes, connections } do vivo antes do último PUT
 
   // LEGADO (pré-2026-09-29): texto puro. Migração preguiçosa no código (`src/modules/platform/
   // mercadopago-config.ts`, `migrateLegacyPlatformSecrets`): na 1ª leitura/gravação o valor vai,
@@ -422,6 +435,7 @@ model Contact {
   appointments Appointment[]
   chatSessions ChatSession[]
   chatMessages ChatMessage[]
+  handoffRequests HandoffRequest[]
 
   @@unique([tenantId, waJid])
   @@index([tenantId])
@@ -555,6 +569,7 @@ model WhatsappInstance {
   inboundEvents InboundEvent[]
   appointments Appointment[]
   chatMessages ChatMessage[]
+  handoffRequests HandoffRequest[]
 
   @@index([tenantId])
   @@map("whatsapp_instances")
@@ -582,10 +597,49 @@ model ChatSession {
 
   whatsappInstance WhatsappInstance @relation(fields: [whatsappInstanceId], references: [id], onDelete: Cascade)
   contact          Contact          @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  handoffRequests  HandoffRequest[]
 
   // Chave de acesso do endpoint /messages/claim: WHERE whatsappInstanceId = ? AND contactId = ?.
   @@unique([whatsappInstanceId, contactId])
   @@map("chat_sessions")
+}
+
+enum HandoffReason {
+  CLIENT_REQUEST
+  LEGACY_FLOW
+}
+
+enum HandoffEndReason {
+  CLIENT_MENU
+  TIMEOUT
+  PANEL_RESUME
+}
+
+// Pedido de atendimento humano (bot v2). No máximo UM aberto (endedAt IS NULL) por sessão: índice
+// único parcial "handoff_requests_one_open_per_session" na migration SQL (o Prisma não expressa
+// índice parcial; o diff não o reclama).
+model HandoffRequest {
+  id                 String            @id @default(cuid())
+  tenantId           String
+  whatsappInstanceId String
+  contactId          String
+  chatSessionId      String
+  reason             HandoffReason
+  offHours           Boolean           @default(false)
+  requestedAt        DateTime          @default(now())
+  // 1ª resposta fromMe da equipe.
+  answeredAt         DateTime?
+  endedAt            DateTime?
+  endReason          HandoffEndReason?
+
+  tenant           Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  whatsappInstance WhatsappInstance @relation(fields: [whatsappInstanceId], references: [id], onDelete: Cascade)
+  contact          Contact          @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  chatSession      ChatSession      @relation(fields: [chatSessionId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, requestedAt])
+  @@index([chatSessionId, endedAt])
+  @@map("handoff_requests")
 }
 
 enum InboundOutcome {
@@ -663,6 +717,53 @@ enum BotTextKey {
   LABEL_MORE_TIMES
   LABEL_MORE
   LABEL_BACK_TO_MENU
+  // Bot v2 (46 chaves; docs/bot-v2-plano.md §3.1)
+  MENU_PROMPT
+  MENU_HINT
+  FOOTER_HINT
+  CONTINUE_PROMPT
+  HELP
+  NO_SERVICES
+  NEXT_AVAILABLE
+  DATE_OUT_OF_RANGE
+  TIME_NOT_AVAILABLE
+  ITEM_UNAVAILABLE
+  APPOINTMENT_LIMIT
+  NAME_INVALID
+  NAME_TOO_LONG
+  CONFIRM_RESCHEDULE
+  CONFIRM_EDIT
+  POST_ACTION_MENU
+  APPOINTMENT_DETAIL
+  APPOINTMENT_LOCKED
+  CANCEL_KEPT
+  HUMAN_HANDOFF_OFF_HOURS
+  BOT_RESUMED
+  INVALID_BACK_TO_MENU
+  AMBIGUOUS_OPTION
+  RESUME_OFFER
+  THANKS_REPLY
+  TECH_ERROR
+  LABEL_MENU_BOOK
+  LABEL_MENU_MY
+  LABEL_MENU_HUMAN
+  LABEL_ANY_PROFESSIONAL
+  LABEL_NEXT_AVAILABLE
+  LABEL_BY_DAY
+  LABEL_EDIT
+  LABEL_EDIT_SERVICE
+  LABEL_EDIT_PROFESSIONAL
+  LABEL_EDIT_DATETIME
+  LABEL_EDIT_NAME
+  LABEL_RESCHEDULE
+  LABEL_CANCEL_APPOINTMENT
+  LABEL_BOOK_ANOTHER
+  LABEL_FINISH
+  LABEL_CONTINUE
+  LABEL_START_OVER
+  LABEL_BACK
+  LABEL_OTHER_SERVICE
+  LABEL_PREVIOUS
 }
 
 model BotText {
