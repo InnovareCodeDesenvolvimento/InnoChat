@@ -93,6 +93,68 @@ test.describe("Landing pública", () => {
       .toBeGreaterThan(0);
   });
 
+  test("'Você conhece esse dia': o interruptor alterna por teclado e muda o conteúdo", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/");
+    const section = page.locator('section[aria-labelledby="dor-titulo"]');
+    await section.evaluate((el) => el.scrollIntoView());
+    const sw = page.getByRole("switch", { name: "Mostrar o dia com o InnoChat" });
+    await expect(sw).toHaveAttribute("aria-checked", "false");
+    await expect(section.getByText(/ninguém responde/)).toBeVisible();
+    await expect(section.getByText(/o bot responde na hora/)).toBeHidden();
+    const box = await sw.boundingBox();
+    expect(box!.height).toBeGreaterThanOrEqual(44);
+    await sw.focus();
+    await page.keyboard.press("Space");
+    await expect(sw).toHaveAttribute("aria-checked", "true");
+    await expect(section.getByText(/o bot responde na hora/)).toBeVisible({ timeout: 4_000 });
+    await expect(section.getByText(/ninguém responde/)).toBeHidden();
+    await expect(section.getByRole("status")).toContainText("com o InnoChat");
+    await page.keyboard.press("Enter");
+    await expect(sw).toHaveAttribute("aria-checked", "false");
+  });
+
+  test("'Você conhece esse dia': o nicho troca por teclado (setas) e muda personagem e serviço", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/");
+    const section = page.locator('section[aria-labelledby="dor-titulo"]');
+    await section.evaluate((el) => el.scrollIntoView());
+    const group = section.getByRole("radiogroup", { name: "Seu negócio:" });
+    const first = group.getByRole("radio").first();
+    await expect(first).toHaveAttribute("aria-checked", "true");
+    // O estado inicial é neutro: nada de salão/cadeira no texto.
+    await expect(section.getByText(/Abro as portas/).first()).toBeVisible();
+    await expect(section.getByText(/cadeira/)).toHaveCount(0);
+    await first.focus();
+    await page.keyboard.press("ArrowRight");
+    await expect(group.getByRole("radio", { name: "Salão" })).toHaveAttribute("aria-checked", "true");
+    await expect(section.getByText(/Abro o salão/).first()).toBeVisible();
+    await page.keyboard.press("End");
+    await expect(group.getByRole("radio", { name: "Pet shop" })).toHaveAttribute("aria-checked", "true");
+    await expect(section.getByText(/Abro a loja/).first()).toBeVisible();
+    await expect(section.getByText(/Abro o salão/)).toHaveCount(0);
+  });
+
+  test("'Você conhece esse dia': com movimento reduzido o interruptor funciona sem animação", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/");
+    const section = page.locator('section[aria-labelledby="dor-titulo"]');
+    await section.evaluate((el) => el.scrollIntoView());
+    // Estado final estático: a cena já aparece sem esperar rolagem.
+    await expect(section.getByText(/Abro as portas/).first()).toBeVisible();
+    const sw = page.getByRole("switch");
+    await sw.click();
+    await expect(section.getByText(/o bot responde na hora/)).toBeVisible({ timeout: 1_000 });
+    const t = await section.locator(".ds-pane.ds-before").first().evaluate((el) => getComputedStyle(el).transitionDuration);
+    expect(t).toBe("0s");
+    const r = await page.evaluate(() => ({
+      sw: document.documentElement.scrollWidth,
+      cw: document.documentElement.clientWidth,
+    }));
+    expect(r.sw).toBeLessThanOrEqual(r.cw);
+  });
+
   test("cabeçalho usa o logo oficial (balão ⓘ) e a página não estoura em 1440, 1024, 768 e 390", async ({ page }) => {
     for (const width of [1440, 1024, 768, 390]) {
       await page.setViewportSize({ width, height: 900 });

@@ -648,3 +648,140 @@ html:has(.landing-root) {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-8px); }
 }
+
+/* ---------------------------------------------------------------------------------------------
+   "Você conhece esse dia" (landing, day-story.tsx). Alternância Sem/Com por `data-mode`, entrada
+   por rolagem (`.ds-js` + `.is-in`, marcados por IntersectionObserver) e a linha do tempo que se
+   desenha. Estado base = tudo visível e parado (sem JS / reduced-motion); TODO movimento fica em
+   `prefers-reduced-motion: no-preference`.
+   --------------------------------------------------------------------------------------------- */
+.ds-root {
+  --ds-spine: var(--color-danger);
+}
+.ds-root[data-mode="com"] {
+  --ds-spine: var(--color-primary);
+}
+.ds-seg {
+  background: var(--ds-spine);
+  transform-origin: top;
+}
+.ds-dot {
+  background: var(--ds-spine);
+}
+.ds-tag {
+  display: none;
+}
+.ds-stack {
+  display: grid;
+}
+.ds-stack > .ds-pane {
+  grid-area: 1 / 1;
+}
+.ds-root[data-mode="sem"] .ds-after,
+.ds-root[data-mode="com"] .ds-before {
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .ds-seg,
+  .ds-dot {
+    transition: background-color 400ms ease, transform 800ms ease-out 100ms;
+  }
+  .ds-dot {
+    transition: background-color 400ms ease, transform 350ms cubic-bezier(0.16, 1, 0.3, 1) 100ms;
+  }
+  /* Entrada por rolagem */
+  .ds-body,
+  .ds-head {
+    transition: opacity 600ms ease-out, transform 600ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .ds-js .ds-scene:not(.is-in) .ds-body,
+  .ds-js .ds-head:not(.is-in) {
+    opacity: 0;
+    transform: translateY(28px);
+  }
+  .ds-js .ds-scene:not(.is-in) .ds-seg {
+    transform: scaleY(0);
+  }
+  .ds-js .ds-scene:not(.is-in) .ds-dot {
+    transform: scale(0);
+  }
+  .ds-underline path {
+    stroke-dasharray: 1;
+    transition: stroke-dashoffset 900ms ease-out 300ms;
+  }
+  .ds-js .ds-head:not(.is-in) .ds-underline path {
+    stroke-dashoffset: 1;
+  }
+  /* Troca de negócio: o par de painéis entra de novo, suave */
+  .ds-swap {
+    animation: ds-swap 350ms ease-out both;
+  }
+
+  /* Virar a chave: quem sai cai, quem entra aparece em escada */
+  .ds-pane {
+    transition: opacity 250ms ease, visibility 0s linear 250ms;
+  }
+  .ds-root[data-mode="com"] .ds-before {
+    transition: opacity 200ms ease 560ms, visibility 0s linear 760ms;
+  }
+  .ds-root[data-mode="com"] .ds-after {
+    transition: opacity 300ms ease 500ms, visibility 0s linear 500ms;
+  }
+  .ds-root[data-mode="sem"] .ds-before {
+    transition: opacity 300ms ease 150ms, visibility 0s linear 150ms;
+  }
+  .ds-root[data-mode="sem"] .ds-after {
+    transition: opacity 200ms ease, visibility 0s linear 200ms;
+  }
+  .ds-root[data-mode="com"] .ds-before .ds-fall {
+    animation: ds-fall 620ms cubic-bezier(0.5, 0, 0.9, 0.6) both;
+    animation-delay: calc(var(--i, 0) * 70ms);
+  }
+  .ds-root[data-mode="com"] .ds-after .ds-pop {
+    animation: ds-pop 450ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation-delay: calc(560ms + var(--i, 0) * 110ms);
+  }
+  .ds-root[data-mode="com"] .ds-after .ds-check path {
+    animation: ds-draw 380ms ease-out both;
+    animation-delay: calc(900ms + var(--i, 0) * 110ms);
+  }
+  /* O celular vibra duas vezes quando a cena aparece (só no "Sem") */
+  .ds-root[data-mode="sem"] .ds-scene.is-in .ds-before .ds-buzz {
+    animation: ds-buzz 480ms linear 2;
+    animation-delay: 900ms;
+  }
+}
+.ds-check path {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 0;
+}
+@keyframes ds-swap {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes ds-fall {
+  0% { transform: translate(0, 0) rotate(0deg); opacity: 1; }
+  10% { transform: translateX(-5px) rotate(-1.5deg); }
+  20% { transform: translateX(5px) rotate(1.5deg); }
+  30% { transform: translateX(-4px) rotate(-1deg); }
+  40% { transform: translateX(3px) rotate(1deg); opacity: 1; }
+  100% { transform: translate(var(--fx, 0px), 90px) rotate(var(--fr, 6deg)); opacity: 0; }
+}
+@keyframes ds-pop {
+  from { opacity: 0; transform: translateY(12px) scale(0.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes ds-draw {
+  from { stroke-dashoffset: 1; }
+  to { stroke-dashoffset: 0; }
+}
+@keyframes ds-buzz {
+  0%, 100% { transform: translateX(0) rotate(0); }
+  15% { transform: translateX(-4px) rotate(-1deg); }
+  35% { transform: translateX(4px) rotate(1deg); }
+  55% { transform: translateX(-3px) rotate(-0.6deg); }
+  75% { transform: translateX(3px) rotate(0.6deg); }
+}
