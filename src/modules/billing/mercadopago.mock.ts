@@ -15,6 +15,7 @@ import { MercadoPagoApiError, type CreatePixPaymentInput, type MercadoPagoGatewa
 export function createMockMercadoPagoGateway() {
   let counter = 0;
   const payments = new Map<string, MercadoPagoPayment & { copyPaste: string }>();
+  const cancelledPaymentIds: string[] = [];
 
   const gateway: MercadoPagoGateway = {
     async createPixPayment(input: CreatePixPaymentInput) {
@@ -44,10 +45,23 @@ export function createMockMercadoPagoGateway() {
       if (!payment) throw new Error(`mock: pagamento ${paymentId} não existe`);
       return payment;
     },
+
+    async cancelPayment(paymentId: string) {
+      const payment = payments.get(paymentId);
+      if (!payment) throw new MercadoPagoApiError(`mock: pagamento ${paymentId} não existe`, 404);
+      // Igual ao MP: só pagamento pendente pode ser cancelado.
+      if (payment.status !== "pending" && payment.status !== "in_process") {
+        throw new MercadoPagoApiError(`mock: pagamento ${paymentId} está ${payment.status} e não pode ser cancelado`, 400, "payload_rejected");
+      }
+      payment.status = "cancelled";
+      cancelledPaymentIds.push(paymentId);
+    },
   };
 
   return {
     gateway,
+    /** Ids dos pagamentos cancelados via `cancelPayment`, na ordem. */
+    cancelledPaymentIds,
     /** Sobrescreve campos do pagamento (ex.: `externalReference: null`, `transactionAmountCents`) para testar divergências. */
     tamper(paymentId: string, patch: Partial<MercadoPagoPayment>) {
       const payment = payments.get(paymentId);

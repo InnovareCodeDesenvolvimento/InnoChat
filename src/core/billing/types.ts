@@ -16,5 +16,5 @@ export type SubscriptionSnapshot = {
   /** `null` = nunca pagou (teste não convertido); ausente = desconhecido (trata como já pagante). */
   firstPaidAt?: Date | null;
   /** O dono agendou o cancelamento: ao chegar o fim do período/teste vira `CANCELED`, sem carência. */
-  cancelAtPeriodEnd?: boolean;
+  cancelAtPeriodEnd: boolean;
 };

@@ -44,7 +44,7 @@ function NotificationToast({
       </span>
       <div className="min-w-0 flex-1">
         <p className="text-sm font-semibold text-text">{notification.title}</p>
-        {notification.body ? <p className="mt-0.5 line-clamp-2 text-sm text-text-secondary">{notification.body}</p> : null}
+        {notification.body ? <p className="mt-0.5 line-clamp-2 break-words text-sm text-text-secondary">{notification.body}</p> : null}
         {notificationHref(notification) ? (
           <Link
             href={notificationHref(notification) ?? "#"}

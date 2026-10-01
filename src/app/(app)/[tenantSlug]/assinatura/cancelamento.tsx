@@ -49,6 +49,10 @@ export function CancelamentoAgendadoAviso({ tenantSlug, snapshot, isOwner }: { t
         Você usa tudo normalmente até {date} e não haverá nova cobrança. Depois disso os números de WhatsApp são desconectados e o painel
         mostra só esta tela.
       </p>
+      <p className="mt-2">
+        A fatura em aberto foi anulada e o Pix que ela tinha foi cancelado: não pague o Pix antigo. Se você desfizer o cancelamento, geramos um
+        Pix novo.
+      </p>
       {isOwner ? (
         <Button type="button" variant="secondary" size="sm" className="mt-3" icon={RotateCcw} onClick={undo} isLoading={isPending} loadingText="Desfazendo…">
           Desfazer cancelamento
@@ -200,15 +204,27 @@ export function AssinaturaCanceladaCard({ tenantSlug, snapshot, isOwner }: { ten
         <CardTitle>Assinatura cancelada</CardTitle>
         <CardDescription>
           Os números de WhatsApp foram desconectados e o painel mostra só esta tela.
-          {snapshot.retentionEndsAt
+          {snapshot.retentionEndsAt && !snapshot.dataAnonymized
             ? ` Seus dados ficam guardados até ${dateBR(snapshot.retentionEndsAt, snapshot.timezone)}; depois, os dados dos seus clientes são anonimizados.`
             : ""}
         </CardDescription>
       </CardHeader>
       <CardContent>
+        {snapshot.dataAnonymized ? (
+          <Alert variant="warning" title="Os dados dos seus clientes foram anonimizados" className="mb-3" data-testid="assinatura-dados-anonimizados">
+            <p>
+              Já se passaram {RETENTION_DAYS} dias do cancelamento. Nomes, telefones, anotações e conversas dos seus clientes foram removidos e não
+              podem ser recuperados. Ao reativar, você volta com a agenda, o catálogo e as configurações, mas os clientes antigos aparecem sem os dados
+              pessoais.
+            </p>
+          </Alert>
+        ) : null}
         {isOwner ? (
           snapshot.invoice ? (
-            <p className="text-sm text-text-secondary">Pague o Pix abaixo para reativar. Depois, conecte seu número de WhatsApp de novo.</p>
+            <p className="text-sm text-text-secondary">
+              Pague o Pix abaixo para reativar. Pix de antes do cancelamento foram cancelados: use só o desta fatura. Depois, conecte seu número de
+              WhatsApp de novo.
+            </p>
           ) : (
             <Button type="button" onClick={reactivate} isLoading={isPending} loadingText="Gerando o Pix…" data-testid="assinatura-reativar">
               Reativar assinatura

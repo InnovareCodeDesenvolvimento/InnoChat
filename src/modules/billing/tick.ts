@@ -2,7 +2,7 @@ import { addDays, addMonths } from "date-fns";
 import { getPrisma } from "@/lib/db/prisma";
 import { logger } from "@/lib/logger";
 import { sendMail, loadEmailContext, invoiceDueReminderEmail } from "@/lib/email";
-import { accessEndsAt, effectiveStatus, validateCpfCnpj } from "@/core/billing";
+import { effectiveStatus, validateCpfCnpj } from "@/core/billing";
 import {
   billingUrlFor,
   pixEnvironmentFor,
@@ -11,11 +11,13 @@ import {
   generateInvoiceDescription,
   sendInvoiceGeneratedEmail,
   sendSubscriptionSuspendedEmail,
+  cancelPixPayments,
+  voidOpenInvoices,
 } from "./service";
 import { formatCentsBRL, formatDateBR } from "./format";
 import { getMercadoPagoGateway, type MercadoPagoGateway } from "./mercadopago";
 import { reconcileInvoicePayment } from "./reconcile";
-import { applyCancellationEffects } from "./cancellation";
+import { persistCanceledTransition } from "./cancellation";
 import { disconnectAllWhatsappInstances } from "@/modules/whatsapp/service";
 import { recordBillingTickRun } from "@/modules/platform/health-service";
 import { runReminderTick } from "@/modules/reminders/tick";
@@ -84,10 +86,11 @@ export async function runBillingTick(now: Date = new Date(), gateway?: MercadoPa
 
   // 0. Concilia PRIMEIRO: fatura já paga não pode receber lembrete/suspensão/Pix novo.
   await reconcileOpenInvoices(prisma, now, gateway, summary);
+  await voidAbandonedReactivations(prisma, now, gateway, summary);
   await generateUpcomingInvoices(prisma, now, resolvedGateway, summary);
   await regenerateExpiredPix(prisma, now, resolvedGateway, summary);
   await sendDueReminders(prisma, now, summary);
-  await reconcileStatuses(prisma, now, summary);
+  await reconcileStatuses(prisma, now, summary, gateway);
 
   // Registra a execução de COBRANÇA já aqui: o lembrete aos clientes tem ritmo lento de propósito
   // (até ~45 s) e o "quando rodou" de Admin > Saúde não pode atrasar por causa dele. A cobrança
@@ -130,6 +133,42 @@ async function reconcileOpenInvoices(prisma: ReturnType<typeof getPrisma>, now: 
     } catch (error) {
       // Nunca derruba o tick por uma fatura — só loga e segue.
       logger.warn("billing.tick.reconcile_failed", { invoiceId: id, errorMessage: error instanceof Error ? error.message : String(error) });
+    }
+  }
+}
+
+/**
+ * Dias após o vencimento (`dueAt`) da fatura de REATIVAÇÃO em que ela é considerada abandonada e
+ * anulada. A reativação nasce com vencimento em 3 dias; depois dele o dono ainda tem este prazo
+ * para pagar o Pix pendente.
+ */
+export const REACTIVATION_ABANDON_DAYS = 7;
+
+/**
+ * Fatura `OPEN` de assinatura `CANCELED` = fatura de reativação (os efeitos do cancelamento já
+ * anularam as demais). Abandonada há mais de `REACTIVATION_ABANDON_DAYS` depois do vencimento:
+ * anula e cancela o Pix no MP (mesmo caminho do cancelamento), para não ficar cobrança pendurada
+ * nem Pix pagável sem baixa. Roda ANTES de regenerar Pix/enviar lembretes.
+ */
+async function voidAbandonedReactivations(
+  prisma: ReturnType<typeof getPrisma>,
+  now: Date,
+  gateway: MercadoPagoGateway | undefined,
+  summary: BillingTickSummary,
+) {
+  const cutoff = addDays(now, -REACTIVATION_ABANDON_DAYS);
+  const abandoned = await prisma.subscription.findMany({
+    where: { status: "CANCELED", invoices: { some: { status: "OPEN", dueAt: { lt: cutoff } } } },
+    select: { id: true },
+    take: 100,
+  });
+  for (const { id } of abandoned) {
+    try {
+      const voided = await voidOpenInvoices(prisma, { subscriptionId: id, dueAt: { lt: cutoff } });
+      await cancelPixPayments(voided.pix, gateway);
+      summary.invoicesVoided += voided.count;
+    } catch (error) {
+      logger.warn("billing.tick.abandoned_reactivation_failed", { subscriptionId: id, errorMessage: error instanceof Error ? error.message : String(error) });
     }
   }
 }
@@ -259,7 +298,7 @@ async function sendDueReminders(prisma: ReturnType<typeof getPrisma>, now: Date,
     where: { status: "OPEN", dueReminderEmailSentAt: null, dueAt: { lte: oneDayOut, gt: now } },
     include: { subscription: { include: { tenant: true } } },
   });
-  for (const invoice of dueTomorrow) {
+  for (const invoice of dueTomorrow.filter(isBillableReminder)) {
     await notifyDue(invoice, false, prisma, summary, "dueReminderEmailSentAt");
   }
 
@@ -267,9 +306,20 @@ async function sendDueReminders(prisma: ReturnType<typeof getPrisma>, now: Date,
     where: { status: "OPEN", dueTodayEmailSentAt: null, dueAt: { lte: now } },
     include: { subscription: { include: { tenant: true } } },
   });
-  for (const invoice of dueToday) {
+  for (const invoice of dueToday.filter(isBillableReminder)) {
     await notifyDue(invoice, true, prisma, summary, "dueTodayEmailSentAt");
   }
+}
+
+/**
+ * Assinatura `CANCELED` só recebe e-mail de cobrança por uma REATIVAÇÃO ativa: fatura criada
+ * depois do cancelamento (`createdAt >= canceledAt`). Fatura anterior que sobrou aberta nunca gera
+ * lembrete (o tick a anula; o dono cancelou e não deve ser cobrado).
+ */
+function isBillableReminder(invoice: { createdAt: Date; subscription: { status: string; canceledAt: Date | null } }): boolean {
+  if (invoice.subscription.status !== "CANCELED") return true;
+  const canceledAt = invoice.subscription.canceledAt;
+  return canceledAt !== null && invoice.createdAt >= canceledAt;
 }
 
 type InvoiceWithTenant = {
@@ -305,7 +355,7 @@ async function notifyDue(
   summary.remindersSent += 1;
 }
 
-async function reconcileStatuses(prisma: ReturnType<typeof getPrisma>, now: Date, summary: BillingTickSummary) {
+async function reconcileStatuses(prisma: ReturnType<typeof getPrisma>, now: Date, summary: BillingTickSummary, gateway?: MercadoPagoGateway) {
   const subscriptions = await prisma.subscription.findMany({
     where: { status: { not: "CANCELED" } },
     include: { tenant: true },
@@ -315,35 +365,35 @@ async function reconcileStatuses(prisma: ReturnType<typeof getPrisma>, now: Date
     const next = effectiveStatus(subscription, now);
     if (next === subscription.status) continue;
 
-    await prisma.subscription.update({
-      where: { id: subscription.id },
+    if (next === "CANCELED") {
+      // Claim condicional (status/agendamento/fim do período como lidos): se o dono desfez o
+      // cancelamento ou um pagamento entrou entre a leitura e aqui, não cancela. Efeitos do
+      // cancelamento (qualquer origem: agendado ou 60 dias em SUSPENDED) rodam dentro; falha deles
+      // é isolada e a varredura abaixo repete a desconexão. A data de cancelamento é o fim do
+      // período pago quando agendado (dela partem os 90 dias de retenção, ver `canceledAt` em
+      // `maintenance/tick.ts`).
+      const result = await persistCanceledTransition(subscription, now, { gateway });
+      if (!result.claimed) continue;
+      summary.statusChanges += 1;
+      summary.invoicesVoided += result.invoicesVoided;
+      continue;
+    }
+
+    const claimed = await prisma.subscription.updateMany({
+      where: {
+        id: subscription.id,
+        status: subscription.status,
+        cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+        currentPeriodEnd: subscription.currentPeriodEnd,
+      },
       data: {
         status: next,
         // Sai de SUSPENDED (pagou/reativou) → zera a marca, para avisar de novo numa suspensão futura.
         suspendedEmailSentAt: next === "SUSPENDED" ? subscription.suspendedEmailSentAt : null,
-        // Correção 2026-09-28 (achado do endpoint de manutenção/LGPD, `maintenance/tick.ts`):
-        // `canceledAt` nunca era persistido quando o STATUS EFETIVO virava `CANCELED` por aqui
-        // (só era zerado na reativação, em `admin-service.ts`) — sem isto, a anonimização de
-        // 90 dias após `CANCELED` (docs/arquitetura.md §11/§12) nunca teria uma data de
-        // referência para contar a partir de nenhuma empresa cancelada automaticamente (60
-        // dias em `SUSPENDED`, ver `effectiveStatus`). Marca só na transição PARA `CANCELED`.
-        // Cancelamento agendado pelo dono: a data de cancelamento é o fim do período pago (não o
-        // instante em que o tick rodou) — é dela que partem os 90 dias de retenção.
-        ...(next === "CANCELED" ? { canceledAt: subscription.cancelAtPeriodEnd ? accessEndsAt(subscription) : now } : {}),
       },
     });
+    if (claimed.count === 0) continue; // mudou no meio do caminho (pagamento/desfazer): próxima rodada reavalia
     summary.statusChanges += 1;
-
-    // Efeitos do cancelamento (qualquer origem: agendado pelo dono ou 60 dias em SUSPENDED):
-    // anula faturas em aberto e desconecta os números. Falha isolada — a varredura abaixo repete.
-    if (next === "CANCELED") {
-      try {
-        const effects = await applyCancellationEffects(subscription.id, subscription.tenantId);
-        summary.invoicesVoided += effects.invoicesVoided;
-      } catch (error) {
-        logger.warn("billing.tick.cancel_effects_failed", { tenantId: subscription.tenantId, errorMessage: error instanceof Error ? error.message : String(error) });
-      }
-    }
 
     if (next === "SUSPENDED" && !subscription.suspendedEmailSentAt) {
       const payerEmail = await findBillingRecipientEmail(subscription.tenantId);
@@ -365,10 +415,8 @@ async function reconcileStatuses(prisma: ReturnType<typeof getPrisma>, now: Date
   // É uma varredura (não parte da transição) para se auto-curar: se o tick cair entre gravar
   // `CANCELED` e anular, a próxima rodada anula. Idempotente e segura em corrida: só toca fatura
   // ainda `OPEN` (um pagamento concorrente que a marcou `PAID` não é sobrescrito).
-  const voided = await prisma.invoice.updateMany({
-    where: { status: "OPEN", isTrialConversion: true, subscription: { status: "CANCELED", firstPaidAt: null } },
-    data: { status: "VOID" },
-  });
+  const voided = await voidOpenInvoices(prisma, { isTrialConversion: true, subscription: { status: "CANCELED", firstPaidAt: null } });
+  await cancelPixPayments(voided.pix, gateway);
   summary.invoicesVoided += voided.count;
 
   // Auto-cura da desconexão: número ainda ligado numa assinatura já CANCELED = a desconexão

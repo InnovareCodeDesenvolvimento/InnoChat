@@ -39,6 +39,8 @@ export type BillingSnapshot = {
   canceledAt: string | null;
   /** Fim da guarda dos dados (cancelamento + 90 dias). */
   retentionEndsAt: string | null;
+  /** `true` quando o prazo de guarda (90 dias após o cancelamento) já passou: os dados dos clientes foram anonimizados. */
+  dataAnonymized: boolean;
   invoice: {
     id: string;
     amountCents: number;

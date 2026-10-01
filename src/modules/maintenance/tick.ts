@@ -78,6 +78,17 @@ export async function runMaintenanceTick(now: Date = new Date()): Promise<Mainte
     contactsAnonymized += 1;
   }
 
+  // O motivo livre do cancelamento (texto digitado pelo dono, pode ter dado pessoal) também sai
+  // junto com a anonimização dos 90 dias. Isolado: nunca impede o resto do tick.
+  try {
+    await prisma.subscription.updateMany({
+      where: { status: "CANCELED", canceledAt: { lt: cancellationCutoff }, cancelReason: { not: null } },
+      data: { cancelReason: null },
+    });
+  } catch (error) {
+    logger.warn("maintenance.cancel_reason_clear_failed", { errorMessage: error instanceof Error ? error.message : String(error) });
+  }
+
   // Retenção do histórico de conversas (90 dias, política de privacidade). Em lotes (findMany +
   // deleteMany por id, no máximo CHAT_PURGE_MAX_BATCHES por chamada — o tick seguinte continua) e
   // isolado: falha aqui não impede o restante do tick.

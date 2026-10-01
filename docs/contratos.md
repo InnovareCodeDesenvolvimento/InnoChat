@@ -2010,3 +2010,22 @@ Erros: `FORBIDDEN` (STAFF), `NOT_FOUND` (outra empresa/sem assinatura), `INVALID
 ### Testes
 `tests/integration/billing-cancellation.integration.test.ts` (14), `tests/e2e/assinatura-cancelamento.spec.ts` (3),
 unit em `core/billing/__tests__/status.test.ts` e `lib/email/__tests__/templates.test.ts`.
+
+### Endurecimento do cancelamento (2026-10-01, revisão do Órion)
+
+Migration aditiva `20261002120000_fatura_paga_anulada`: `Invoice.paidWhileVoidAt` (nulo; índice).
+
+- **Pix de fatura anulada:** ao anular (cancelamento, tick, abandono) o Pix pendente é cancelado no MP
+  (`MercadoPagoGateway.cancelPayment` = `PUT /v1/payments/{id}` com `{"status":"cancelled"}`, fora da
+  transação; falha só é logada). Pagamento aprovado numa fatura VOID não reativa: grava `paidWhileVoidAt` e
+  vira o aviso `PAYMENT_ON_VOID_INVOICE` (id `pvoid:<invoiceId>`) no sino do admin, que decide o estorno.
+  Desfazer/reabrir fatura limpa o Pix antigo (novo Pix com chave de idempotência nova).
+- **Status efetivo:** `startReactivation` e `applyInvoicePayment` usam o status EFETIVO. Reativar com persistido
+  ACTIVE e efetivo CANCELED persiste `CANCELED` + efeitos (`persistCanceledTransition`) ANTES de criar a fatura.
+- **WhatsApp:** `getQrCode`/`refreshConnectionStatus` recusam com `SUBSCRIPTION_CANCELED` quando o efetivo é
+  CANCELED (SUSPENDED não bloqueia).
+- **Reativação:** o claim VOID→OPEN decide quem gera o Pix. Fatura OPEN de assinatura CANCELED é anulada pelo tick
+  7 dias depois do vencimento; sem e-mail de cobrança para CANCELED fora de reativação (fatura criada depois do
+  cancelamento).
+- **Motivo:** normalizado na gravação (sem controle/bidi, espaços colapsados, corte por code point) e apagado
+  na anonimização de 90 dias. Assunto de e-mail sempre numa linha só.

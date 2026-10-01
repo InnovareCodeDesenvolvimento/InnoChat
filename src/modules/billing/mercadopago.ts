@@ -57,6 +57,12 @@ export interface MercadoPagoGateway {
   readonly environment?: MercadoPagoEnv;
   createPixPayment(input: CreatePixPaymentInput): Promise<PixPaymentResult>;
   getPayment(paymentId: string): Promise<MercadoPagoPayment>;
+  /**
+   * Cancela um pagamento PENDENTE (`PUT /v1/payments/{id}` com `{ status: "cancelled" }`) — usado
+   * quando a fatura é anulada (cancelamento da assinatura) para o Pix já emitido não poder mais
+   * ser pago. Lança `MercadoPagoApiError` se o MP recusar (ex.: pagamento já aprovado).
+   */
+  cancelPayment(paymentId: string): Promise<void>;
 }
 
 const API_BASE = "https://api.mercadopago.com";
@@ -288,6 +294,26 @@ export function createMercadoPagoGateway(accessToken: string, environment?: Merc
         externalReference: json.external_reference,
         transactionAmountCents: typeof json.transaction_amount === "number" ? Math.round(json.transaction_amount * 100) : null,
       };
+    },
+
+    async cancelPayment(paymentId) {
+      // Só dígitos: o id vai no path da URL (nunca confia no formato guardado no banco).
+      if (!/^[0-9]{1,30}$/.test(paymentId)) {
+        throw new MercadoPagoApiError("Identificador de pagamento do Mercado Pago inválido.", undefined, "payload_rejected");
+      }
+      const response = await fetchWithRetry(`${API_BASE}/v1/payments/${paymentId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+        body: JSON.stringify({ status: "cancelled" }),
+      });
+      if (!response.ok) {
+        const body = await response.text().catch(() => "");
+        throw new MercadoPagoApiError(
+          `Mercado Pago recusou o cancelamento do pagamento (${response.status}).`,
+          response.status,
+          classifyMercadoPagoError(response.status, body),
+        );
+      }
     },
   };
 }

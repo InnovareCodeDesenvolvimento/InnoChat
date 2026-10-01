@@ -150,7 +150,7 @@ describe("signUp — cadastro público completo", () => {
   it("segue sem quebrar mesmo se o Mercado Pago falhar ao gerar o Pix (fatura fica OPEN sem Pix)", async () => {
     const failingGateway = {
       createPixPayment: vi.fn().mockRejectedValue(new Error("MP fora do ar")),
-      getPayment: vi.fn(),
+      cancelPayment: vi.fn(), getPayment: vi.fn(),
     };
     const input = signupInput();
     const result = await signUp(input, failingGateway);

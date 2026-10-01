@@ -81,6 +81,8 @@ export default async function AssinaturaPage({
     accessEndsAt: subscription.cancelAtPeriodEnd ? accessEndsAt(subscription).toISOString() : null,
     canceledAt: canceledAt?.toISOString() ?? null,
     retentionEndsAt: canceledAt ? addDays(canceledAt, CANCELED_RETENTION_DAYS).toISOString() : null,
+    // Passaram os 90 dias: os dados dos clientes finais já foram (ou estão sendo) anonimizados.
+    dataAnonymized: canceledAt ? addDays(canceledAt, CANCELED_RETENTION_DAYS) <= now : false,
     invoice: openInvoice
       ? {
           id: openInvoice.id,

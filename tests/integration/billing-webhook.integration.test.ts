@@ -83,7 +83,7 @@ describe("handleMercadoPagoWebhook — idempotência (§6.10)", () => {
     const paidAt = new Date();
     const gateway = {
       createPixPayment: vi.fn(),
-      getPayment: vi.fn().mockResolvedValue({ id: dataId, status: "approved", dateApproved: paidAt, externalReference: invoice.id, transactionAmountCents: invoice.amountCents }),
+      cancelPayment: vi.fn(), getPayment: vi.fn().mockResolvedValue({ id: dataId, status: "approved", dateApproved: paidAt, externalReference: invoice.id, transactionAmountCents: invoice.amountCents }),
     };
 
     const first = await handleMercadoPagoWebhook({ xSignature, xRequestId: requestId, dataId, gateway });
@@ -118,7 +118,7 @@ describe("handleMercadoPagoWebhook — idempotência (§6.10)", () => {
     const paidAt = new Date();
     const gateway = {
       createPixPayment: vi.fn(),
-      getPayment: vi.fn().mockResolvedValue({ id: dataId, status: "approved", dateApproved: paidAt, externalReference: invoice.id, transactionAmountCents: invoice.amountCents }),
+      cancelPayment: vi.fn(), getPayment: vi.fn().mockResolvedValue({ id: dataId, status: "approved", dateApproved: paidAt, externalReference: invoice.id, transactionAmountCents: invoice.amountCents }),
     };
 
     // Duas "entregas" do MESMO webhook batendo praticamente ao mesmo tempo — simula o retry de
@@ -161,7 +161,7 @@ describe("handleMercadoPagoWebhook — idempotência (§6.10)", () => {
     const ts = String(Math.floor(Date.now() / 1000));
     const gateway = {
       createPixPayment: vi.fn(),
-      getPayment: vi.fn().mockResolvedValue({ id: dataId, status: "approved", dateApproved: new Date(), externalReference: invoice.id, transactionAmountCents: invoice.amountCents }),
+      cancelPayment: vi.fn(), getPayment: vi.fn().mockResolvedValue({ id: dataId, status: "approved", dateApproved: new Date(), externalReference: invoice.id, transactionAmountCents: invoice.amountCents }),
     };
 
     const result = await handleMercadoPagoWebhook({ xSignature: signManifest(dataId, requestId, ts), xRequestId: requestId, dataId, gateway });
@@ -186,7 +186,7 @@ describe("handleMercadoPagoWebhook — idempotência (§6.10)", () => {
     const ts = String(Math.floor(Date.now() / 1000));
     const gateway = {
       createPixPayment: vi.fn(),
-      getPayment: vi.fn().mockRejectedValue(new MercadoPagoApiError("Mercado Pago recusou a consulta do pagamento (404).", 404)),
+      cancelPayment: vi.fn(), getPayment: vi.fn().mockRejectedValue(new MercadoPagoApiError("Mercado Pago recusou a consulta do pagamento (404).", 404)),
     };
 
     await expect(
@@ -203,7 +203,7 @@ describe("handleMercadoPagoWebhook — idempotência (§6.10)", () => {
     const requestId = "req-mo";
     const ts = String(Math.floor(Date.now() / 1000));
     const xSignature = signManifest(dataId, requestId, ts);
-    const gateway = { createPixPayment: vi.fn(), getPayment: vi.fn() };
+    const gateway = { createPixPayment: vi.fn(), cancelPayment: vi.fn(), getPayment: vi.fn() };
 
     const result = await handleMercadoPagoWebhook({ xSignature, xRequestId: requestId, dataId, type: "merchant_order", gateway });
 

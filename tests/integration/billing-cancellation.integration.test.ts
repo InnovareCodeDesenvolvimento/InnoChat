@@ -49,10 +49,11 @@ vi.mock("@/modules/whatsapp/evolution-client", async (importOriginal) => {
 });
 
 const { cancelSubscriptionAction, undoCancellationAction, reactivateSubscriptionAction } = await import("@/modules/billing/actions");
-const { requestCancellation, undoCancellation, startReactivation } = await import("@/modules/billing/cancellation");
+const { requestCancellation, undoCancellation, startReactivation, normalizeCancelReason } =await import("@/modules/billing/cancellation");
 const { applyInvoicePayment, assertTenantCanWrite } = await import("@/modules/billing/service");
 const { runBillingTick } = await import("@/modules/billing/tick");
 const { createMockMercadoPagoGateway } = await import("@/modules/billing/mercadopago.mock");
+const { getQrCode, refreshConnectionStatus } = await import("@/modules/whatsapp/service");
 const { listPlatformNotifications } = await import("@/modules/platform-notifications/service");
 
 const prisma = getPrisma();
@@ -370,5 +371,264 @@ describe("reativação pelo dono", () => {
     const t = await makeTenant("reactivate-active");
     t.asOwner();
     expect(await reactivateSubscriptionAction(t.tenant.slug)).toMatchObject({ ok: false, error: { code: "INVALID_STATE" } });
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Endurecimento (revisão do Órion): Pix de fatura anulada, status efetivo, WhatsApp, reativação
+// ---------------------------------------------------------------------------------------------
+
+const VALID_CPF = "52998224725";
+
+/** Empresa pronta para gerar Pix de verdade no mock (o MP exige documento do pagador). */
+async function withDocument(tenantId: string) {
+  await prisma.tenant.update({ where: { id: tenantId }, data: { document: VALID_CPF } });
+}
+
+/** Cria um Pix no mock para a fatura e grava no banco como o tick/tela fariam. */
+async function attachMockPix(invoiceId: string, gateway: ReturnType<typeof createMockMercadoPagoGateway>["gateway"]) {
+  const pix = await gateway.createPixPayment({
+    externalReference: invoiceId,
+    amountCents: 4990,
+    description: "Assinatura InnoChat",
+    payerEmail: "pagador@example.com",
+    payerName: "Pagador",
+    payerDocument: VALID_CPF,
+    idempotencyKey: invoiceId,
+    expiresInDays: 3,
+  });
+  await prisma.invoice.update({
+    where: { id: invoiceId },
+    data: { mpPaymentId: pix.paymentId, pixQrCode: pix.qrCode, pixCopyPaste: pix.copyPaste, pixExpiresAt: pix.expiresAt, mpEnvironment: "SANDBOX" },
+  });
+  return pix.paymentId;
+}
+
+describe("I-1: Pix de fatura anulada", () => {
+  it("ao anular, o gateway recebe o cancelamento do pagamento pendente (e a falha do MP não desfaz o cancelamento)", async () => {
+    const t = await makeTenant("pixcancel");
+    const mock = createMockMercadoPagoGateway();
+    const invoice = await openInvoice(t.subscription.id, t.subscription.currentPeriodEnd);
+    const paymentId = await attachMockPix(invoice.id, mock.gateway);
+
+    const result = await requestCancellation(t.tenant.id, {}, { gateway: mock.gateway });
+    expect(result.mode).toBe("SCHEDULED");
+    expect((await prisma.invoice.findUniqueOrThrow({ where: { id: invoice.id } })).status).toBe("VOID");
+    expect(mock.cancelledPaymentIds).toEqual([paymentId]);
+    expect((await mock.gateway.getPayment(paymentId)).status).toBe("cancelled");
+
+    // Falha do Mercado Pago ao cancelar: só é logada, o cancelamento da assinatura vale.
+    const t2 = await makeTenant("pixcancel-fail");
+    const inv2 = await openInvoice(t2.subscription.id, t2.subscription.currentPeriodEnd);
+    await attachMockPix(inv2.id, mock.gateway);
+    const failing = { ...mock.gateway, cancelPayment: vi.fn().mockRejectedValue(new Error("MP fora do ar")) };
+    const result2 = await requestCancellation(t2.tenant.id, {}, { gateway: failing });
+    expect(result2.mode).toBe("SCHEDULED");
+    expect(failing.cancelPayment).toHaveBeenCalledTimes(1);
+    expect((await prisma.subscription.findUniqueOrThrow({ where: { id: t2.subscription.id } })).cancelAtPeriodEnd).toBe(true);
+  });
+
+  it("pagamento recebido em fatura anulada gera aviso no sino do admin e NÃO reativa nada", async () => {
+    const t = await makeTenant("paidvoid");
+    const mock = createMockMercadoPagoGateway();
+    const invoice = await openInvoice(t.subscription.id, t.subscription.currentPeriodEnd);
+    await attachMockPix(invoice.id, mock.gateway);
+    await requestCancellation(t.tenant.id, {}, { gateway: mock.gateway });
+
+    const paidAt = new Date();
+    const applied = await applyInvoicePayment(invoice.id, paidAt);
+    expect(applied).toMatchObject({ alreadyProcessed: false, voided: true });
+    // Reentrega do mesmo evento: continua um aviso só.
+    await applyInvoicePayment(invoice.id, new Date());
+
+    const inv = await prisma.invoice.findUniqueOrThrow({ where: { id: invoice.id } });
+    expect(inv.status).toBe("VOID");
+    expect(inv.paidAt).toBeNull();
+    expect(inv.paidWhileVoidAt?.getTime()).toBe(paidAt.getTime());
+    const sub = await prisma.subscription.findUniqueOrThrow({ where: { id: t.subscription.id } });
+    expect(sub).toMatchObject({ status: "ACTIVE", cancelAtPeriodEnd: true });
+
+    const { items } = await listPlatformNotifications("usuario-inexistente");
+    const matches = items.filter((i) => i.id === `pvoid:${invoice.id}`);
+    expect(matches).toHaveLength(1);
+    expect(matches[0]).toMatchObject({ kind: "PAYMENT_ON_VOID_INVOICE", severity: "danger", tenant: { id: t.tenant.id } });
+    expect(matches[0]!.body).toContain(t.tenant.name);
+    expect(matches[0]!.body).toContain("49,90");
+  });
+
+  it("desfazer reabre a fatura SEM o Pix antigo (cancelado no MP): o tick gera um Pix novo", async () => {
+    const t = await makeTenant("undo-pix");
+    await withDocument(t.tenant.id);
+    const mock = createMockMercadoPagoGateway();
+    const invoice = await openInvoice(t.subscription.id, t.subscription.currentPeriodEnd);
+    const oldPaymentId = await attachMockPix(invoice.id, mock.gateway);
+    await requestCancellation(t.tenant.id, {}, { gateway: mock.gateway });
+    await undoCancellation(t.tenant.id);
+
+    const reopened = await prisma.invoice.findUniqueOrThrow({ where: { id: invoice.id } });
+    expect(reopened).toMatchObject({ status: "OPEN", mpPaymentId: null, pixCopyPaste: null, pixExpiresAt: null });
+
+    await runBillingTick(new Date(), mock.gateway);
+    const regenerated = await prisma.invoice.findUniqueOrThrow({ where: { id: invoice.id } });
+    expect(regenerated.mpPaymentId).not.toBeNull();
+    expect(regenerated.mpPaymentId).not.toBe(oldPaymentId);
+  });
+});
+
+describe("I-2: status efetivo x persistido na reativação", () => {
+  it("reativar na janela antes do tick (efetivo CANCELED, persistido ACTIVE): efeitos persistidos ANTES da fatura nascer, 1 fatura OPEN com Pix, e o tick não a anula", async () => {
+    const t = await makeTenant("window", { currentPeriodEnd: addDays(new Date(), 1) });
+    await withDocument(t.tenant.id);
+    const mock = createMockMercadoPagoGateway();
+    await requestCancellation(t.tenant.id, { reason: "pausa" });
+    const periodEnd = addHours(new Date(), -2);
+    await prisma.subscription.update({ where: { id: t.subscription.id }, data: { currentPeriodEnd: periodEnd } });
+    // Estado da janela: o tick ainda não persistiu CANCELED.
+    expect((await prisma.subscription.findUniqueOrThrow({ where: { id: t.subscription.id } })).status).toBe("ACTIVE");
+
+    const { invoiceId } = await startReactivation(t.tenant.id, { gateway: mock.gateway });
+
+    const sub = await prisma.subscription.findUniqueOrThrow({ where: { id: t.subscription.id } });
+    expect(sub.status).toBe("CANCELED");
+    expect(sub.canceledAt?.getTime()).toBe(periodEnd.getTime());
+    expect((await prisma.whatsappInstance.findUniqueOrThrow({ where: { id: t.instance.id } })).status).toBe("DISCONNECTED");
+    expect(logoutCalls).toEqual([t.instance.instanceName]);
+    const open = await prisma.invoice.findMany({ where: { subscriptionId: t.subscription.id, status: "OPEN" } });
+    expect(open.map((i) => i.id)).toEqual([invoiceId]);
+    expect(open[0]!.mpPaymentId).not.toBeNull();
+
+    await runBillingTick(new Date(), mock.gateway);
+    expect((await prisma.invoice.findUniqueOrThrow({ where: { id: invoiceId } })).status).toBe("OPEN");
+
+    const paidAt = new Date();
+    await applyInvoicePayment(invoiceId, paidAt);
+    const after = await prisma.subscription.findUniqueOrThrow({ where: { id: t.subscription.id } });
+    expect(after.status).toBe("ACTIVE");
+    expect(after).toMatchObject({ canceledAt: null, cancelAtPeriodEnd: false, cancelReason: null, cancelRequestedAt: null });
+    expect(after.currentPeriodEnd.getTime()).toBeGreaterThan(addDays(paidAt, 27).getTime());
+  });
+
+  it("pagar fatura com agendamento vencido e status persistido ACTIVE trata como cancelada: limpa os campos e conta o ciclo do pagamento", async () => {
+    const t = await makeTenant("window-pay", { currentPeriodEnd: addDays(new Date(), 1) });
+    await requestCancellation(t.tenant.id, {});
+    const periodEnd = addHours(new Date(), -2);
+    await prisma.subscription.update({ where: { id: t.subscription.id }, data: { currentPeriodEnd: periodEnd } });
+    const invoice = await openInvoice(t.subscription.id, addDays(periodEnd, -40));
+
+    const paidAt = new Date();
+    await applyInvoicePayment(invoice.id, paidAt);
+    const sub = await prisma.subscription.findUniqueOrThrow({ where: { id: t.subscription.id } });
+    expect(sub.status).toBe("ACTIVE");
+    expect(sub).toMatchObject({ cancelAtPeriodEnd: false, cancelReason: null, cancelRequestedAt: null, canceledAt: null });
+    expect(sub.currentPeriodEnd.getTime()).toBeGreaterThan(addDays(paidAt, 27).getTime());
+  });
+
+  it("reativar duas vezes concorrente (fatura anulada do mesmo dia reaberta) gera UM Pix só", async () => {
+    const t = await makeTenant("reopen-once", { status: "SUSPENDED", currentPeriodEnd: addDays(new Date(), -10) });
+    await withDocument(t.tenant.id);
+    const mock = createMockMercadoPagoGateway();
+    const now = new Date();
+    const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const stale = await openInvoice(t.subscription.id, today);
+    await attachMockPix(stale.id, mock.gateway);
+    await requestCancellation(t.tenant.id, {}, { gateway: mock.gateway }); // anula (e cancela o Pix) e cancela a assinatura
+
+    const createSpy = vi.spyOn(mock.gateway, "createPixPayment");
+    const [a, b] = await Promise.all([startReactivation(t.tenant.id, { gateway: mock.gateway }), startReactivation(t.tenant.id, { gateway: mock.gateway })]);
+    expect(a.invoiceId).toBe(stale.id);
+    expect(b.invoiceId).toBe(stale.id);
+    expect(createSpy).toHaveBeenCalledTimes(1);
+    const reopened = await prisma.invoice.findUniqueOrThrow({ where: { id: stale.id } });
+    expect(reopened.status).toBe("OPEN");
+    expect(reopened.mpPaymentId).not.toBeNull();
+    expect(mock.cancelledPaymentIds).toHaveLength(1); // só o Pix antigo foi cancelado
+    expect(reopened.mpPaymentId).not.toBe(mock.cancelledPaymentIds[0]);
+  });
+});
+
+describe("I-3: WhatsApp de empresa cancelada", () => {
+  const fakeEvolution = {
+    connectionState: vi.fn(async () => "connecting"),
+    connect: vi.fn(async () => ({ qrCodeDataUrl: "data:image/png;base64,AAAA", pairingCode: null })),
+  } as unknown as EvolutionClient;
+
+  it("getQrCode/refreshConnectionStatus: CANCELED (inclusive o efetivo, antes do tick) é bloqueado; SUSPENDED NÃO", async () => {
+    const canceled = await makeTenant("wa-canceled", { status: "CANCELED", currentPeriodEnd: addDays(new Date(), -5) });
+    await prisma.whatsappInstance.update({ where: { id: canceled.instance.id }, data: { status: "QRCODE", phoneE164: null } });
+    await expect(getQrCode(canceled.tenant.id, canceled.instance.id, { evolution: fakeEvolution })).rejects.toMatchObject({ code: "SUBSCRIPTION_CANCELED" });
+    await expect(refreshConnectionStatus(canceled.tenant.id, canceled.instance.id, { evolution: fakeEvolution })).rejects.toMatchObject({ code: "SUBSCRIPTION_CANCELED" });
+
+    // Agendamento vencido, tick ainda não persistiu (persistido ACTIVE, efetivo CANCELED).
+    const window = await makeTenant("wa-window", { currentPeriodEnd: addDays(new Date(), 1) });
+    await requestCancellation(window.tenant.id, {});
+    await prisma.subscription.update({ where: { id: window.subscription.id }, data: { currentPeriodEnd: addHours(new Date(), -2) } });
+    await prisma.whatsappInstance.update({ where: { id: window.instance.id }, data: { status: "QRCODE", phoneE164: null } });
+    await expect(getQrCode(window.tenant.id, window.instance.id, { evolution: fakeEvolution })).rejects.toMatchObject({ code: "SUBSCRIPTION_CANCELED" });
+
+    const suspended = await makeTenant("wa-suspended", { status: "SUSPENDED", currentPeriodEnd: addDays(new Date(), -5) });
+    await prisma.whatsappInstance.update({ where: { id: suspended.instance.id }, data: { status: "QRCODE", phoneE164: null } });
+    const qr = await getQrCode(suspended.tenant.id, suspended.instance.id, { evolution: fakeEvolution });
+    expect(qr.qrCodeDataUrl).toContain("data:image");
+    await expect(refreshConnectionStatus(suspended.tenant.id, suspended.instance.id, { evolution: fakeEvolution })).resolves.toMatchObject({ status: "QRCODE" });
+  });
+});
+
+describe("I-4: reativação abandonada e e-mails", () => {
+  it("fatura de reativação aberta há mais de 7 dias após o vencimento é anulada pelo tick, com o Pix cancelado no MP; a recente fica", async () => {
+    const mock = createMockMercadoPagoGateway();
+    const old = await makeTenant("abandon-old", { status: "CANCELED", currentPeriodEnd: addDays(new Date(), -40) });
+    const fresh = await makeTenant("abandon-fresh", { status: "CANCELED", currentPeriodEnd: addDays(new Date(), -40) });
+    const now = new Date();
+    const oldInvoice = await openInvoice(old.subscription.id, addDays(now, -11));
+    await prisma.invoice.update({ where: { id: oldInvoice.id }, data: { dueAt: addDays(now, -8) } });
+    const oldPayment = await attachMockPix(oldInvoice.id, mock.gateway);
+    const freshInvoice = await openInvoice(fresh.subscription.id, addDays(now, -9));
+    await prisma.invoice.update({ where: { id: freshInvoice.id }, data: { dueAt: addDays(now, -6) } });
+
+    const summary = await runBillingTick(now, mock.gateway);
+    expect(summary.invoicesVoided).toBeGreaterThanOrEqual(1);
+    expect((await prisma.invoice.findUniqueOrThrow({ where: { id: oldInvoice.id } })).status).toBe("VOID");
+    expect(mock.cancelledPaymentIds).toContain(oldPayment);
+    expect((await prisma.invoice.findUniqueOrThrow({ where: { id: freshInvoice.id } })).status).toBe("OPEN");
+  });
+
+  it("assinatura CANCELED só recebe e-mail de cobrança de reativação ativa (fatura criada depois do cancelamento)", async () => {
+    const now = new Date();
+    const stale = await makeTenant("mail-stale", { status: "CANCELED", currentPeriodEnd: addDays(now, -40) });
+    await prisma.subscription.update({ where: { id: stale.subscription.id }, data: { canceledAt: addDays(now, -1) } });
+    const staleInvoice = await openInvoice(stale.subscription.id, addDays(now, -30));
+    await prisma.invoice.update({ where: { id: staleInvoice.id }, data: { createdAt: addDays(now, -2), dueAt: addHours(now, 12) } });
+
+    const active = await makeTenant("mail-active", { status: "CANCELED", currentPeriodEnd: addDays(now, -40) });
+    await prisma.subscription.update({ where: { id: active.subscription.id }, data: { canceledAt: addDays(now, -1) } });
+    const activeInvoice = await openInvoice(active.subscription.id, addDays(now, -2));
+    await prisma.invoice.update({ where: { id: activeInvoice.id }, data: { dueAt: addHours(now, 12) } });
+
+    sentEmails.length = 0;
+    await runBillingTick(now, createMockMercadoPagoGateway().gateway);
+    expect(sentEmails.filter((e) => e.to.startsWith(stale.tenant.slug))).toHaveLength(0);
+    expect(sentEmails.filter((e) => e.to.startsWith(active.tenant.slug))).toHaveLength(1);
+  });
+});
+
+describe("S-4: motivo normalizado", () => {
+  it("remove controle e bidi, colapsa espaços e grava normalizado; corte não parte par substituto", async () => {
+    const rlo = String.fromCodePoint(0x202e);
+    const zwsp = String.fromCodePoint(0x200b);
+    const crlf = String.fromCodePoint(13, 10);
+    const bell = String.fromCodePoint(7);
+    const dirty = `  quero${rlo}   sair${zwsp}${crlf}Bcc: x${bell}   fim  `;
+    expect(normalizeCancelReason(dirty)).toBe("quero sair Bcc: x fim");
+    expect(normalizeCancelReason(`${bell}${zwsp}   `)).toBeNull();
+
+    const emoji = String.fromCodePoint(0x1f600);
+    const long = normalizeCancelReason("a".repeat(499) + emoji + emoji + emoji);
+    expect(Array.from(long ?? "")).toHaveLength(500);
+    expect(long?.endsWith(emoji)).toBe(true);
+
+    const t = await makeTenant("reason");
+    await requestCancellation(t.tenant.id, { reason: dirty });
+    const sub = await prisma.subscription.findUniqueOrThrow({ where: { id: t.subscription.id } });
+    expect(sub.cancelReason).toBe("quero sair Bcc: x fim");
   });
 });

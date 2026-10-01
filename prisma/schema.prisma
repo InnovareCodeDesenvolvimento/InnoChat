@@ -947,6 +947,11 @@ model Invoice {
   // o `billing/tick` a anula (VOID) no cancelamento da conta.
   isTrialConversion Boolean @default(false)
 
+  // Instante em que o Mercado Pago confirmou um pagamento para esta fatura JÁ ANULADA (VOID): o
+  // dinheiro entrou mas a fatura não foi baixada. Alimenta o aviso PAYMENT_ON_VOID_INVOICE no sino
+  // do admin (que decide o estorno). Nulo na imensa maioria das faturas.
+  paidWhileVoidAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -961,6 +966,7 @@ model Invoice {
   @@index([status, pixExpiresAt])
   // Webhook do Mercado Pago (§6.10): acha a fatura pelo id do pagamento antes de reconsultar a API.
   @@index([mpPaymentId])
+  @@index([paidWhileVoidAt])
   @@map("invoices")
 }
 

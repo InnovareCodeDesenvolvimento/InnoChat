@@ -167,6 +167,10 @@ export async function cancelSubscriptionAction(tenantSlug: string, input: unknow
 export async function undoCancellationAction(tenantSlug: string): Promise<Result<{ undone: boolean }>> {
   return runAction(async () => {
     const { tenant } = await requireTenantMember(tenantSlug, ["OWNER"]);
+    const rateLimit = checkRateLimit(`undo-cancellation:${tenant.id}`, CANCEL_LIMIT, CANCEL_WINDOW_MS);
+    if (!rateLimit.allowed) {
+      throw new DomainError("RATE_LIMITED", "Muitas tentativas. Aguarde alguns minutos antes de tentar de novo.", { retryAfterMs: rateLimit.retryAfterMs });
+    }
     return undoCancellation(tenant.id);
   });
 }

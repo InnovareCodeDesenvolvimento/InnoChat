@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import type { Prisma } from "@/lib/db/types";
 import { getPrisma } from "@/lib/db/prisma";
 import { forTenant } from "@/lib/db/tenant-client";
 import { DomainError } from "@/lib/errors";
@@ -8,7 +9,7 @@ import { getPublicBaseUrl } from "@/lib/public-url";
 import { CANCEL_AFTER_SUSPENDED_TRIAL_DAYS, computeTrialEndsAt, effectiveStatus, validateCpfCnpj, type SubscriptionStatus } from "@/core/billing";
 import { formatCentsBRL, formatDateBR } from "./format";
 import { getActiveMercadoPagoCredentials, type MercadoPagoEnv } from "@/modules/platform/mercadopago-config";
-import { getMercadoPagoGateway, MercadoPagoApiError, type MercadoPagoFailureKind, type MercadoPagoGateway } from "./mercadopago";
+import { getMercadoPagoGateway, getMercadoPagoGatewayForEnvironment, MercadoPagoApiError, type MercadoPagoFailureKind, type MercadoPagoGateway } from "./mercadopago";
 
 /**
  * Camada de serviço da cobrança (docs/arquitetura.md §7). Reúne o que toca banco/e-mail/MP —
@@ -219,7 +220,17 @@ export async function pixEnvironmentFor(gateway: MercadoPagoGateway): Promise<Me
 }
 
 /** Exportada para quem já tem a fatura criada (sem passar pelo check de idempotência de `createInvoiceForPeriodTracked`, que trataria a fatura recém-criada como "já existe" e nunca chamaria isto). */
-export async function tryAttachPix(invoiceId: string, payerEmail: string, description: string, gateway?: MercadoPagoGateway) {
+export async function tryAttachPix(
+  invoiceId: string,
+  payerEmail: string,
+  description: string,
+  gateway?: MercadoPagoGateway,
+  /**
+   * Sobrescreve a chave de idempotência do MP. Fatura REABERTA (VOID→OPEN) precisa de chave nova:
+   * com `invoice.id` o MP devolveria o pagamento antigo, que foi cancelado ao anular.
+   */
+  options: { idempotencyKey?: string } = {},
+) {
   try {
     const mp = gateway ?? (await getMercadoPagoGateway({ forNewCharge: true }));
     const invoice = await getPrisma().invoice.findUniqueOrThrow({ where: { id: invoiceId } });
@@ -232,7 +243,7 @@ export async function tryAttachPix(invoiceId: string, payerEmail: string, descri
       payerEmail,
       payerName: payer.name,
       payerDocument: payer.document,
-      idempotencyKey: invoice.id, // mesma fatura nunca gera 2 cobranças no MP
+      idempotencyKey: options.idempotencyKey ?? invoice.id, // mesma fatura nunca gera 2 cobranças no MP
       expiresInDays: PIX_EXPIRATION_DAYS,
     });
 
@@ -327,6 +338,60 @@ export async function findOwnInvoiceOrThrow(tenantId: string, invoiceId: string)
 }
 
 // ---------------------------------------------------------------------------
+// Anular fatura + cancelar o Pix no Mercado Pago
+// ---------------------------------------------------------------------------
+
+/** Pix emitido de uma fatura que acabou de ser anulada. */
+export type VoidedPix = { invoiceId: string; mpPaymentId: string; mpEnvironment: MercadoPagoEnv | null };
+
+/**
+ * Anula (VOID) as faturas `OPEN` de uma assinatura (filtro extra opcional) e devolve os Pix que
+ * ficaram pendurados no MP, para o chamador cancelá-los DEPOIS (fora de transação) com
+ * `cancelPixPayments`. Aceita o client de uma transação. Só toca fatura ainda `OPEN`: pagamento
+ * concorrente que a marcou `PAID` nunca é sobrescrito.
+ */
+export async function voidOpenInvoices(
+  db: Pick<Prisma.TransactionClient, "invoice">,
+  where: Prisma.InvoiceWhereInput,
+): Promise<{ count: number; pix: VoidedPix[] }> {
+  const open = await db.invoice.findMany({
+    where: { ...where, status: "OPEN" },
+    select: { id: true, mpPaymentId: true, mpEnvironment: true },
+  });
+  if (open.length === 0) return { count: 0, pix: [] };
+  const ids = open.map((i) => i.id);
+  const voided = await db.invoice.updateMany({ where: { id: { in: ids }, status: "OPEN" }, data: { status: "VOID" } });
+  const pix = open.flatMap((i) => (i.mpPaymentId ? [{ invoiceId: i.id, mpPaymentId: i.mpPaymentId, mpEnvironment: i.mpEnvironment }] : []));
+  return { count: voided.count, pix };
+}
+
+/**
+ * Cancela no Mercado Pago os pagamentos Pix de faturas anuladas, para o QR já emitido não poder
+ * mais ser pago (o dinheiro cairia numa fatura VOID, sem baixa). NUNCA lança: a falha só é logada
+ * (id da fatura e tipo do erro — nada sensível) e não desfaz o cancelamento; se o Pix ainda for
+ * pago, o aviso `PAYMENT_ON_VOID_INVOICE` chega ao admin (`applyInvoicePayment`).
+ */
+export async function cancelPixPayments(pix: VoidedPix[], injected?: MercadoPagoGateway): Promise<{ cancelled: number }> {
+  let cancelled = 0;
+  for (const item of pix) {
+    try {
+      const gateway =
+        injected ?? (item.mpEnvironment ? await getMercadoPagoGatewayForEnvironment(item.mpEnvironment) : await getMercadoPagoGateway());
+      await gateway.cancelPayment(item.mpPaymentId);
+      cancelled += 1;
+    } catch (error) {
+      logger.warn("billing.pix.cancel_failed", {
+        invoiceId: item.invoiceId,
+        kind: error instanceof MercadoPagoApiError ? error.kind : undefined,
+        httpStatus: error instanceof MercadoPagoApiError ? error.status : undefined,
+        errorMessage: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+  return { cancelled };
+}
+
+// ---------------------------------------------------------------------------
 // Pagamento confirmado (webhook / tick reconsultando o MP)
 // ---------------------------------------------------------------------------
 
@@ -354,6 +419,8 @@ export async function applyInvoicePayment(invoiceId: string, paidAt: Date): Prom
     // tardio de fatura anulada não reativa sozinho — o chamador registra/loga e o admin decide
     // (decisão do dono, 2026-09-29; ver docs/contratos.md).
     if (invoice.status === "VOID") {
+      // Dinheiro entrou numa fatura anulada: marca (uma vez) para o sino do admin decidir o estorno.
+      await tx.invoice.updateMany({ where: { id: invoice.id, paidWhileVoidAt: null }, data: { paidWhileVoidAt: paidAt } });
       return { alreadyProcessed: false, voided: true };
     }
     const claimed = await tx.invoice.updateMany({
@@ -372,7 +439,9 @@ export async function applyInvoicePayment(invoiceId: string, paidAt: Date): Prom
 
     // `CANCELED` (reativação paga pelo dono, ver `cancellation.ts#startReactivation`) também
     // conta o novo período a partir do pagamento: `currentPeriodEnd` antigo já está no passado.
-    const wasCanceled = subscription.status === "CANCELED";
+    // Cancelamento agendado cuja data já passou (o tick ainda não persistiu `CANCELED`) é o mesmo
+    // caso: o status EFETIVO é `CANCELED`, então limpa os campos de cancelamento e reativa.
+    const wasCanceled = subscription.status === "CANCELED" || (subscription.cancelAtPeriodEnd && effectiveStatus(subscription, paidAt) === "CANCELED");
     const wasSuspended = effectiveStatus(subscription, paidAt) === "SUSPENDED" || subscription.status === "SUSPENDED" || wasCanceled;
     const anchor = wasSuspended ? paidAt : subscription.currentPeriodEnd;
     const nextPeriodEnd = new Date(anchor);

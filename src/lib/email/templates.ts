@@ -13,9 +13,14 @@ export type { EmailContext } from "./layout";
 
 type Built = { subject: string; preheader: string; html: string; text: string };
 
+/** Assunto numa linha só: nome de empresa/motivo vindo do usuário nunca injeta cabeçalho (CR/LF) nem controle. */
+export function sanitizeSubject(subject: string): string {
+  return subject.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, " ").replace(/ {2,}/g, " ").trim().slice(0, 200);
+}
+
 function build(params: { subject: string; preheader: string; rows: string; text: string; footerReason: string; ctx?: EmailContext }): Built {
   return {
-    subject: params.subject,
+    subject: sanitizeSubject(params.subject),
     preheader: params.preheader,
     html: renderEmailHtml({ title: params.subject, preheader: params.preheader, contentRows: params.rows, footerReason: params.footerReason, ctx: params.ctx }),
     text: renderEmailText({ body: params.text, footerReason: params.footerReason, ctx: params.ctx }),

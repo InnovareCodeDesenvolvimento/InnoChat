@@ -55,7 +55,7 @@ export function NotificationItem({
           ) : null}
         </span>
         {handoffBody(notification) ? (
-          <span className="mt-0.5 line-clamp-2 block text-sm text-text-secondary">{handoffBody(notification)}</span>
+          <span className="mt-0.5 line-clamp-2 block break-words text-sm text-text-secondary">{handoffBody(notification)}</span>
         ) : null}
         {isOffHoursHandoff(notification) ? (
           <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-warning-bg px-2 py-0.5 text-xs font-medium text-warning">

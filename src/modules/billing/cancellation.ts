@@ -9,7 +9,14 @@ import { accessEndsAt, CANCELED_RETENTION_DAYS, effectiveStatus } from "@/core/b
 import { disconnectAllWhatsappInstances } from "@/modules/whatsapp/service";
 import type { EvolutionClient } from "@/modules/whatsapp/evolution-client";
 import { formatDateBR } from "./format";
-import { findBillingRecipientEmail, generateInvoiceDescription, createInvoiceForPeriodTracked, tryAttachPix } from "./service";
+import {
+  cancelPixPayments,
+  findBillingRecipientEmail,
+  generateInvoiceDescription,
+  createInvoiceForPeriodTracked,
+  tryAttachPix,
+  voidOpenInvoices,
+} from "./service";
 import type { MercadoPagoGateway } from "./mercadopago";
 
 /**
@@ -27,6 +34,34 @@ import type { MercadoPagoGateway } from "./mercadopago";
 
 export const CANCEL_REASON_MAX_LENGTH = 500;
 
+/**
+ * Normaliza o motivo digitado pelo dono ANTES de gravar: tira caracteres de controle (inclui
+ * CR/LF/TAB), marcas bidirecionais/invisíveis (que poderiam inverter ou esconder texto no sino do
+ * admin e nos e-mails) e colapsa espaços. Corta em `CANCEL_REASON_MAX_LENGTH` SEM partir um par
+ * substituto (emoji). Vazio vira `null`.
+ */
+export function normalizeCancelReason(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const cleaned = Array.from(raw.normalize("NFC"))
+    .filter((ch) => {
+      const cp = ch.codePointAt(0) ?? 0;
+      if (cp <= 0x08 || cp === 0x0b || cp === 0x0c || (cp >= 0x0e && cp <= 0x1f) || (cp >= 0x7f && cp <= 0x9f)) return false; // controle (TAB/LF/CR viram espaço abaixo)
+      if (cp === 0x00ad || cp === 0x061c || cp === 0x180e) return false; // hífen suave, ALM, separador mongol
+      if (cp >= 0x200b && cp <= 0x200f) return false; // largura zero + LRM/RLM
+      if (cp >= 0x202a && cp <= 0x202e) return false; // embeddings/overrides bidi
+      if (cp >= 0x2060 && cp <= 0x206f) return false; // word joiner, isolates bidi, etc.
+      if (cp === 0xfeff) return false; // BOM
+      return true;
+    })
+    .join("")
+    .replace(/[\t\n\r\u2028\u2029]+/g, " ")
+    .replace(/ {2,}/g, " ")
+    .trim();
+  if (!cleaned) return null;
+  // Array.from separa por code point: o corte nunca cai no meio de um par substituto.
+  return Array.from(cleaned).slice(0, CANCEL_REASON_MAX_LENGTH).join("").trim() || null;
+}
+
 export type CancelResult = {
   mode: "SCHEDULED" | "IMMEDIATE";
   /** Quando o acesso termina (ISO). Em `IMMEDIATE`, é o instante do cancelamento. */
@@ -34,7 +69,7 @@ export type CancelResult = {
   alreadyRequested: boolean;
 };
 
-export type CancellationEffectsDeps = { evolution?: EvolutionClient };
+export type CancellationEffectsDeps = { evolution?: EvolutionClient; gateway?: MercadoPagoGateway };
 
 /**
  * Efeitos de a assinatura estar `CANCELED`: anula TODA fatura em aberto (nenhuma cobrança depois
@@ -42,9 +77,62 @@ export type CancellationEffectsDeps = { evolution?: EvolutionClient };
  * para auto-curar quando cai entre gravar `CANCELED` e executar os efeitos.
  */
 export async function applyCancellationEffects(subscriptionId: string, tenantId: string, deps: CancellationEffectsDeps = {}) {
-  const voided = await getPrisma().invoice.updateMany({ where: { subscriptionId, status: "OPEN" }, data: { status: "VOID" } });
+  const voided = await voidOpenInvoices(getPrisma(), { subscriptionId });
+  // Pix pendente no MP deixa de poder ser pago (falha só é logada; ver `cancelPixPayments`).
+  await cancelPixPayments(voided.pix, deps.gateway);
   const disconnected = await disconnectAllWhatsappInstances(tenantId, deps);
   return { invoicesVoided: voided.count, instancesDisconnected: disconnected };
+}
+
+type CancelableSubscription = {
+  id: string;
+  tenantId: string;
+  status: "TRIALING" | "ACTIVE" | "PAST_DUE" | "SUSPENDED" | "CANCELED";
+  cancelAtPeriodEnd: boolean;
+  trialEndsAt: Date | null;
+  currentPeriodEnd: Date;
+  firstPaidAt: Date | null;
+};
+
+/**
+ * Persiste a transição para `CANCELED` de uma assinatura cujo status EFETIVO já é `CANCELED` mas o
+ * persistido ainda não (agendamento vencido / 60 dias em SUSPENDED, tick ainda não rodou) e executa
+ * os efeitos. Usada pelo tick e por `startReactivation` (a fatura de reativação só nasce depois
+ * disto, então os efeitos nunca anulam a fatura nova).
+ *
+ * É um CLAIM condicional (status, `cancelAtPeriodEnd` e fim do período iguais ao que foi lido):
+ * se o dono desfez o cancelamento, ou um pagamento moveu o período, entre a leitura e aqui, não
+ * grava nada (`claimed: false`). Falha dos efeitos é só logada — a varredura do tick refaz.
+ */
+export async function persistCanceledTransition(
+  subscription: CancelableSubscription,
+  now: Date,
+  deps: CancellationEffectsDeps = {},
+): Promise<{ claimed: boolean; invoicesVoided: number }> {
+  const claim = await getPrisma().subscription.updateMany({
+    where: {
+      id: subscription.id,
+      status: subscription.status,
+      cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+      currentPeriodEnd: subscription.currentPeriodEnd,
+    },
+    data: {
+      status: "CANCELED",
+      suspendedEmailSentAt: null,
+      // Cancelamento agendado: a data é o fim do período pago (não o instante em que o tick rodou) —
+      // é dela que partem os 90 dias de retenção. Demais origens (60 dias em SUSPENDED): agora.
+      canceledAt: subscription.cancelAtPeriodEnd ? accessEndsAt(subscription) : now,
+    },
+  });
+  if (claim.count === 0) return { claimed: false, invoicesVoided: 0 };
+
+  try {
+    const effects = await applyCancellationEffects(subscription.id, subscription.tenantId, deps);
+    return { claimed: true, invoicesVoided: effects.invoicesVoided };
+  } catch (error) {
+    logger.warn("billing.cancel.effects_failed", { tenantId: subscription.tenantId, errorMessage: error instanceof Error ? error.message : String(error) });
+    return { claimed: true, invoicesVoided: 0 };
+  }
 }
 
 async function sendCancelEmail(tenantId: string, params: { immediate: boolean; endsAt: Date }) {
@@ -78,7 +166,7 @@ export async function requestCancellation(
 ): Promise<CancelResult> {
   const prisma = getPrisma();
   const now = options.now ?? new Date();
-  const reason = input.reason?.trim() ? input.reason.trim().slice(0, CANCEL_REASON_MAX_LENGTH) : null;
+  const reason = normalizeCancelReason(input.reason);
 
   const subscription = await prisma.subscription.findUnique({ where: { tenantId } });
   if (!subscription) throw new DomainError("NOT_FOUND", "Assinatura não encontrada para esta empresa.");
@@ -105,13 +193,14 @@ export async function requestCancellation(
         where: { id: subscription.id, cancelAtPeriodEnd: false, status: { not: "CANCELED" } },
         data: { cancelAtPeriodEnd: true, cancelRequestedAt: now, cancelReason: reason, pendingPlanId: null },
       });
-      if (claimed.count === 0) return false;
+      if (claimed.count === 0) return null;
       // Nenhuma cobrança futura: a fatura do próximo ciclo (ou a do teste) é anulada. Se o dono
       // desfizer, `undoCancellation` reabre exatamente as anuladas por este pedido.
-      await tx.invoice.updateMany({ where: { subscriptionId: subscription.id, status: "OPEN" }, data: { status: "VOID" } });
-      return true;
+      return voidOpenInvoices(tx, { subscriptionId: subscription.id });
     });
     if (!won) return scheduled(true);
+    // Fora da transação: o Pix pendente no MP deixa de poder ser pago.
+    await cancelPixPayments(won.pix, options.gateway);
 
     logger.info("billing.cancel.scheduled", { tenantId, wasTrial: status === "TRIALING" });
     await sendCancelEmail(tenantId, { immediate: false, endsAt: accessEndsAt(subscription) });
@@ -163,7 +252,9 @@ export async function undoCancellation(tenantId: string, options: { now?: Date }
     if (requestedAt) {
       await tx.invoice.updateMany({
         where: { subscriptionId: subscription.id, status: "VOID", updatedAt: { gte: requestedAt } },
-        data: { status: "OPEN" },
+        // O Pix antigo foi cancelado no MP ao anular: limpa para o tick/tela gerarem um novo (com
+        // chave de idempotência nova) em vez de exibir um QR morto.
+        data: { status: "OPEN", mpPaymentId: null, pixQrCode: null, pixCopyPaste: null, pixExpiresAt: null, mpEnvironment: null, mpLastCheckedAt: null },
       });
     }
     return { undone: true };
@@ -178,15 +269,24 @@ export async function undoCancellation(tenantId: string, options: { now?: Date }
  */
 export async function startReactivation(
   tenantId: string,
-  options: { now?: Date; gateway?: MercadoPagoGateway } = {},
+  options: { now?: Date } & CancellationEffectsDeps = {},
 ): Promise<{ invoiceId: string }> {
   const prisma = getPrisma();
   const now = options.now ?? new Date();
   const subscription = await prisma.subscription.findUnique({ where: { tenantId }, include: { plan: true, tenant: { select: { name: true } } } });
   if (!subscription) throw new DomainError("NOT_FOUND", "Assinatura não encontrada para esta empresa.");
-  if (subscription.status !== "CANCELED") throw new DomainError("INVALID_STATE", "A assinatura não está cancelada.");
+  // Status EFETIVO: agendamento vencido / 60 dias de suspensão contam como cancelada mesmo antes do
+  // tick persistir `CANCELED`.
+  if (effectiveStatus(subscription, now) !== "CANCELED") throw new DomainError("INVALID_STATE", "A assinatura não está cancelada.");
   if (subscription.plan.priceCents <= 0) {
     throw new DomainError("INVALID_STATE", "O plano desta empresa ainda não tem preço definido. Contate o suporte para reativar.");
+  }
+
+  // Persiste `CANCELED` e roda os efeitos (anular faturas, desconectar números) ANTES de a fatura
+  // de reativação nascer: senão o tick, ao persistir depois, anularia a fatura nova e o estado
+  // ficaria incoerente. Concorrente que já persistiu: o claim devolve `claimed: false` e segue.
+  if (subscription.status !== "CANCELED") {
+    await persistCanceledTransition(subscription, now, options);
   }
 
   const open = await prisma.invoice.findFirst({ where: { subscriptionId: subscription.id, status: "OPEN" }, orderBy: { periodStart: "desc" } });
@@ -221,9 +321,29 @@ export async function startReactivation(
   }
 
   if (invoice.status === "VOID") {
-    // Mesma data de uma fatura anulada antes (cancelou e reativou no mesmo dia): reabre.
-    await prisma.invoice.updateMany({ where: { id: invoice.id, status: "VOID" }, data: { status: "OPEN", dueAt: params.dueAt } });
-    await tryAttachPix(invoice.id, payerEmail, description, options.gateway);
+    // Mesma data de uma fatura anulada antes (cancelou e reativou no mesmo dia): reabre. O
+    // `updateMany` VOID→OPEN é o CLAIM: só quem o ganha (`count === 1`) gera o Pix — duas
+    // reativações concorrentes não geram dois pagamentos no MP. O Pix antigo (cancelado ao anular)
+    // é descartado e o novo usa chave de idempotência própria.
+    const reopened = await prisma.invoice.updateMany({
+      where: { id: invoice.id, status: "VOID" },
+      data: {
+        status: "OPEN",
+        dueAt: params.dueAt,
+        mpPaymentId: null,
+        pixQrCode: null,
+        pixCopyPaste: null,
+        pixExpiresAt: null,
+        mpEnvironment: null,
+        mpLastCheckedAt: null,
+        dueReminderEmailSentAt: null,
+        dueTodayEmailSentAt: null,
+        paidWhileVoidAt: null,
+      },
+    });
+    if (reopened.count === 1) {
+      await tryAttachPix(invoice.id, payerEmail, description, options.gateway, { idempotencyKey: `${invoice.id}:reopen:${now.getTime()}` });
+    }
   } else if (invoice.status === "PAID") {
     throw new DomainError("INVALID_STATE", "A fatura de reativação de hoje já foi paga. Atualize a página.");
   }

@@ -25,6 +25,7 @@ describe("effectiveStatus — trial (§7.4)", () => {
     status: "TRIALING" as const,
     trialEndsAt,
     currentPeriodEnd: trialEndsAt,
+    cancelAtPeriodEnd: false,
   };
 
   it("TRIALING antes do fim do trial", () => {
@@ -64,7 +65,7 @@ describe("effectiveStatus — trial (§7.4)", () => {
 
 describe("effectiveStatus — teste não convertido (nunca pagou: firstPaidAt === null)", () => {
   const trialEndsAt = new Date("2026-09-29T10:00:00.000Z");
-  const neverPaid = { status: "TRIALING" as const, trialEndsAt, currentPeriodEnd: trialEndsAt, firstPaidAt: null };
+  const neverPaid = { status: "TRIALING" as const, trialEndsAt, currentPeriodEnd: trialEndsAt, firstPaidAt: null, cancelAtPeriodEnd: false };
   const cancelAt = new Date(trialEndsAt.getTime() + (GRACE_DAYS + CANCEL_AFTER_SUSPENDED_TRIAL_DAYS) * DAY);
 
   it("a constante é 7 dias", () => {
@@ -103,7 +104,7 @@ describe("effectiveStatus — ciclo pago (currentPeriodEnd)", () => {
   const currentPeriodEnd = new Date("2026-10-28T10:00:00.000Z");
 
   it("ACTIVE quando status persistido é ACTIVE e ainda não venceu", () => {
-    const sub = { status: "ACTIVE" as const, trialEndsAt: null, currentPeriodEnd };
+    const sub = { status: "ACTIVE" as const, trialEndsAt: null, currentPeriodEnd, cancelAtPeriodEnd: false };
     expect(effectiveStatus(sub, new Date(currentPeriodEnd.getTime() - DAY))).toBe("ACTIVE");
   });
 
@@ -111,24 +112,24 @@ describe("effectiveStatus — ciclo pago (currentPeriodEnd)", () => {
     "ACTIVE mesmo com status persistido PAST_DUE/SUSPENDED, se currentPeriodEnd já avançou " +
       "(pagamento confirmado moveu a âncora para o futuro antes do próximo tick persistir)",
     () => {
-      const sub = { status: "SUSPENDED" as const, trialEndsAt: null, currentPeriodEnd };
+      const sub = { status: "SUSPENDED" as const, trialEndsAt: null, currentPeriodEnd, cancelAtPeriodEnd: false };
       expect(effectiveStatus(sub, new Date(currentPeriodEnd.getTime() - DAY))).toBe("ACTIVE");
     },
   );
 
   it("PAST_DUE depois do vencimento, dentro da carência", () => {
-    const sub = { status: "ACTIVE" as const, trialEndsAt: null, currentPeriodEnd };
+    const sub = { status: "ACTIVE" as const, trialEndsAt: null, currentPeriodEnd, cancelAtPeriodEnd: false };
     expect(effectiveStatus(sub, new Date(currentPeriodEnd.getTime() + HOUR))).toBe("PAST_DUE");
   });
 
   it("SUSPENDED depois da carência", () => {
-    const sub = { status: "PAST_DUE" as const, trialEndsAt: null, currentPeriodEnd };
+    const sub = { status: "PAST_DUE" as const, trialEndsAt: null, currentPeriodEnd, cancelAtPeriodEnd: false };
     const graceEnd = new Date(currentPeriodEnd.getTime() + GRACE_DAYS * DAY);
     expect(effectiveStatus(sub, new Date(graceEnd.getTime() + HOUR))).toBe("SUSPENDED");
   });
 
   it("CANCELED depois de 60 dias SUSPENDED", () => {
-    const sub = { status: "SUSPENDED" as const, trialEndsAt: null, currentPeriodEnd };
+    const sub = { status: "SUSPENDED" as const, trialEndsAt: null, currentPeriodEnd, cancelAtPeriodEnd: false };
     const graceEnd = new Date(currentPeriodEnd.getTime() + GRACE_DAYS * DAY);
     const cancelAt = new Date(graceEnd.getTime() + CANCEL_AFTER_SUSPENDED_DAYS * DAY);
     expect(effectiveStatus(sub, new Date(cancelAt.getTime() + HOUR))).toBe("CANCELED");
@@ -138,7 +139,7 @@ describe("effectiveStatus — ciclo pago (currentPeriodEnd)", () => {
 describe("effectiveStatus — CANCELED é terminal", () => {
   it("nunca sai de CANCELED, mesmo que currentPeriodEnd esteja no futuro", () => {
     const future = new Date(Date.now() + 30 * DAY);
-    const sub = { status: "CANCELED" as const, trialEndsAt: null, currentPeriodEnd: future };
+    const sub = { status: "CANCELED" as const, trialEndsAt: null, currentPeriodEnd: future, cancelAtPeriodEnd: false };
     expect(effectiveStatus(sub, new Date())).toBe("CANCELED");
   });
 });

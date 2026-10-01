@@ -26,16 +26,21 @@ const TRIAL_WARN_MS = DAY_MS;
 // Mesma regra da tela Saúde (`health-service.ts`): billing 2h, maintenance 26h.
 const BILLING_TICK_STALE_MS = 2 * 60 * 60 * 1000;
 const MAINTENANCE_TICK_STALE_MS = 26 * 60 * 60 * 1000;
-const KEY_PATTERN = /^(signup|pay|susp|cancel|cancelreq|trial|wa|mpwh|tick):[A-Za-z0-9_:.-]{1,100}$/;
+const KEY_PATTERN = /^(signup|pay|susp|cancel|cancelreq|pvoid|trial|wa|mpwh|tick):[A-Za-z0-9_:.-]{1,100}$/;
 
 type Item = Omit<AdminNotification, "read">;
 
 const brl = (cents: number) => (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-/** Motivo livre do dono, truncado para caber no sino (React escapa na renderização). */
+/**
+ * Motivo livre do dono, truncado para caber no sino (React escapa na renderização). O corte é por
+ * code point (nunca no meio de um par substituto/emoji) e o texto já foi normalizado na gravação.
+ */
 function reasonSuffix(reason: string | null): string {
   const text = reason?.trim();
-  return text ? ` Motivo: "${text.length > 160 ? `${text.slice(0, 160)}…` : text}"` : "";
+  if (!text) return "";
+  const chars = Array.from(text);
+  return ` Motivo: "${chars.length > 160 ? `${chars.slice(0, 160).join("")}…` : text}"`;
 }
 
 function windowStartOf(now: Date): Date {
@@ -49,7 +54,7 @@ async function loadItems(now: Date, from: Date): Promise<Item[]> {
   const graceMs = GRACE_DAYS * DAY_MS;
   const tenantSel = { select: { id: true, name: true, slug: true } } as const;
 
-  const [signups, payments, suspended, canceled, cancelRequests, trials, instances, settings] = await Promise.all([
+  const [signups, payments, suspended, canceled, cancelRequests, voidPayments, trials, instances, settings] = await Promise.all([
     prisma.tenant.findMany({
       where: { createdAt: { gte: from } },
       orderBy: { createdAt: "desc" },
@@ -79,6 +84,13 @@ async function loadItems(now: Date, from: Date): Promise<Item[]> {
       orderBy: { cancelRequestedAt: "desc" },
       take: SOURCE_CAP,
       select: { id: true, cancelRequestedAt: true, cancelReason: true, trialEndsAt: true, currentPeriodEnd: true, status: true, tenant: tenantSel },
+    }),
+    // Pix pago numa fatura já ANULADA (cancelamento): o dinheiro entrou e a fatura não foi baixada.
+    prisma.invoice.findMany({
+      where: { status: "VOID", paidWhileVoidAt: { gte: from } },
+      orderBy: { paidWhileVoidAt: "desc" },
+      take: SOURCE_CAP,
+      select: { id: true, paidWhileVoidAt: true, amountCents: true, subscription: { select: { tenant: tenantSel } } },
     }),
     prisma.subscription.findMany({
       where: { status: "TRIALING", trialEndsAt: { gt: now, lte: trialLimit } },
@@ -173,6 +185,21 @@ async function loadItems(now: Date, from: Date): Promise<Item[]> {
       href: "/admin/empresas",
       createdAt: r.cancelRequestedAt.toISOString(),
       tenant: r.tenant,
+    });
+  }
+
+  for (const v of voidPayments) {
+    if (!v.paidWhileVoidAt) continue;
+    const tenant = v.subscription.tenant;
+    items.push({
+      id: `pvoid:${v.id}`,
+      kind: "PAYMENT_ON_VOID_INVOICE",
+      severity: "danger",
+      title: "Pagamento em fatura anulada",
+      body: `${tenant.name} pagou ${brl(v.amountCents)} numa fatura anulada (fatura ${v.id}). A assinatura não foi reativada: decida o estorno no Mercado Pago ou reative a empresa.`,
+      href: "/admin/cobranca",
+      createdAt: v.paidWhileVoidAt.toISOString(),
+      tenant,
     });
   }
 

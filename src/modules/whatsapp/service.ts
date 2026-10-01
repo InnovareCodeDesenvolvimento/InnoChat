@@ -8,6 +8,7 @@ import type { WhatsappInstanceStatus } from "@/lib/db/types";
 import { buildInstanceName } from "@/core/whatsapp/instance-name";
 import { mapEvolutionState, resolveNextConnectionStatus } from "@/core/whatsapp/connection-event";
 import { normalizePhoneFromJid } from "@/core/whatsapp/phone";
+import { effectiveStatus } from "@/core/billing";
 import { assertCanAddWhatsappNumber } from "@/modules/billing/plan-limits";
 import { applyConnectedNumber } from "./connection";
 import { getEvolutionClient, type EvolutionClient } from "./evolution-client";
@@ -66,6 +67,22 @@ async function findActiveInstanceOrThrow(tenantId: string, instanceId: string): 
     throw new DomainError("NOT_FOUND", "Número de WhatsApp não encontrado.");
   }
   return instance;
+}
+
+/**
+ * Assinatura CANCELADA (status EFETIVO — vale mesmo antes de o tick persistir) não reconecta
+ * número: o cancelamento desconecta tudo e ler um QR de novo religaria o bot sem assinatura. Só
+ * `CANCELED` bloqueia; `SUSPENDED` NÃO (a empresa precisa conseguir reconectar enquanto paga).
+ * Reativar (pagar a fatura) libera. Empresa sem assinatura (dado legado) não é bloqueada aqui.
+ */
+async function assertSubscriptionNotCanceled(tenantId: string): Promise<void> {
+  const subscription = await getPrisma().subscription.findUnique({ where: { tenantId } });
+  if (subscription && effectiveStatus(subscription, new Date()) === "CANCELED") {
+    throw new DomainError(
+      "SUBSCRIPTION_CANCELED",
+      "A assinatura está cancelada: não é possível conectar o WhatsApp. Reative a assinatura na tela de Assinatura para voltar a conectar.",
+    );
+  }
 }
 
 /** `<n8nWebhookBaseUrl>/<webhookToken>` (docs/arquitetura.md §4, §6.9). */
@@ -210,6 +227,7 @@ export type QrCodeView = {
  * conectado) um QR fresco na Evolution a cada chamada.
  */
 export async function getQrCode(tenantId: string, instanceId: string, deps?: { evolution?: EvolutionClient }): Promise<QrCodeView> {
+  await assertSubscriptionNotCanceled(tenantId);
   const instance = await findActiveInstanceOrThrow(tenantId, instanceId);
 
   if (instance.status === "CONNECTED") {
@@ -239,6 +257,7 @@ export async function refreshConnectionStatus(
   instanceId: string,
   deps?: { evolution?: EvolutionClient },
 ): Promise<ConnectionStatusView> {
+  await assertSubscriptionNotCanceled(tenantId);
   const instance = await findActiveInstanceOrThrow(tenantId, instanceId);
 
   if (instance.status === "CONNECTED") {
