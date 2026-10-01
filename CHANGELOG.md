@@ -7,6 +7,14 @@ Versão semântica (`MAJOR.MINOR.PATCH`), lida do `version` do `package.json` e 
 
 Toda publicação em produção sobe a versão e ganha uma entrada aqui.
 
+## v1.3.0 — 2026-10-01
+
+### Novidades
+- **Botão "Tirar dúvidas"** na landing, com o Inno, que abre o WhatsApp comercial com uma mensagem pronta. O número é cadastrado em **Admin → Dados da empresa** e já vem preenchido com (84) 3113-2584; com o campo vazio, o botão some.
+- **Rede animada no topo:** linhas de conexão que levam mensagens até a agenda e reagem ao mouse.
+- **Telas do painel em 3D**, que se endireitam conforme a pessoa rola a página.
+- **Jornada em rolagem:** o celular fica parado e a história avança (chega a mensagem → o Inno responde → a agenda preenche → o lembrete sai → o cliente é atendido).
+
 ## v1.2.4 — 2026-10-01
 
 ### Melhorias
