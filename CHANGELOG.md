@@ -7,6 +7,30 @@ Versão semântica (`MAJOR.MINOR.PATCH`), lida do `version` do `package.json` e 
 
 Toda publicação em produção sobe a versão e ganha uma entrada aqui.
 
+## v1.2.0 — 2026-10-01
+
+### Novidades
+- **Landing page nova**, premium, em innochat.innovarecode.com.br:
+  - topo com a dor ("pare de largar o cliente para responder WhatsApp") e um **celular realista do WhatsApp** mostrando o bot agendar sozinho, com os textos reais do bot;
+  - 4 dores e suas soluções, como funciona, recursos, telas reais do painel, para quem é, planos (lidos do Admin), perguntas frequentes e chamada para o teste grátis;
+  - preparada para o Google e para compartilhamento: título, descrição, imagem, robots e sitemap.
+- **Cancelar a assinatura pelo painel** (só o dono), como dizem os Termos:
+  - vale ao fim do período pago; no teste, ao fim do teste; atrasada ou suspensa, na hora;
+  - dá para desfazer até a data;
+  - o Pix em aberto é cancelado no Mercado Pago;
+  - na data, os números são desconectados e o painel fica só com a tela de Assinatura;
+  - o dono pode **reativar sozinho**;
+  - aviso no sino do Admin com o motivo do cancelamento e e-mail de confirmação ao dono.
+- Aviso no sino do Admin quando um pagamento cai numa fatura já cancelada (estorno manual).
+
+### Melhorias
+- Logo oficial (balão "i") na landing.
+- Termos e Política de Privacidade, versão de 1º de outubro de 2026: regras de cancelamento em teste e com atraso; o aviso de "documento-modelo" foi removido.
+
+### Correções
+- Pagar uma fatura de conta cancelada reativava com o período já vencido.
+- Conta cancelada não consegue mais reconectar o WhatsApp.
+
 ## v1.1.1 — 2026-09-30
 
 ### Correções
