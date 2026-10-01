@@ -18,6 +18,7 @@ import { SITE_URL } from "@/lib/site";
 import { getLandingPlans } from "@/modules/billing/landing-plans";
 import { getPublicLegalInfo } from "@/modules/platform/legal-service";
 import { getPublicSalesWhatsapp } from "@/modules/platform/sales-contact";
+import { isGoogleAuthAvailable } from "@/modules/google-auth/config";
 
 const TITLE = "InnoChat: agenda e atendimento no WhatsApp para quem vive de horário marcado";
 const DESCRIPTION =
@@ -73,10 +74,12 @@ async function readContactEmail(): Promise<string | null> {
 }
 
 export default async function LandingPage() {
-  const [plans, contactEmail, salesWhatsapp] = await Promise.all([
+  const [plans, contactEmail, salesWhatsapp, googleLogin] = await Promise.all([
     getLandingPlans(),
     readContactEmail(),
     getPublicSalesWhatsapp(),
+    // Sem banco (build) ou sem credenciais: não promete login com Google na landing.
+    isGoogleAuthAvailable().catch(() => false),
   ]);
 
   const jsonLd = {
@@ -115,7 +118,7 @@ export default async function LandingPage() {
         <PainSolution />
         <HowItWorks />
         <Journey />
-        <Features />
+        <Features googleLogin={googleLogin} />
         <PanelShowcase />
         <Segments />
         <SocialProof />

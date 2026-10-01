@@ -14,7 +14,7 @@ import {
 import { cn } from "@/components/lib/cn";
 import { SectionHeading } from "./section-heading";
 
-type Feature = { icon: LucideIcon; title: string; description: string };
+type Feature = { id?: string; icon: LucideIcon; title: string; description: string };
 
 const HIGHLIGHTS: (Feature & { bullets: string[] })[] = [
   {
@@ -69,6 +69,7 @@ const FEATURES: Feature[] = [
     description: "Cada empresa vê só os próprios dados, de acordo com a LGPD. Detalhes nos Termos e na Privacidade.",
   },
   {
+    id: "google",
     icon: LogIn,
     title: "Entre com o Google",
     description: "Crie a conta e entre com a sua conta Google, sem mais uma senha pra decorar.",
@@ -80,7 +81,8 @@ const FEATURES: Feature[] = [
   },
 ];
 
-export function Features() {
+/** `googleLogin`: o card do Google só aparece quando o login com Google está configurado no Admin. */
+export function Features({ googleLogin }: { googleLogin: boolean }) {
   return (
     <section id="recursos" aria-labelledby="recursos-titulo" className="scroll-mt-20 bg-bg py-20 sm:py-28">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
@@ -117,7 +119,7 @@ export function Features() {
         </div>
 
         <ul className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {FEATURES.map((feature) => (
+          {FEATURES.filter((feature) => googleLogin || feature.id !== "google").map((feature) => (
             <li
               key={feature.title}
               className="group rounded-hero border border-border bg-surface p-5 shadow-card transition-[box-shadow,border-color] duration-200 hover:border-primary/30 hover:shadow-card-hover"
