@@ -29,4 +29,5 @@
 - [Admin: Fluxo do bot (L-4)](admin-publicar-fluxo-l4.md) — actions injetáveis, confirmação digitada, como pré-visualizar sem n8n, JSON inlinado no build.
 - [Tela Atendimento (fila+conversa)](tela-atendimento-fila-e-conversa.md) — URL como fonte, badge do menu, envio otimista, ResizeObserver no log, validação sem Evolution.
 - [Ajuda contextual (ícone i)](ajuda-contextual-help-button.md) — HelpButton + catálogo; como plugar e armadilhas de aria-label/regex.
+- [Landing: rede, 3D, jornada, botão](landing-melhorias-3d-jornada-rede.md) — view() preso a overflow:hidden (usar clip), sentinelas, FAB x CTA, números do Lighthouse.
 - [Landing pública](landing-publica.md) — decisões, armadilhas (build paralelo, Playwright x animação) e prova social desligada.

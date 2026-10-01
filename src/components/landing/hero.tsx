@@ -4,6 +4,7 @@ import { ArrowRight, Check } from "lucide-react";
 import { TRIAL_DAYS } from "@/core/billing";
 import { Button } from "@/components/ui/button";
 import { buildDemoScript } from "./demo-script";
+import { HeroNetwork } from "./hero-network";
 import { HeroStage } from "./hero-stage";
 
 const POINTS = ["Agenda, remarca e cancela", "Lembra o cliente antes do horário", "Passa para a sua equipe quando precisa"];
@@ -18,6 +19,7 @@ export function Hero() {
 
   return (
     <section aria-labelledby="hero-title" className="auth-brand-bg landing-dark pb-16 pt-28 sm:pb-24 sm:pt-32">
+      <HeroNetwork />
       <div className="mx-auto grid max-w-7xl items-center gap-12 px-4 sm:px-6 lg:grid-cols-[1.08fr_0.92fr] lg:gap-8 lg:px-8">
         <div className="text-center lg:text-left">
           <p className="inline-flex items-center gap-2 rounded-full bg-white/10 py-1.5 pl-1.5 pr-4 text-sm font-medium text-sidebar-active-text ring-1 ring-white/20 backdrop-blur-md">

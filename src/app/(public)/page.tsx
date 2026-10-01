@@ -3,18 +3,21 @@ import { Faq } from "@/components/landing/faq";
 import { Features } from "@/components/landing/features";
 import { FinalCta } from "@/components/landing/final-cta";
 import { Hero } from "@/components/landing/hero";
+import { Journey } from "@/components/landing/journey";
 import { HowItWorks } from "@/components/landing/how-it-works";
 import { LandingFooter } from "@/components/landing/landing-footer";
 import { LandingHeader } from "@/components/landing/landing-header";
 import { PainSolution } from "@/components/landing/pain-solution";
 import { PanelShowcase } from "@/components/landing/panel-showcase";
 import { Pricing } from "@/components/landing/pricing";
+import { SalesWhatsappButton } from "@/components/landing/sales-whatsapp-button";
 import { Segments } from "@/components/landing/segments";
 import { SocialProof } from "@/components/landing/social-proof";
 import { TRIAL_DAYS } from "@/core/billing";
 import { SITE_URL } from "@/lib/site";
 import { getLandingPlans } from "@/modules/billing/landing-plans";
 import { getPublicLegalInfo } from "@/modules/platform/legal-service";
+import { getPublicSalesWhatsapp } from "@/modules/platform/sales-contact";
 
 const TITLE = "InnoChat: agenda e atendimento no WhatsApp para quem vive de horário marcado";
 const DESCRIPTION =
@@ -70,7 +73,11 @@ async function readContactEmail(): Promise<string | null> {
 }
 
 export default async function LandingPage() {
-  const [plans, contactEmail] = await Promise.all([getLandingPlans(), readContactEmail()]);
+  const [plans, contactEmail, salesWhatsapp] = await Promise.all([
+    getLandingPlans(),
+    readContactEmail(),
+    getPublicSalesWhatsapp(),
+  ]);
 
   const jsonLd = {
     "@context": "https://schema.org",
@@ -107,6 +114,7 @@ export default async function LandingPage() {
         <Hero />
         <PainSolution />
         <HowItWorks />
+        <Journey />
         <Features />
         <PanelShowcase />
         <Segments />
@@ -116,6 +124,7 @@ export default async function LandingPage() {
         <FinalCta />
       </main>
       <LandingFooter contactEmail={contactEmail} />
+      {salesWhatsapp ? <SalesWhatsappButton e164={salesWhatsapp.e164} display={salesWhatsapp.display} /> : null}
     </div>
   );
 }
