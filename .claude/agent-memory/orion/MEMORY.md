@@ -9,3 +9,4 @@
 - [Revisão bot v2 O-1](botv2_review_2026-09-30.md) — sem CRÍTICO; ReDoS normalizeText, migration de textos vs imagem antiga, snapshot n8n sem redação
 - [Revisão atendimento humano](atendimento_humano_review_2026-09-30.md) — sem CRÍTICO; envio sem idempotência, avisos sem teto, rate limit em memória
 - [Revisão cancelamento](cancelamento_review_2026-10-01.md) — sem CRÍTICO; Pix de fatura VOID segue pagável, status persistido vs efetivo, QR em tenant CANCELED
+- [Revisão F0 cobrança](billing_f0_review_2026-10-01.md) — sem CRÍTICO; trava 15 min vs SMTP sem timeout, suspensão manual vira e-mail, exceção aborta tick
