@@ -7,6 +7,11 @@ Versão semântica (`MAJOR.MINOR.PATCH`), lida do `version` do `package.json` e 
 
 Toda publicação em produção sobe a versão e ganha uma entrada aqui.
 
+## v1.2.2 — 2026-10-01
+
+### Correções
+- As fontes do site agora ficam dentro do projeto. O deploy não depende mais do Google Fonts (a v1.2.1 falhou no Easypanel ao baixar a fonte Sora), e o site carrega um pouco mais rápido.
+
 ## v1.2.1 — 2026-10-01
 
 ### Melhorias
