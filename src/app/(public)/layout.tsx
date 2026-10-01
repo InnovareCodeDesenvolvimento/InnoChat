@@ -5,7 +5,7 @@ import { ToastProvider } from "@/components/ui/toast";
 
 export const metadata: Metadata = {
   title: "InnoChat",
-  description: "Painel InnoChat — atendimento e agenda via WhatsApp",
+  description: "InnoChat: agenda e atendimento pelo WhatsApp",
 };
 
 /**
