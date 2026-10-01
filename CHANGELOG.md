@@ -7,6 +7,19 @@ Versão semântica (`MAJOR.MINOR.PATCH`), lida do `version` do `package.json` e 
 
 Toda publicação em produção sobe a versão e ganha uma entrada aqui.
 
+## v1.4.0 — 2026-10-01
+
+### Novidades: régua de cobrança completa
+- **Avisos de mensalidade** por e-mail, no sino do painel, numa faixa no topo do painel (contador e botão "Pagar com Pix") e pelo **WhatsApp de cobrança**. Saem 5 dias antes, 3 dias antes (só no painel), na véspera, no dia, durante a carência, na suspensão, durante a suspensão e antes do cancelamento. Quem paga para de receber na hora e recebe "Assinatura renovada até…".
+- **Carência de 3 dias** para quem já paga (1 dia no teste). O vencimento conta até as 23:59 do dia.
+- **Teste grátis:** mensagens que mostram o que o Inno já fez pela empresa (horários marcados, conversas respondidas) e convidam a assinar.
+- **WhatsApp de cobrança** conectado e trocado pelo Admin com QR Code, separado do número comercial. Respostas dos assinantes chegam no sino do Admin, "SAIR" desliga os avisos e a resposta automática indica o (84) 3113-2584.
+- Tela **Assinatura**: e-mail do financeiro, WhatsApp de cobrança com opção de desligar e histórico de pagamentos.
+- **Cadastro:** campo opcional "Seu WhatsApp", usado nos avisos.
+
+### Correções
+- O vencimento das faturas em aberto estava gravado um mês à frente; foi corrigido.
+
 ## v1.3.2 — 2026-10-01
 
 ### Correções (cobrança mais confiável)
