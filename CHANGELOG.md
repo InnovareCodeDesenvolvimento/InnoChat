@@ -7,6 +7,13 @@ Versão semântica (`MAJOR.MINOR.PATCH`), lida do `version` do `package.json` e 
 
 Toda publicação em produção sobe a versão e ganha uma entrada aqui.
 
+## v1.3.1 — 2026-10-01
+
+### Melhorias
+- **Textos revisados para soar como gente** (guia em `docs/guia-de-voz.md`): landing, painel, ajuda ⓘ, Admin, login, e-mails, notificações e as mensagens padrão do bot. Exemplos: "Oi, Ana! Aqui é a Studio Bella", "Passando pra lembrar", "Já passou do prazo para cancelar este horário". Saíram os travessões e as fórmulas prontas. Empresas que personalizaram os textos do bot não são afetadas.
+- Landing: o card "Entre com o Google" só aparece quando o login com Google está configurado.
+- Admin: o botão do WhatsApp comercial agora se chama "Salvar WhatsApp".
+
 ## v1.3.0 — 2026-10-01
 
 ### Novidades
