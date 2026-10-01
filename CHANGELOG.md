@@ -7,6 +7,14 @@ Versão semântica (`MAJOR.MINOR.PATCH`), lida do `version` do `package.json` e 
 
 Toda publicação em produção sobe a versão e ganha uma entrada aqui.
 
+## v1.4.1 — 2026-10-01
+
+### Correções (revisão de segurança da cobrança)
+- **Suspensão feita pelo Admin** fica marcada e nunca vira "atraso" pela carência nova. As suspensões manuais feitas antes desta versão precisam ser repetidas no Admin.
+- **Pix antigo é cancelado** quando um novo é gerado. Se ainda assim cair um pagamento a mais, o Admin é avisado para fazer o estorno.
+- **WhatsApp de cobrança precisa ser confirmado:** o dono responde SIM. Até confirmar, recebe no máximo 1 mensagem por dia. E-mail do financeiro: no máximo 1 por dia, e o dono continua recebendo.
+- Proteções contra aviso repetido e limpeza automática das respostas guardadas depois de 45 dias.
+
 ## v1.4.0 — 2026-10-01
 
 ### Novidades: régua de cobrança completa
