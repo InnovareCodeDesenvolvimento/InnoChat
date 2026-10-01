@@ -7,6 +7,16 @@ Versão semântica (`MAJOR.MINOR.PATCH`), lida do `version` do `package.json` e 
 
 Toda publicação em produção sobe a versão e ganha uma entrada aqui.
 
+## v1.3.2 — 2026-10-01
+
+### Correções (cobrança mais confiável)
+- Lembretes de cobrança só contam como enviados quando o e-mail sai de verdade. Se o servidor de e-mail falhar, o sistema tenta de novo e avisa o Admin pelo sino.
+- O cancelamento automático (por falta de pagamento ou teste não assinado) agora avisa a empresa por e-mail.
+- A rotina de cobrança não roda duas vezes ao mesmo tempo, tem limite de tempo e um erro num cliente não trava os outros.
+- Antes de mandar um lembrete, o sistema confere se o cliente acabou de pagar.
+- Suspensão feita pelo Admin não manda e-mail de "falta de pagamento".
+- "Vence hoje" só sai nas 24 horas seguintes ao vencimento.
+
 ## v1.3.1 — 2026-10-01
 
 ### Melhorias
