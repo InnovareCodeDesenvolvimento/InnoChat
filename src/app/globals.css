@@ -623,10 +623,6 @@ html:has(.landing-root) {
 
 /* Demonstração do celular: o servidor entrega TODAS as mensagens visíveis (leitura estática); com
    movimento permitido, o relógio do componente esconde o que ainda não chegou. */
-.demo-chat {
-  mask-image: linear-gradient(to bottom, transparent 0, black 2.5rem);
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0, black 2.5rem);
-}
 @media (prefers-reduced-motion: no-preference) {
   .demo[data-mode="idle"] .demo-msg,
   .demo[data-mode="playing"] .demo-msg[data-shown="false"] {
@@ -634,9 +630,6 @@ html:has(.landing-root) {
   }
   .demo[data-mode="playing"] .demo-msg {
     animation: demo-msg-in 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
-  }
-  .demo-dot {
-    animation: demo-dot 1s ease-in-out infinite;
   }
   .landing-float {
     animation: landing-float 6s ease-in-out infinite;
@@ -650,10 +643,6 @@ html:has(.landing-root) {
 @keyframes demo-msg-in {
   from { opacity: 0; transform: translateY(8px) scale(0.98); }
   to { opacity: 1; transform: translateY(0) scale(1); }
-}
-@keyframes demo-dot {
-  0%, 60%, 100% { opacity: 0.35; transform: translateY(0); }
-  30% { opacity: 1; transform: translateY(-3px); }
 }
 @keyframes landing-float {
   0%, 100% { transform: translateY(0); }

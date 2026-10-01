@@ -21,6 +21,13 @@ export type DemoMessage = {
   note?: string;
 };
 
+/**
+ * Antecedência mínima para remarcar/cancelar de uma empresa recém-criada: espelha o
+ * `@default(120)` de `Tenant.cancelMinLeadMin` em `prisma/schema.prisma` (2 horas). Não existe
+ * constante no domínio para isso; o teste unitário `demo-script.test.ts` confere contra o schema.
+ */
+export const DEFAULT_CANCEL_MIN_LEAD_MIN = 120;
+
 const TZ = "America/Sao_Paulo";
 const COMPANY = "Studio Bella";
 const CLIENT = "Camila";
@@ -162,7 +169,7 @@ export function buildDemoScript(now: Date = new Date()): DemoMessage[] {
             profissional: PROFESSIONAL,
             data_longa: dataLonga,
             hora,
-            prazo: formatLeadLabel(24 * 60),
+            prazo: formatLeadLabel(DEFAULT_CANCEL_MIN_LEAD_MIN),
           },
         },
       ]),

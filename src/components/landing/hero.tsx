@@ -92,7 +92,7 @@ export function Hero() {
           </div>
           <div
             aria-hidden="true"
-            className="absolute -left-4 top-24 hidden items-center gap-2.5 rounded-hero bg-surface px-3.5 py-2.5 text-text shadow-2xl ring-1 ring-border xl:flex"
+            className="absolute left-[calc(50%-162px)] top-24 hidden -translate-x-full items-center gap-2.5 rounded-hero bg-surface px-3.5 py-2.5 text-text shadow-2xl ring-1 ring-border xl:flex"
           >
             <span className="flex h-8 w-8 items-center justify-center rounded-card bg-success-bg text-success">
               <CalendarCheck className="h-4 w-4" />
@@ -104,7 +104,7 @@ export function Hero() {
           </div>
           <div
             aria-hidden="true"
-            className="absolute -right-2 bottom-28 hidden items-center gap-2.5 rounded-hero bg-surface px-3.5 py-2.5 text-text shadow-2xl ring-1 ring-border xl:flex"
+            className="absolute left-[calc(50%+162px)] bottom-28 hidden items-center gap-2.5 rounded-hero bg-surface px-3.5 py-2.5 text-text shadow-2xl ring-1 ring-border 2xl:flex"
           >
             <span className="flex h-8 w-8 items-center justify-center rounded-card bg-warning-bg text-warning">
               <BellRing className="h-4 w-4" />

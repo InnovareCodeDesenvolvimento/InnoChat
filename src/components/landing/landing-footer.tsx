@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { MessageCircle } from "lucide-react";
+import Image from "next/image";
 import { AppSignature } from "@/components/brand/app-signature";
 
 const linkClass =
@@ -17,9 +17,7 @@ export function LandingFooter({ contactEmail }: { contactEmail: string | null })
               aria-label="InnoChat, início"
               className="inline-flex items-center gap-2.5 rounded-card focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
             >
-              <span className="flex h-9 w-9 items-center justify-center rounded-card bg-gradient-to-br from-primary to-primary-strong text-white shadow-lg shadow-primary/30">
-                <MessageCircle className="h-5 w-5" aria-hidden="true" />
-              </span>
+              <Image src="/marca/innochat-balao.png" alt="" width={36} height={36} className="h-9 w-9 shrink-0" />
               <span className="font-display text-lg font-extrabold tracking-tight text-text">InnoChat</span>
             </Link>
             <p className="mt-4 max-w-xs text-sm leading-relaxed text-text-secondary">

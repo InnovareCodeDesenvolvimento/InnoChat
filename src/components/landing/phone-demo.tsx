@@ -1,8 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CheckCheck, RotateCcw } from "lucide-react";
+import { CheckCheck, ChevronLeft, Phone, RotateCcw, Video } from "lucide-react";
 import { cn } from "@/components/lib/cn";
+import {
+  ChatDoodle,
+  ChatInputBar,
+  HomeIndicator,
+  initialsOf,
+  PhoneFrame,
+  StatusBarTime,
+} from "@/components/whatsapp/phone-mockup";
 import { WhatsappText } from "./whatsapp-text";
 import type { DemoMessage } from "./demo-script";
 
@@ -11,10 +19,14 @@ import type { DemoMessage } from "./demo-script";
  * a uma). O HTML do servidor já traz TODAS as mensagens; quem tem `prefers-reduced-motion` (ou
  * não tem JS) vê a conversa completa e parada. Para os demais o CSS (`.demo[data-mode]`) esconde
  * o que ainda não "chegou" e o efeito abaixo conduz o relógio: começa quando o celular entra na
- * tela (IntersectionObserver), mostra "digitando" antes de cada resposta do bot e, no fim,
+ * tela (IntersectionObserver), mostra "digitando..." no cabeçalho antes de cada resposta do bot e, no fim,
  * oferece "Rever".
  */
 type Mode = "idle" | "playing" | "done";
+
+/** Aparelho maior que o do painel (260x520): o texto do bot é longo e precisa ficar legível. */
+const PHONE_WIDTH = 300;
+const PHONE_HEIGHT = 560;
 
 const TYPING_MS = 1000;
 const CLIENT_GAP_MS = 750;
@@ -28,6 +40,7 @@ export function PhoneDemo({ messages, company }: { messages: DemoMessage[]; comp
   const [shown, setShown] = useState(0);
   const [typing, setTyping] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const timers = useRef<number[]>([]);
   const started = useRef(false);
 
@@ -94,6 +107,15 @@ export function PhoneDemo({ messages, company }: { messages: DemoMessage[]; comp
     };
   }, [clearTimers, play]);
 
+  // A conversa "desce" como no app: a cada mensagem nova o chat rola até o fim (só o contêiner
+  // interno, nunca a página).
+  useEffect(() => {
+    if (mode !== "playing") return;
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  }, [mode, shown, typing]);
+
   return (
     <div className="mx-auto w-full max-w-[19rem]">
       <div
@@ -102,63 +124,104 @@ export function PhoneDemo({ messages, company }: { messages: DemoMessage[]; comp
         data-testid="phone-demo"
         role="group"
         aria-label={`Exemplo de conversa de WhatsApp com o bot da ${company}`}
-        className="demo relative flex h-[34rem] flex-col overflow-hidden rounded-[2.5rem] bg-sidebar p-2.5 shadow-2xl ring-1 ring-white/20"
+        className="demo mx-auto w-fit"
       >
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[2rem] bg-bg">
-          <div className="flex items-center gap-3 bg-success px-4 py-3 text-white">
-            <span
-              aria-hidden="true"
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-black/25 font-display text-sm font-extrabold"
-            >
-              SB
-            </span>
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold leading-tight">{company}</p>
-              <p className="text-xs leading-tight text-white">atendimento automático</p>
-            </div>
-          </div>
-
-          <div className="demo-chat flex min-h-0 flex-1 flex-col justify-end gap-2 overflow-hidden px-3 pb-3 pt-6">
-            {messages.map((message, index) => (
-              <div
-                key={message.id}
-                data-shown={index < shown || mode !== "playing" ? "true" : "false"}
-                className={cn("demo-msg flex flex-col", message.from === "client" ? "items-end" : "items-start")}
-              >
-                {message.note ? (
-                  <p className="mb-1 self-center rounded-full bg-surface px-3 py-1 text-center text-[11px] font-medium leading-snug text-text-secondary ring-1 ring-border">
-                    {message.note}
-                  </p>
-                ) : null}
-                <div
-                  className={cn(
-                    "max-w-[88%] rounded-2xl px-3 py-2 text-[13px] leading-snug text-text shadow-sm",
-                    message.from === "client" ? "rounded-br-md bg-success-bg" : "rounded-bl-md bg-surface",
-                  )}
+        <PhoneFrame width={PHONE_WIDTH} height={PHONE_HEIGHT}>
+          <div className="flex h-full flex-col bg-[var(--wa-bg)]">
+            <div className="bg-[var(--wa-header)]">
+              <StatusBarTime />
+              <div className="flex items-center gap-1.5 px-2 pb-2 pt-1 text-white">
+                <ChevronLeft aria-hidden="true" className="h-5 w-5 shrink-0" />
+                <span
+                  aria-hidden="true"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#DFE5E7] text-[12px] font-bold text-[#54656F]"
                 >
-                  <WhatsappText text={message.text} />
-                  <span className="mt-1 flex items-center justify-end gap-1 text-[10px] leading-none text-text-secondary">
-                    {message.time}
-                    {message.from === "client" ? <CheckCheck className="h-3 w-3 text-primary" aria-hidden="true" /> : null}
-                  </span>
+                  {initialsOf(company)}
+                </span>
+                <div className="min-w-0 flex-1 leading-tight">
+                  <p className="truncate text-[14px] font-semibold">{company}</p>
+                  <p aria-hidden="true" data-testid="phone-demo-status" className="truncate text-[11px] text-white">
+                    {typing ? "digitando..." : "online"}
+                  </p>
+                </div>
+                <Video aria-hidden="true" className="h-4 w-4 shrink-0" />
+                <Phone aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+              </div>
+            </div>
+
+            <div className="relative min-h-0 flex-1">
+              <ChatDoodle />
+              <div
+                ref={scrollRef}
+                tabIndex={0}
+                role="region"
+                aria-label="Mensagens da conversa de exemplo"
+                className="relative flex h-full flex-col overflow-y-auto px-2.5 py-2.5 [scrollbar-width:none] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--wa-header)] [&::-webkit-scrollbar]:hidden"
+              >
+                <div className="mt-auto flex flex-col gap-1.5">
+                  <div
+                    aria-hidden="true"
+                    className="mx-auto rounded-md bg-white/90 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-[var(--wa-ink-2)] shadow-[0_1px_0.5px_rgb(11_20_26/0.1)]"
+                  >
+                    Hoje
+                  </div>
+                  {messages.map((message, index) => {
+                    const out = message.from === "client";
+                    const startsRun = index === 0 || messages[index - 1].from !== message.from || Boolean(message.note);
+                    return (
+                      <div
+                        key={message.id}
+                        data-shown={index < shown || mode !== "playing" ? "true" : "false"}
+                        className={cn("demo-msg flex flex-col", out ? "items-end" : "items-start", startsRun ? "mt-1" : "")}
+                      >
+                        {message.note ? (
+                          <p className="mb-1.5 self-center rounded-md bg-[#FFF5C4] px-2.5 py-1 text-center text-[11px] font-medium leading-snug text-[#54656F] shadow-[0_1px_0.5px_rgb(11_20_26/0.1)]">
+                            {message.note}
+                          </p>
+                        ) : null}
+                        <div
+                          className={cn(
+                            "relative max-w-[86%] rounded-lg px-2 py-1.5 text-[13px] leading-snug text-[var(--wa-ink)] shadow-[0_1px_0.5px_rgb(11_20_26/0.13)]",
+                            out ? "bg-[var(--wa-out)]" : "bg-[var(--wa-in)]",
+                            startsRun ? (out ? "rounded-tr-none" : "rounded-tl-none") : "",
+                          )}
+                        >
+                          {startsRun ? (
+                            <span
+                              aria-hidden="true"
+                              className={cn(
+                                "absolute top-0 h-3 w-2",
+                                out
+                                  ? "-right-[7px] bg-[var(--wa-out)] [clip-path:polygon(0_0,100%_0,0_100%)]"
+                                  : "-left-[7px] bg-[var(--wa-in)] [clip-path:polygon(0_0,100%_0,100%_100%)]",
+                              )}
+                            />
+                          ) : null}
+                          <WhatsappText text={message.text} />
+                          <span
+                            className={cn(
+                              "float-right ml-2 mt-1.5 inline-flex items-center gap-0.5 text-[10px] leading-none",
+                              out ? "text-[#54656F]" : "text-[var(--wa-ink-2)]",
+                            )}
+                          >
+                            {message.time}
+                            {out ? <CheckCheck className="h-3.5 w-3.5 text-[var(--wa-tick)]" strokeWidth={2.4} aria-hidden="true" /> : null}
+                          </span>
+                          <span aria-hidden="true" className="block clear-both" />
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
-            ))}
-            {typing ? (
-              <div className="demo-typing flex items-start" aria-hidden="true">
-                <span className="flex items-center gap-1 rounded-2xl rounded-bl-md bg-surface px-3.5 py-3 shadow-sm">
-                  <span className="demo-dot h-1.5 w-1.5 rounded-full bg-text-secondary" />
-                  <span className="demo-dot h-1.5 w-1.5 rounded-full bg-text-secondary [animation-delay:150ms]" />
-                  <span className="demo-dot h-1.5 w-1.5 rounded-full bg-text-secondary [animation-delay:300ms]" />
-                </span>
-              </div>
-            ) : null}
-          </div>
+            </div>
 
-          <div aria-hidden="true" className="flex items-center gap-2 border-t border-border bg-surface px-3 py-2.5">
-            <span className="flex-1 rounded-full bg-bg px-3 py-2 text-xs text-text-secondary">Mensagem</span>
+            <div aria-hidden="true">
+              <ChatInputBar />
+            </div>
+            <HomeIndicator />
           </div>
-        </div>
+        </PhoneFrame>
       </div>
 
       <div className="mt-3 flex min-h-11 items-center justify-center gap-3">

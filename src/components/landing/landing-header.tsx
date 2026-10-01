@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { MessageCircle } from "lucide-react";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 
 const LINKS = [
@@ -24,9 +24,7 @@ export function LandingHeader() {
           aria-label="InnoChat, início"
           className="flex items-center gap-2.5 rounded-card focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-sidebar-active-text"
         >
-          <span className="flex h-9 w-9 items-center justify-center rounded-card bg-gradient-to-br from-primary to-primary-strong text-white shadow-lg shadow-primary/40 ring-1 ring-white/20">
-            <MessageCircle className="h-5 w-5" aria-hidden="true" />
-          </span>
+          <Image src="/marca/innochat-balao.png" alt="" width={36} height={36} className="h-9 w-9 shrink-0" />
           <span className="font-display text-lg font-extrabold tracking-tight text-sidebar-active-text">InnoChat</span>
         </Link>
 

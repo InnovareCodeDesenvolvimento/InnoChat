@@ -73,9 +73,37 @@ test.describe("Landing pública", () => {
     expect(r.sw).toBeLessThanOrEqual(r.cw);
   });
 
-  test("com movimento reduzido a conversa aparece completa", async ({ page }) => {
+  test("com movimento reduzido a conversa aparece completa, com o prazo padrão de 2 horas", async ({ page }) => {
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.goto("/");
-    await expect(page.getByTestId("phone-demo").getByText("Agendamento confirmado!")).toBeVisible();
+    const demo = page.getByTestId("phone-demo");
+    await expect(demo.getByText("Agendamento confirmado!")).toBeVisible();
+    await expect(demo.getByText(/até 2 horas antes/)).toBeVisible();
+    await expect(demo.getByText("Studio Bella").first()).toBeVisible();
+  });
+
+  test("a demo anima: 'digitando...' no cabeçalho e o chat rola até o fim", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/");
+    await page.evaluate(() => document.querySelector('[data-testid="phone-demo"]')?.scrollIntoView({ block: "center" }));
+    await expect(page.getByTestId("phone-demo-status")).toHaveText("digitando...", { timeout: 8_000 });
+    await expect(page.getByTestId("phone-demo-status")).toHaveText("online", { timeout: 8_000 });
+    await expect
+      .poll(() => page.getByTestId("phone-demo").getByRole("region").evaluate((el) => el.scrollTop), { timeout: 15_000 })
+      .toBeGreaterThan(0);
+  });
+
+  test("cabeçalho usa o logo oficial (balão ⓘ) e a página não estoura em 1440, 1024, 768 e 390", async ({ page }) => {
+    for (const width of [1440, 1024, 768, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto("/");
+      const r = await page.evaluate(() => ({
+        sw: document.documentElement.scrollWidth,
+        cw: document.documentElement.clientWidth,
+      }));
+      expect(r.sw, `overflow em ${width}px`).toBeLessThanOrEqual(r.cw);
+    }
+    await expect(page.locator('header img[src*="innochat-balao"]').first()).toBeAttached();
+    await expect(page.getByRole("link", { name: "InnoChat, início" }).first()).toBeVisible();
   });
 });

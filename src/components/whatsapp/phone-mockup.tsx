@@ -60,15 +60,20 @@ export function PhoneFrame({
   children,
   ghost = false,
   className,
+  width = PHONE_W,
+  height = PHONE_H,
 }: {
   children: ReactNode;
+  /** Tamanho do aparelho em px (padrão 260x520, o do painel). A landing usa um maior. */
+  width?: number;
+  height?: number;
   /** Celular "fantasma" pontilhado do card "Adicionar número". */
   ghost?: boolean;
   className?: string;
 }) {
   return (
     <div
-      style={{ ...WA_TOKENS, width: PHONE_W, height: PHONE_H }}
+      style={{ ...WA_TOKENS, width, height }}
       className={cn(
         "relative rounded-[42px] p-2",
         ghost
@@ -125,7 +130,7 @@ export function ChatDoodle() {
   );
 }
 
-function StatusBarTime() {
+export function StatusBarTime() {
   return (
     <div aria-hidden="true" className="flex h-[28px] items-center justify-between px-6 pt-1 text-[11px] font-semibold text-white">
       <span>9:41</span>
@@ -137,7 +142,7 @@ function StatusBarTime() {
   );
 }
 
-function HomeIndicator({ dark = false }: { dark?: boolean }) {
+export function HomeIndicator({ dark = false }: { dark?: boolean }) {
   return (
     <span
       aria-hidden="true"
@@ -149,7 +154,7 @@ function HomeIndicator({ dark = false }: { dark?: boolean }) {
   );
 }
 
-function initialsOf(label: string): string {
+export function initialsOf(label: string): string {
   const words = label.trim().split(/\s+/).filter(Boolean);
   if (words.length === 0) return "?";
   const first = words[0]![0]!;
@@ -185,6 +190,22 @@ function Bubble({
           {side === "out" ? <CheckCheck className="h-3 w-3 text-[var(--wa-tick)]" strokeWidth={2.4} /> : null}
         </span>
       </div>
+    </div>
+  );
+}
+
+/** Barra de digitação do WhatsApp (emoji, campo, +, microfone). Decorativa: quem usa decide o `aria-hidden`. */
+export function ChatInputBar() {
+  return (
+    <div className="flex items-center gap-1.5 px-2 pb-5 pt-1.5">
+      <div className="flex h-8 flex-1 items-center gap-1.5 rounded-full bg-white px-2.5 text-[11px] text-[var(--wa-ink-2)] shadow-[0_1px_0.5px_rgb(11_20_26/0.13)]">
+        <Smile className="h-4 w-4 shrink-0" />
+        <span className="flex-1 truncate">Mensagem</span>
+        <Plus className="h-4 w-4 shrink-0" />
+      </div>
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--wa-header)] text-white">
+        <Mic className="h-4 w-4" />
+      </span>
     </div>
   );
 }
@@ -270,16 +291,7 @@ export function ChatScreen({
         </div>
       </div>
 
-      <div className="flex items-center gap-1.5 px-2 pb-5 pt-1.5">
-        <div className="flex h-8 flex-1 items-center gap-1.5 rounded-full bg-white px-2.5 text-[11px] text-[var(--wa-ink-2)] shadow-[0_1px_0.5px_rgb(11_20_26/0.13)]">
-          <Smile className="h-4 w-4 shrink-0" />
-          <span className="flex-1 truncate">Mensagem</span>
-          <Plus className="h-4 w-4 shrink-0" />
-        </div>
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--wa-header)] text-white">
-          <Mic className="h-4 w-4" />
-        </span>
-      </div>
+      <ChatInputBar />
       <HomeIndicator />
     </div>
   );
