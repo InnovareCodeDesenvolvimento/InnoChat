@@ -1,0 +1,9 @@
+---
+name: billing_f2_f4_review_2026-10-01
+description: Revisão do commit a7f2817 (régua F2/F3/F4 + WhatsApp da plataforma) — sem CRÍTICO, LIBERADO; achados sobre telefone não verificado, ProviderEvent sem retenção, Pix antigo ainda pagável, suspensão manual recente levantada no deploy
+metadata:
+  type: project
+---
+
+Veredito LIBERADO (sem CRÍTICO). Achados Importantes: (1) `Tenant.billingWhatsappE164`/`billingEmail` sem verificação de posse (cadastro público e OWNER): a plataforma manda WhatsApp/e-mail a número de terceiro (assédio, denúncia, risco de banir o chip de cobrança). (2) `ProviderEvent` `platform-whatsapp-reply` (preview 200 chars de texto de qualquer pessoa) e `platform-whatsapp-autoreply` (providerEventId com telefone inteiro) NUNCA são expurgados (maintenance só limpa `billing-email`). (3) `ensureFreshPix`/`regeneratePixForInvoice` gera Pix novo sem cancelar o antigo (ainda pagável < 24 h): pagar os dois vira dinheiro duplicado sem alerta (`applyInvoicePayment` devolve alreadyProcessed). (4) Suspensão MANUAL feita há ~1-2 dias com a regra velha (backDays = 2) é levantada no deploy (carência 3 dias + fim do dia local) e, em PAST_DUE, o planejador não checa `manualSuspension` (só no ramo SUSPENDED) -> pode mandar e-mail de atraso. (5) `markNoticeSentSafely`: se as duas gravações falham o aviso fica SENDING e é reclamado após 15 min = reenvio (o comentário diz o contrário).
+Padrões: `isNoticeStillDue` reaproveita o planejador puro (bom); claim `FOR UPDATE SKIP LOCKED` em UPDATE...FROM correto; `::timestamp` sobre texto ISO ignora o offset (ok, UTC). Page `assinatura/page.tsx` não tem guard de membership próprio (depende do layout); `write-blocked.ts` não seleciona `firstPaidAt` (trata trial como pagante, só UI). Opt-out SAIR é seguro (remetente WhatsApp não é falsificável) mas `updateMany` pega todas as empresas com o mesmo número.

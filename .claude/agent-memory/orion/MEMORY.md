@@ -10,3 +10,4 @@
 - [Revisão atendimento humano](atendimento_humano_review_2026-09-30.md) — sem CRÍTICO; envio sem idempotência, avisos sem teto, rate limit em memória
 - [Revisão cancelamento](cancelamento_review_2026-10-01.md) — sem CRÍTICO; Pix de fatura VOID segue pagável, status persistido vs efetivo, QR em tenant CANCELED
 - [Revisão F0 cobrança](billing_f0_review_2026-10-01.md) — sem CRÍTICO; trava 15 min vs SMTP sem timeout, suspensão manual vira e-mail, exceção aborta tick
+- [Revisão régua F2/F3/F4](billing_f2_f4_review_2026-10-01.md) — LIBERADO, sem CRÍTICO; telefone não verificado, ProviderEvent sem retenção, Pix antigo pagável, suspensão manual no deploy
