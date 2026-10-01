@@ -37,6 +37,7 @@ import {
 import { activateBotWorkflow, deactivateBotWorkflow, syncN8n, type N8nSyncSummary } from "./n8n-sync";
 import { getPlatformLegalInfo, updatePlatformLegalInfo } from "./legal-service";
 import type { PlatformLegalInfo } from "@/core/legal/placeholders";
+import { getPlatformSalesWhatsapp, updatePlatformSalesWhatsapp, type SalesWhatsapp } from "./sales-contact";
 import { getPlatformHealth, type PlatformHealth } from "./health-service";
 import {
   getGoogleAuthConfig,
@@ -340,6 +341,31 @@ export async function updatePlatformLegalInfoAction(input: unknown): Promise<Res
     // dado novo aparecer já na próxima visita (achado da Íris, 2026-09-29).
     revalidatePath("/termos");
     revalidatePath("/privacidade");
+    return saved;
+  });
+}
+
+// ---------------------------------------------------------------------------
+// WhatsApp comercial (botão "Tirar dúvidas" da landing) — não é segredo; vazio = botão some.
+// ---------------------------------------------------------------------------
+
+export async function getPlatformSalesWhatsappAction(): Promise<Result<SalesWhatsapp | null>> {
+  return runAction(async () => {
+    await requirePlatformAdmin();
+    return getPlatformSalesWhatsapp();
+  });
+}
+
+const updateSalesWhatsappSchema = z.object({
+  phone: z.string().trim().max(40).nullable().optional(),
+});
+
+export async function updatePlatformSalesWhatsappAction(input: unknown): Promise<Result<SalesWhatsapp | null>> {
+  return runAction(async () => {
+    const admin = await requirePlatformAdmin();
+    const data = updateSalesWhatsappSchema.parse(input);
+    const saved = await updatePlatformSalesWhatsapp(data.phone ?? null, admin.id);
+    revalidatePath("/");
     return saved;
   });
 }

@@ -2,13 +2,14 @@ import { Settings } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { navIconFor } from "@/components/shell/nav-items";
 import { EmptyState } from "@/components/ui/empty-state";
-import { getGoogleAuthConfigAction, getMercadoPagoConfigAction, getPlatformLegalInfoAction, getPlatformSettingsAction } from "@/modules/platform/actions";
+import { getGoogleAuthConfigAction, getMercadoPagoConfigAction, getPlatformLegalInfoAction, getPlatformSalesWhatsappAction, getPlatformSettingsAction } from "@/modules/platform/actions";
 import { AdminConfiguracoesClient } from "./admin-configuracoes-client";
 
 export default async function AdminConfiguracoesPage() {
-  const [settingsResult, legalResult, mpResult, googleResult] = await Promise.all([
+  const [settingsResult, legalResult, salesResult, mpResult, googleResult] = await Promise.all([
     getPlatformSettingsAction(),
     getPlatformLegalInfoAction(),
+    getPlatformSalesWhatsappAction(),
     getMercadoPagoConfigAction(),
     getGoogleAuthConfigAction(),
   ]);
@@ -26,6 +27,7 @@ export default async function AdminConfiguracoesPage() {
     <AdminConfiguracoesClient
       initialSettings={settingsResult.data}
       initialLegal={legalResult.ok ? legalResult.data : null}
+      initialSalesWhatsapp={salesResult.ok ? salesResult.data : null}
       initialMercadoPago={mpResult.ok ? mpResult.data : null}
       initialGoogle={googleResult.ok ? googleResult.data : null}
     />

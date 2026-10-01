@@ -300,6 +300,11 @@ model PlatformSettings {
   hostingRegion        String?
   backupRetentionDays  Int?
 
+  // WhatsApp comercial da empresa (botão "Tirar dúvidas" da landing). E.164 só dígitos com DDI
+  // (`558431132584`); nulo = botão some. Não é segredo. Lido por `getPublicSalesWhatsapp()`
+  // (src/modules/platform/sales-contact.ts); cadastrado em Admin → Configurações.
+  salesWhatsappE164    String?
+
   // Última execução dos jobs periódicos (`billing/tick`/`maintenance/tick`, chamados por cron
   // externo) — para a tela admin "Saúde" mostrar quando rodou e o resultado, e alertar se um tick
   // parou de rodar (docs/contratos.md, seção "Admin Saúde"). `*Result` guarda o resumo já

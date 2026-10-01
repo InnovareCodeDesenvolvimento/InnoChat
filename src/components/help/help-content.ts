@@ -365,6 +365,20 @@ const HELP_ENTRIES = {
       "De 15 em 15: 09:00, 09:15, 09:30… Dá mais opções, bom para serviços rápidos.",
     ],
   },
+  "admin.whatsappComercial": {
+    title: "WhatsApp de atendimento comercial",
+    purpose: "É o número que abre quando um visitante clica no botão \"Tirar dúvidas\" do site do InnoChat. A conversa cai direto no WhatsApp da sua equipe comercial.",
+    steps: [
+      "Digite o telefone com DDD, com ou sem máscara.",
+      "Clique em Salvar: o número aparece formatado abaixo do campo.",
+      "Para esconder o botão do site, apague o número e salve.",
+    ],
+    examples: [
+      "(84) 3113-2584 ou +55 84 3113-2584: os dois funcionam e viram o mesmo número.",
+      "Celular com o nono dígito: (84) 99999-8888.",
+    ],
+    tip: "O número precisa ter WhatsApp ativo, senão o visitante não consegue conversar.",
+  },
   "config.retomada": {
     title: "Quando o bot volta a responder",
     purpose: "Quando o cliente pede para falar com uma pessoa, o bot fica em silêncio. Aqui você escolhe quanto tempo de silêncio da equipe faz o bot voltar a responder sozinho.",

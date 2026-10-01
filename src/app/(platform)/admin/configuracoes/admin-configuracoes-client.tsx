@@ -24,6 +24,7 @@ import {
   testN8nConnectionAction,
   testSmtpConnectionAction,
   updatePlatformLegalInfoAction,
+  updatePlatformSalesWhatsappAction,
   updatePlatformSettingsAction,
 } from "@/modules/platform/actions";
 import { BotFlowCard } from "@/components/admin/bot-flow-card";
@@ -33,6 +34,9 @@ import type { MercadoPagoConfig } from "@/components/admin/mercado-pago-types";
 import type { N8nSyncSummary } from "@/modules/platform/n8n-sync";
 import type { PlatformSettingsView } from "@/modules/platform/service";
 import type { PlatformLegalInfo } from "@/core/legal/placeholders";
+import type { SalesWhatsapp } from "@/modules/platform/sales-contact";
+import { HelpButton } from "@/components/help/help-button";
+import { formatBrPhoneDisplay, normalizeBrPhoneToE164 } from "@/core/contact/br-phone";
 
 type TestResult = { ok: boolean; detalhe: string } | null;
 
@@ -161,11 +165,13 @@ function isLegalInfoComplete(info: PlatformLegalInfo): boolean {
 export function AdminConfiguracoesClient({
   initialSettings,
   initialLegal,
+  initialSalesWhatsapp,
   initialMercadoPago,
   initialGoogle,
 }: {
   initialSettings: PlatformSettingsView;
   initialLegal: PlatformLegalInfo | null;
+  initialSalesWhatsapp: SalesWhatsapp | null;
   initialMercadoPago: MercadoPagoConfig | null;
   initialGoogle: GoogleAuthConfig | null;
 }) {
@@ -210,6 +216,9 @@ export function AdminConfiguracoesClient({
     backupRetentionDays: legal.backupRetentionDays != null ? String(legal.backupRetentionDays) : "",
   });
   const [legalError, setLegalError] = useState<string | null>(null);
+  const [salesSaved, setSalesSaved] = useState<SalesWhatsapp | null>(initialSalesWhatsapp);
+  const [salesPhone, setSalesPhone] = useState(initialSalesWhatsapp?.display ?? "");
+  const [salesError, setSalesError] = useState<string | null>(null);
 
   // Checklist do topo (pedido do dono): o que já está pronto para o bot funcionar.
   const evolutionReady = !!settings.evolutionApiUrl && !!settings.evolutionApiKeyMasked;
@@ -333,6 +342,24 @@ export function AdminConfiguracoesClient({
         backupRetentionDays: result.data.backupRetentionDays != null ? String(result.data.backupRetentionDays) : "",
       });
       notify({ variant: "success", title: "Dados da empresa salvos." });
+    });
+  }
+
+  function handleSaveSales(e: React.FormEvent) {
+    e.preventDefault();
+    setSalesError(null);
+    startTransition(async () => {
+      const result = await updatePlatformSalesWhatsappAction({ phone: salesPhone });
+      if (!result.ok) {
+        setSalesError(result.error.message);
+        return;
+      }
+      setSalesSaved(result.data);
+      setSalesPhone(result.data?.display ?? "");
+      notify({
+        variant: "success",
+        title: result.data ? "WhatsApp comercial salvo." : "WhatsApp comercial removido; o botão sumiu do site.",
+      });
     });
   }
 
@@ -802,6 +829,43 @@ export function AdminConfiguracoesClient({
                 )}
               </Field>
             </div>
+          </CardContent>
+          <CardFooter>
+            <Button icon={Check} type="submit" isLoading={isPending} loadingText="Salvando…">
+              Salvar
+            </Button>
+          </CardFooter>
+        </form>
+
+        <form onSubmit={handleSaveSales} className="border-t border-border">
+          <CardContent className="flex flex-col gap-4 pt-6">
+            {salesError ? <Alert variant="danger">{salesError}</Alert> : null}
+            <Field
+              label="WhatsApp de atendimento comercial (botão 'Tirar dúvidas' do site)"
+              labelAction={<HelpButton helpKey="admin.whatsappComercial" />}
+              hint={
+                salesSaved
+                  ? `Salvo: ${salesSaved.display}. O botão aparece no site.`
+                  : "Com DDD, com ou sem máscara. Vazio = o botão 'Tirar dúvidas' não aparece no site."
+              }
+            >
+              {(fieldProps) => (
+                <Input
+                  {...fieldProps}
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="off"
+                  value={salesPhone}
+                  onChange={(e) => setSalesPhone(e.target.value)}
+                  onBlur={() => {
+                    const e164 = normalizeBrPhoneToE164(salesPhone);
+                    if (e164) setSalesPhone(formatBrPhoneDisplay(e164));
+                  }}
+                  maxLength={40}
+                  placeholder="(84) 3113-2584"
+                />
+              )}
+            </Field>
           </CardContent>
           <CardFooter>
             <Button icon={Check} type="submit" isLoading={isPending} loadingText="Salvando…">
