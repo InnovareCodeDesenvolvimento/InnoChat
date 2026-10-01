@@ -259,6 +259,30 @@ Mensagem automática quando alguém responde ao número da plataforma (no máxim
 
 Resposta ao "SAIR": "Pronto, você não recebe mais avisos de cobrança por aqui. Os e-mails continuam. Pra voltar, ative em Assinatura no painel."
 
+### 2.3.1 Sequência de conversão do teste grátis (pedido do dono, 2026-10-01)
+
+Objetivo: quem está no teste de 3 dias **sentir o valor e assinar**. As mensagens mostram o que o InnoChat já fez pela empresa durante o teste, usando dados REAIS do próprio tenant (nada inventado): horários marcados pelo bot, conversas respondidas, lembretes enviados e clientes que voltaram a marcar. Se o número for zero, a mensagem muda para ajudar a pessoa a ligar o que falta (conectar WhatsApp, cadastrar serviço), sem cobrar.
+
+| Momento | E | S | B | W | Mensagem (resumo) |
+|---|---|---|---|---|---|
+| T0 (cadastro) | sim (já: verificação) | sim | checklist de primeiros passos | não | Boas-vindas e os 3 passos para o bot funcionar hoje |
+| T0 + 1 dia | sim | sim | progresso do checklist | sim, se conectou | **Resumo do primeiro dia:** "o Inno já marcou X horários e respondeu Y conversas". Se ainda não conectou, um empurrão com o passo que falta. |
+| T-1 (véspera do fim) | sim | sim | contador + "Assinar com Pix" | sim | "Seu teste acaba amanhã. Até agora o Inno marcou X horários." Mostra o plano e o botão de pagar. |
+| T (último dia) | sim | sim | contador de horas | sim | "Hoje é o último dia do teste. Assine para o bot não parar amanhã." |
+| Suspenso (T+1) | sim (já) | sim | banner vermelho | sim | "Seu bot parou. Os X clientes que marcaram pelo WhatsApp vão ficar sem resposta. Pague o Pix e ele volta na hora." |
+| T+3 | sim | sim | sim | não | Lembrete curto + o que fica guardado |
+| T+5 (2 dias antes de cancelar) | sim | sim | sim | sim | Última chance: a conta é encerrada em 2 dias |
+
+Regras:
+- **Dados reais:** os números vêm de consultas ao próprio tenant (`Appointment` com origem bot, `ChatMessage` etc.) no momento do envio. Se der zero, usar a variação de "falta pouco para ligar".
+- **Oferta:** nenhum desconto automático (o dono não aprovou). Se um dia houver cupom, ele entra como variável.
+- **Pagou em qualquer etapa:** a sequência para na hora, e sai o "Pagamento confirmado" com "Bem-vindo, sua assinatura vale até X".
+- **Mesmo motor e mesma idempotência da régua de pagantes** (`BillingNotice`, chave por ciclo do teste + etapa + canal).
+
+### 2.3.2 Pagantes: antes, no dia e depois do vencimento (reforço do pedido do dono)
+
+A tabela da §2.2 já cobre isso: **D-5** (fatura com Pix), **D-3** (sino e banner), **D-1**, **D** (de manhã), **D+1, D+2 e D+3** dentro da carência de 3 dias (bot ainda funcionando, com contagem regressiva), **suspensão** e os lembretes durante a suspensão até o cancelamento. Cada mensagem leva o Pix vigente e o valor. Pagou, para tudo e sai a confirmação.
+
 ### 2.4 WhatsApp da plataforma
 
 **Decisão do dono (2026-10-01):** o número de cobrança **não** é o comercial (84) 3113-2584. O
