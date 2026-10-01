@@ -7,6 +7,11 @@ Versão semântica (`MAJOR.MINOR.PATCH`), lida do `version` do `package.json` e 
 
 Toda publicação em produção sobe a versão e ganha uma entrada aqui.
 
+## v1.2.3 — 2026-10-01
+
+### Melhorias
+- Landing: o **Inno** fica ao lado do celular, apresentando a conversa. O balão acompanha a demonstração: "Quem responde sou eu!", três pontinhos enquanto digita e "✓ Agendado!" no fim.
+
 ## v1.2.2 — 2026-10-01
 
 ### Correções
