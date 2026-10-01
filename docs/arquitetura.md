@@ -276,6 +276,22 @@ nunca vem da requisição:** vem da sessão (painel) ou da instância resolvida 
   (idempotência do webhook de pagamento).
 - **TrialClaim**: `phoneE164` único + `emailDomain?`. Garante **um trial por número de WhatsApp**
   (anti-abuso).
+- **Régua de cobrança** (F1, migrations `20261004100000` e `20261004100100`; plano em
+  `docs/regua-de-cobranca.md`):
+  - **BillingNotice** (outbox): unique `(cycleKey, step, channel)`; `step`/`channel`/`status` são
+    `String` (CHECK em `channel` e `status`); `attempts`, `nextAttemptAt`, `lastErrorCode`, `sentAt`,
+    `skippedReason`; `platformConnectionId` + `senderPhoneE164`; índice `(status, nextAttemptAt)` para o
+    claim com `FOR UPDATE SKIP LOCKED`. `cycleKey` = id da fatura, `<subscriptionId>:trial` ou
+    `<subscriptionId>:<currentPeriodEnd ISO UTC>` (suspensão e cancelamento). O backfill marcou como
+    `SKIPPED/LEGACY_SENT` os e-mails que o motor antigo já enviou.
+  - **BillingEvent** (histórico append-only, UPDATE bloqueado por trigger): `type`, `fromStatus`,
+    `toStatus`, `actorType` (`SYSTEM | OWNER | ADMIN`), `metadata`; índices `(tenantId, createdAt)` e
+    `(type, createdAt)`.
+  - **PlatformWhatsappConnection**: papéis `PENDING | ACTIVE | RETIRED` com índices únicos parciais (no
+    máximo 1 `ACTIVE` e 1 `PENDING`), `instanceName` e `webhookTokenHash` únicos.
+  - Campos novos: `PlatformSettings.platformWhatsappEnabled`, `Tenant.billingEmail`,
+    `Tenant.billingWhatsappE164` (CHECK 12 a 13 dígitos) e `Tenant.billingWhatsappOptOutAt` (WhatsApp ativo
+    para todos, com opt-out; decisão D5).
 
 ### Catálogo e agenda
 - **Service**: `name`, `durationMin`, `bufferAfterMin`, `priceCents?`, `active`, `sortOrder`.
@@ -313,6 +329,7 @@ User ──< Membership >── Tenant ──1 Subscription >── Plan
                           ├──< Contact ──< Appointment ──< AppointmentEvent
                           └──< BotText
 PlatformSettings · ProviderEvent · TrialClaim · AuthToken
+Subscription ──< BillingNotice ; ──< BillingEvent ; PlatformWhatsappConnection ──< BillingNotice
 ```
 
 ### Cálculo de horários (função pura em `core/agenda`)

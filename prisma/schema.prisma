@@ -133,6 +133,17 @@ model Tenant {
   // Minutos até o bot retomar após atendimento humano (CHECK 30..1440).
   handoffResumeMinutes            Int @default(120)
 
+  // Contato de cobrança (régua, docs/regua-de-cobranca.md D4/D5). `billingEmail` nulo = os avisos vão
+  // para o OWNER mais antigo (comportamento de sempre); preenchido = recebe tudo e o dono continua
+  // recebendo as etapas críticas. `billingWhatsappE164` = só dígitos com DDI (CHECK 12..13); nulo = sem
+  // WhatsApp de cobrança. Decisão D5 do dono (2026-10-01): WhatsApp ATIVO PARA TODOS, sem opt-in;
+  // `billingWhatsappOptOutAt` preenchido = a empresa desligou (pela tela Assinatura ou respondendo SAIR)
+  // e é a prova do pedido. Nulo = recebe. Nenhum número é inventado: sem `billingWhatsappE164` a etapa
+  // de WhatsApp é pulada (NO_RECIPIENT).
+  billingEmail            String?
+  billingWhatsappE164     String?
+  billingWhatsappOptOutAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -148,6 +159,8 @@ model Tenant {
   trialClaims        TrialClaim[]
   chatMessages       ChatMessage[]
   handoffRequests    HandoffRequest[]
+  billingNotices     BillingNotice[]
+  billingEvents      BillingEvent[]
 
   @@map("tenants")
 }
@@ -304,6 +317,10 @@ model PlatformSettings {
   // (`558431132584`); nulo = botão some. Não é segredo. Lido por `getPublicSalesWhatsapp()`
   // (src/modules/platform/sales-contact.ts); cadastrado em Admin → Configurações.
   salesWhatsappE164    String?
+
+  // Chave geral da régua por WhatsApp (docs/regua-de-cobranca.md §2.4). Desligada = a régua roda só por
+  // e-mail e sino. O número em si mora em `PlatformWhatsappConnection` (conexão ACTIVE), nunca aqui.
+  platformWhatsappEnabled Boolean @default(false)
 
   // Última execução dos jobs periódicos (`billing/tick`/`maintenance/tick`, chamados por cron
   // externo) — para a tela admin "Saúde" mostrar quando rodou e o resultado, e alertar se um tick
@@ -893,6 +910,8 @@ model Subscription {
   plan        Plan      @relation("SubscriptionPlan", fields: [planId], references: [id])
   pendingPlan Plan?     @relation("SubscriptionPendingPlan", fields: [pendingPlanId], references: [id])
   invoices    Invoice[]
+  billingNotices BillingNotice[]
+  billingEvents  BillingEvent[]
 
   // billing/tick (§6.8) roda a cada hora e precisa achar, sem varrer a tabela inteira:
   // - quem está perto de vencer (gerar fatura 5 dias antes / expirar trial) → (status, currentPeriodEnd)
@@ -960,7 +979,9 @@ model Invoice {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  subscription   Subscription    @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  billingNotices BillingNotice[]
+  billingEvents  BillingEvent[]
 
   // Uma fatura por ciclo de cobrança (§5): impede o billing/tick gerar duas faturas para o mesmo
   // período se rodar em cima da hora (idempotência "por desenho", não só pelo `{ invoicesCreated }`
@@ -1014,6 +1035,156 @@ model TrialClaim {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@map("trial_claims")
+}
+
+// ---------------------------------------------------------------------------
+// Régua de cobrança (docs/regua-de-cobranca.md, F1) — outbox, histórico e WhatsApp da plataforma
+// ---------------------------------------------------------------------------
+
+// Outbox da régua: UMA linha por (ciclo, etapa, canal), garantida pelo unique. `step`/`channel`/`status`
+// são String (não enum do Postgres) porque a régua ganha etapas e `ALTER TYPE ADD VALUE` não roda na
+// transação da migration; `channel` e `status` têm CHECK no banco (conjuntos fechados), `step` não.
+//
+// `cycleKey` identifica o CICLO a que o aviso pertence e é o que impede duplicata:
+//   - etapas de fatura (INVOICE_CREATED, DUE_*, OVERDUE_*, GRACE_LAST, PAYMENT_CONFIRMED): `invoiceId`;
+//   - etapas de teste (TRIAL_*): `<subscriptionId>:trial` (a assinatura é 1:1 e o teste só existe uma vez);
+//   - etapas de suspensão e cancelamento (SUSPENDED*, CANCEL_WARN_*, AUTO_CANCELED):
+//     `<subscriptionId>:<currentPeriodEnd em ISO UTC, ex. 2026-10-01T23:59:00.000Z>`, o período NÃO pago
+//     (fixo durante toda a suspensão; muda quando o cliente paga). Preferido ao "início da suspensão" do
+//     plano porque este depende da carência (1 dia hoje, 3 na F2) e mudaria a chave no dia do deploy.
+//
+// Despachante: `UPDATE ... SET status='SENDING' WHERE id IN (SELECT ... WHERE status IN ('PENDING','FAILED')
+// AND "nextAttemptAt" <= now() ORDER BY "nextAttemptAt" FOR UPDATE SKIP LOCKED LIMIT n)`. O índice
+// (status, nextAttemptAt) serve a esse claim e à varredura de SENDING preso (`updatedAt` antigo).
+// Privacidade: `lastErrorCode` só guarda código; `recipientMasked` é o destinatário mascarado.
+//
+// Não está em TENANT_SCOPED_MODELS (como TrialClaim): o despachante lê cross-tenant por desenho.
+model BillingNotice {
+  id             String  @id @default(cuid())
+  tenantId       String
+  subscriptionId String
+  // Nulo nas etapas de teste e de suspensão/cancelamento (sem fatura própria).
+  invoiceId      String?
+
+  step     String
+  channel  String // EMAIL | WHATSAPP (CHECK)
+  cycleKey String
+  status   String @default("PENDING") // PENDING | SENDING | SENT | FAILED | SKIPPED (CHECK)
+
+  // PAID | STATUS_CHANGED | NO_RECIPIENT | OPTED_OUT | NO_PLATFORM_NUMBER | CHANNEL_DOWN |
+  // OUT_OF_WINDOW_EXPIRED | PERMANENT_REJECTION | LEGACY_SENT. Preenchido só com status SKIPPED (CHECK).
+  skippedReason String?
+
+  attempts      Int       @default(0)
+  // Início da janela de envio / depois disso o aviso não faz mais sentido / próxima tentativa.
+  notBefore     DateTime
+  expiresAt     DateTime
+  nextAttemptAt DateTime
+  lastErrorCode String?
+  sentAt        DateTime?
+
+  recipientMasked   String?
+  providerMessageId String?
+
+  // WhatsApp: qual conexão da plataforma enviou e cópia do número no instante do envio (trocar de número
+  // não apaga o histórico). A conexão nunca é apagada depois de usada; `SetNull` só cobre o descarte de
+  // uma conexão PENDING.
+  platformConnectionId String?
+  senderPhoneE164      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant             Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  subscription       Subscription                @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  invoice            Invoice?                    @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  platformConnection PlatformWhatsappConnection? @relation(fields: [platformConnectionId], references: [id], onDelete: SetNull)
+
+  @@unique([cycleKey, step, channel])
+  // Claim do despachante e varredura de SENDING preso.
+  @@index([status, nextAttemptAt])
+  // Linha do tempo da empresa (Admin).
+  @@index([tenantId, createdAt])
+  @@map("billing_notices")
+}
+
+// Histórico append-only de mudanças de status e eventos financeiros por empresa (churn e linha do tempo).
+// Nunca atualizado (trigger bloqueia UPDATE; a limpeza por cascata de tenant continua valendo).
+// `type` é String (cresce): STATUS_CHANGED | INVOICE_CREATED | PAYMENT_CONFIRMED | PIX_REGENERATED |
+// PLAN_CHANGED | CANCEL_REQUESTED | CANCEL_UNDONE | REACTIVATION_STARTED | MANUAL_PAYMENT |
+// MANUAL_SUSPEND | MANUAL_REACTIVATE | TRIAL_EXTENDED. `actorType`: SYSTEM | OWNER | ADMIN (CHECK).
+// `metadata` nunca leva dado pessoal. Cancelamento voluntário x involuntário (`cancelSource`) vai em
+// `metadata.cancelSource`: OWNER | AUTO_SUSPENDED | TRIAL_NOT_CONVERTED | ADMIN.
+// Linhas da carga inicial (F6) levam `metadata.backfill = true`.
+// Não está em TENANT_SCOPED_MODELS: lido cross-tenant pelo Admin (churn).
+model BillingEvent {
+  id             String  @id @default(cuid())
+  tenantId       String
+  subscriptionId String
+  invoiceId      String?
+
+  type       String
+  fromStatus SubscriptionStatus?
+  toStatus   SubscriptionStatus?
+
+  actorType   String  @default("SYSTEM")
+  // Sem FK de propósito: auditoria sobrevive à exclusão do usuário (mesmo critério de n8nBotFlowPublishedByUserId).
+  actorUserId String?
+  metadata    Json?
+
+  createdAt DateTime @default(now())
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  invoice      Invoice?     @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+
+  // Linha do tempo da empresa.
+  @@index([tenantId, createdAt])
+  // Churn e recuperação no mês: filtra por tipo (e por toStatus) dentro de um intervalo de datas.
+  @@index([type, createdAt])
+  @@map("billing_events")
+}
+
+// Números de WhatsApp da PLATAFORMA para avisos de cobrança (docs/regua-de-cobranca.md §2.4). Cada número
+// conectado é uma linha; as antigas viram histórico (RETIRED), nunca são apagadas depois de usadas.
+// Por que não `WhatsappInstance`: `tenantId` é obrigatório lá e o `syncN8n` reaponta o webhook de toda
+// instância para o bot do n8n.
+//
+// Papéis (`role`): PENDING = QR aberto, ainda não assumiu; ACTIVE = é quem envia; RETIRED = saiu.
+// Dois índices ÚNICOS PARCIAIS (SQL escrito à mão na migration, o Prisma não os expressa) garantem no
+// banco no máximo 1 ACTIVE e no máximo 1 PENDING. CHECKs: role/status em conjuntos fechados; ACTIVE exige
+// `phoneE164` e `activatedAt`; RETIRED exige `retiredAt`.
+// Só o HASH do token do webhook fica em repouso. Não está em TENANT_SCOPED_MODELS (é da plataforma).
+model PlatformWhatsappConnection {
+  id               String  @id @default(cuid())
+  // Nome da instância na Evolution, único por conexão: "innochat-plataforma-<8 chars do id>".
+  instanceName     String  @unique
+  webhookTokenHash String  @unique
+  // Rótulo livre do admin ("Cobrança", "Cobrança (chip novo)"); limite de 40 na validação.
+  label            String
+  status           String  @default("QRCODE") // QRCODE | CONNECTED | DISCONNECTED (CHECK)
+  role             String  @default("PENDING") // PENDING | ACTIVE | RETIRED (CHECK)
+  // Só dígitos com DDI, preenchido ao conectar (ownerJid).
+  phoneE164        String?
+
+  connectedAt    DateTime?
+  // Queda inesperada; zera ao reconectar.
+  disconnectedAt DateTime?
+  activatedAt    DateTime?
+  retiredAt      DateTime?
+  // REPLACED | DISCONNECTED_BY_ADMIN | ABANDONED_QR. Sem FK em `createdByUserId` (auditoria simples).
+  retiredReason   String?
+  createdByUserId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  notices BillingNotice[]
+
+  @@index([role])
+  // Trava anti-loop do claim: "este remetente é número da plataforma (de qualquer papel)?".
+  @@index([phoneE164])
+  @@map("platform_whatsapp_connections")
 }
 
 // ---------------------------------------------------------------------------
