@@ -2,4 +2,4 @@
 - [Limites Evolution/Baileys](project_evolution_baileys_limites.md) — sem botões/listas/enquete; @lid quebra resposta
 - [Lições InnoAtendente](reference_innoatendente_licoes.md) — onde achar adaptador Evolution real, deploy e decisões
 - [Bot v2](project_bot_v2.md) — motor TS compilado nos Code nodes, só texto, grade em slotGranularityMin, HandoffRequest, 2 migrations
-- [Régua de cobrança](project_regua_de_cobranca.md) — plano 2026-10-01: outbox BillingNotice, WA da plataforma fora de WhatsappInstance, anti-loop; D1-D10 pendentes
+- [Régua de cobrança](project_regua_de_cobranca.md) — plano 2026-10-01: outbox BillingNotice, WA da plataforma trocável pelo Admin (PlatformWhatsappConnection), anti-loop; D2-D10 pendentes

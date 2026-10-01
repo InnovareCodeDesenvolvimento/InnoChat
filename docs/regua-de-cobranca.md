@@ -261,63 +261,164 @@ Resposta ao "SAIR": "Pronto, você não recebe mais avisos de cobrança por aqui
 
 ### 2.4 WhatsApp da plataforma
 
-**Como modelar.** O número da plataforma **não** é uma `WhatsappInstance`:
+**Decisão do dono (2026-10-01):** o número de cobrança **não** é o comercial (84) 3113-2584. O
+comercial (`PlatformSettings.salesWhatsappE164`) continua só no botão "Tirar dúvidas" do site e não
+muda. O dono quer conectar, desconectar e **trocar** o número de cobrança pelo Admin, quando quiser,
+sem deploy e sem mexer no código.
+
+**Por que não é uma `WhatsappInstance`:**
 - `WhatsappInstance.tenantId` é obrigatório;
 - o `syncN8n` reaponta o webhook de **toda** `WhatsappInstance` para o bot do n8n (`n8n-sync.ts:258-267`);
 - o sino da empresa e os limites de plano contam essas linhas.
 
-Proposta: um registro único da plataforma em colunas novas de `PlatformSettings` (é singleton, igual a
-Evolution/SMTP/MP), com instância de nome fixo e prefixado para não colidir com o InnoAtendente no
-mesmo servidor Evolution (ex.: `innochat-plataforma-avisos`):
+**Por que uma tabela e não colunas no `PlatformSettings`:** trocar de número precisa guardar qual
+número mandou cada aviso, e a troca não pode deixar nenhum intervalo sem canal. Por isso cada número
+conectado vira uma **linha** (uma "conexão"). No máximo uma fica ativa por vez, e as antigas viram
+histórico.
 
+```prisma
+model PlatformWhatsappConnection {
+  id               String    @id @default(cuid())
+  // Nome da instância na Evolution, único por conexão e prefixado para não colidir com o
+  // InnoAtendente no mesmo servidor: "innochat-plataforma-<8 chars do id>".
+  instanceName     String    @unique
+  webhookTokenHash String    @unique            // token do webhook próprio, só o hash em repouso
+  label            String                       // "Cobrança", "Cobrança (chip novo)": livre, até 40
+  status           String    @default("QRCODE") // QRCODE | CONNECTED | DISCONNECTED
+  phoneE164        String?                      // preenchido ao conectar (ownerJid)
+  // PENDING = QR aberto, ainda não assumiu. ACTIVE = é quem envia. RETIRED = saiu (troca ou desconexão).
+  role             String    @default("PENDING")
+  connectedAt      DateTime?
+  disconnectedAt   DateTime?                    // queda inesperada; zera ao reconectar
+  activatedAt      DateTime?
+  retiredAt        DateTime?
+  retiredReason    String?                      // REPLACED | DISCONNECTED_BY_ADMIN | ABANDONED_QR
+  createdByUserId  String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  notices BillingNotice[]
+
+  @@index([role])
+  @@index([phoneE164])
+  @@map("platform_whatsapp_connections")
+}
 ```
-platformWaInstanceName   String?    // "innochat-plataforma-avisos"
-platformWaWebhookToken   String?    // token do webhook próprio (hash em repouso, como internalApiSecretHash)
-platformWaStatus         String?    // QRCODE | CONNECTED | DISCONNECTED
-platformWaPhoneE164      String?    // preenchido ao conectar (ownerJid)
-platformWaConnectedAt    DateTime?
-platformWaDisconnectedAt DateTime?
-platformWaEnabled        Boolean @default(false)   // chave geral do canal
+
+Mais duas travas no banco (SQL escrito à mão na migration, porque o Prisma não gera índice parcial):
+- índice único parcial `ON platform_whatsapp_connections ((true)) WHERE role = 'ACTIVE'`: impossível
+  ter dois números ativos;
+- o mesmo para `role = 'PENDING'`: no máximo um QR aberto por vez.
+
+Em `PlatformSettings` fica só a chave geral `platformWhatsappEnabled Boolean @default(false)`
+("Mandar avisos de cobrança pelo WhatsApp"). Com ela desligada, a régua roda só com e-mail e sino.
+
+**Fluxos no Admin.** Card "WhatsApp da plataforma" em Admin > Configurações, separado do card
+"WhatsApp comercial do site". Reaproveita o celular com QR ao vivo da tela da empresa e o mesmo
+`evolution-client`.
+
+| Ação | O que acontece |
+|---|---|
+| **Conectar** (sem número) | Cria a conexão `PENDING`, cria a instância na Evolution com o webhook `POST /api/webhooks/platform-whatsapp/[token]` e mostra o QR. Quando o QR é lido (`connection.update` = open), a mesma transação marca `ACTIVE` e grava `phoneE164` e `activatedAt` |
+| **Trocar de número** | Cria uma conexão `PENDING` nova **enquanto a antiga continua enviando**. Quando a nova conecta, uma única transação faz a antiga `RETIRED/REPLACED` e a nova `ACTIVE`. Só depois, fora da transação, faz logout e apaga a instância antiga na Evolution (falha só é logada; o tick tenta de novo). Não existe minuto sem canal |
+| **Cancelar a troca** | Apaga a conexão `PENDING` e a instância dela. A ativa nem percebe. QR aberto há mais de 30 min sem conectar vira `RETIRED/ABANDONED_QR` sozinho |
+| **Desconectar** | Confirmação dupla ("os avisos passam a ir só por e-mail e pelo painel"). Logout e `RETIRED/DISCONNECTED_BY_ADMIN`. A régua segue sem WhatsApp |
+| **Reconectar** (o número caiu) | A conexão `ACTIVE` com `status = DISCONNECTED` mostra um QR novo **na mesma linha** (mesmo número, mesma instância). Se o admin ler o QR com **outro** celular, o sistema percebe que `phoneE164` mudou e trata como troca: a linha antiga vira histórico e nasce uma linha nova |
+| **Mensagem de teste** | Envia para um número digitado pelo admin. Fica registrada como `BillingNotice` com `step = ADMIN_TEST`, fora da régua |
+
+Contrato (todas com `requirePlatformAdmin()`, em `src/modules/platform/platform-whatsapp-actions.ts`):
+
+```ts
+getPlatformWhatsappAction(): Result<{
+  enabled: boolean;
+  active: { id; label; status: "CONNECTED" | "DISCONNECTED"; phoneDisplay: string | null; activatedAt: string; disconnectedAt: string | null } | null;
+  pending: { id; label; status: "QRCODE" | "CONNECTED"; createdAt: string } | null;
+  history: Array<{ id; label; phoneDisplay: string | null; activatedAt: string | null; retiredAt: string; retiredReason: string; noticesSent: number }>;
+}>
+setPlatformWhatsappEnabledAction({ enabled: boolean }): Result<{ enabled: boolean }>
+startPlatformWhatsappConnectionAction({ label: string }): Result<{ connectionId: string }>   // conectar ou trocar
+getPlatformWhatsappQrAction(connectionId): Result<{ status; qrBase64: string | null; phoneDisplay: string | null }>  // poll de 3 s
+cancelPlatformWhatsappConnectionAction(connectionId): Result<{ canceled: boolean }>           // só PENDING
+disconnectPlatformWhatsappAction({ confirm: "DESCONECTAR" }): Result<{ retired: boolean }>
+sendPlatformWhatsappTestAction({ toE164: string }): Result<{ sent: boolean; errorCode?: string }>
 ```
 
-- **Conexão:** card "WhatsApp de avisos" em Admin > Configurações, com o mesmo QR ao vivo da tela da
-  empresa (reaproveita `evolution-client`), status e botão "Mandar mensagem de teste".
-- **Webhook próprio:** `POST /api/webhooks/platform-whatsapp/[token]`, **nunca** o n8n. Trata
-  `connection.update` (status) e `messages.upsert` (resposta de assinante: "SAIR" e a mensagem
-  automática). Toda resposta de assinante vira item no sino do Admin.
-- **Guarda contra loop (importante):** muitos donos de salão usam o próprio celular como número do
-  bot. O aviso da plataforma chega nesse número, o bot da empresa responde com o menu, e a mensagem
-  automática da plataforma responderia de volta. Três travas:
-  1. o `POST /messages/claim` passa a ignorar mensagens cujo remetente é `platformWaPhoneE164`
-     (motivo novo `PLATFORM_SENDER`);
-  2. a mensagem automática da plataforma sai no máximo 1 vez por contato a cada 24 h;
-  3. a plataforma nunca responde automaticamente a número que é `WhatsappInstance.phoneE164` de
-     alguma empresa.
-- **Se o número cair:** o envio por WhatsApp vira `SKIPPED` com motivo `CHANNEL_DOWN`. O e-mail sai
-  igual (é o canal base). O sino do Admin ganha `PLATFORM_WHATSAPP_DISCONNECTED`. Avisos críticos
-  pendentes (D, suspensão, C-7, C-1) ficam `PENDING` por até 12 h esperando a reconexão; depois disso
-  viram `SKIPPED`. Avisos não críticos são descartados na hora.
-- **Ritmo anti-bloqueio:** o mesmo padrão do lembrete de véspera (`reminders/tick.ts`): teto por
-  rodada (30), intervalo sorteado de 3 a 8 s entre envios, orçamento de tempo dentro do tick.
-  Mensagem curta, sem link encurtado, sempre com nome da empresa e do dono. Só envia para quem deu
-  opt-in.
-- **Opt-in e opt-out:** o dono informa o WhatsApp de cobrança e marca "Quero receber avisos de
-  cobrança no WhatsApp" na tela Assinatura (padrão desligado para quem já existe; ligado no cadastro
-  novo com o telefone que o cadastro já pede, com texto claro). Opt-out pela mesma chave ou
-  respondendo SAIR. O e-mail de cobrança não tem opt-out: é transacional e está no contrato.
+Erros: `FORBIDDEN`, `INVALID_STATE` (trocar com outro QR já aberto; desconectar sem número ativo),
+`EVOLUTION_UNAVAILABLE`, `RATE_LIMITED` (10 ações por 10 min). No histórico o número aparece
+mascarado ("+55 84 9****-1234"); inteiro, só no card do número ativo.
 
-**Opções para o número (decisão D1):**
+**Trocar de número sem perder histórico nem duplicar lembrete:**
+- A idempotência da régua **não depende do número**: a chave é `(cycleKey, step, channel)` em
+  `BillingNotice`. O lembrete D-1 enviado pelo número antigo continua `SENT` depois da troca, e o
+  número novo nunca o reenvia.
+- Cada `BillingNotice` de WhatsApp grava `platformConnectionId` e `senderPhoneE164` (cópia do número
+  no momento do envio). A linha do tempo da empresa mostra "Lembrete de véspera enviado por WhatsApp
+  (número anterior, final 1234)". Conexões nunca são apagadas, só aposentadas.
+- O despachante resolve a conexão `ACTIVE` **no momento do claim** de cada aviso. Um aviso que estava
+  `SENDING` pela conexão antiga quando ela foi aposentada termina com o resultado que a Evolution
+  devolver. Se a Evolution recusar porque a instância saiu, vira `FAILED`, e a nova tentativa sai pelo
+  número novo na mesma linha, sem duplicar.
+- Opt-in e opt-out são da **empresa**, não do número. Quem aceitou receber avisos continua aceitando
+  depois da troca; quem respondeu SAIR para o número antigo continua fora.
+- **Primeira mensagem de um número novo:** se o último WhatsApp que a empresa recebeu veio de outro
+  `senderPhoneE164`, a mensagem começa com "Este é o novo número de avisos do InnoChat. O anterior não
+  envia mais mensagens." Assim o assinante não desconfia de golpe.
+- A trava anti-loop do claim (abaixo) considera **todos** os números que já foram da plataforma, não
+  só o ativo: o chip antigo pode continuar com WhatsApp em algum aparelho.
 
-| | A. Chip novo, só para avisos (Evolution) | B. Comercial (84) 3113-2584 como aparelho conectado | C. API oficial da Meta (Cloud API) |
-|---|---|---|---|
-| Custo | Um chip | Zero | Cobrança por conversa de utilidade + verificação da empresa na Meta |
-| Risco de bloqueio | Existe (Baileys), mas atinge só o número de avisos | Existe, e um bloqueio derruba o atendimento comercial | Praticamente nenhum |
-| Respostas dos assinantes | Mensagem automática aponta para o comercial | Chegam direto no comercial, onde há gente | Exige modelos aprovados; resposta pelo painel da Meta ou integração |
-| Esforço | Baixo: mesma Evolution e cliente já testados | Baixo | Alto: adaptador novo, modelos, webhook da Meta |
-| Veredito | **Recomendado agora** | Não recomendado: põe o canal de vendas em risco | Plano B quando passar de algumas centenas de assinantes ou se houver bloqueio |
+**Webhook próprio, nunca o n8n:** `POST /api/webhooks/platform-whatsapp/[token]` confere o hash do
+token contra a conexão. Token de conexão `RETIRED` recebe 410 e é ignorado. Trata `connection.update`
+(status e queda) e `messages.upsert` (resposta de assinante: "SAIR" e a mensagem automática). Toda
+resposta de assinante vira item no sino do Admin.
 
-O código do canal fica atrás de uma interface `BillingWhatsappChannel { send(to, text) }`, então
-trocar A por C mais tarde não mexe no motor da régua.
+**Guarda contra loop (importante):** muitos donos de salão usam o próprio celular como número do bot.
+O aviso da plataforma chega nesse número, o bot da empresa responde com o menu, e a mensagem
+automática da plataforma responderia de volta. Três travas:
+1. o `POST /messages/claim` ignora mensagens cujo remetente está em
+   `PlatformWhatsappConnection.phoneE164` (qualquer papel), com o motivo novo `PLATFORM_SENDER`. A
+   lista fica em cache de 60 s e é invalidada quando um número é ativado;
+2. a mensagem automática da plataforma sai no máximo 1 vez por contato a cada 24 h;
+3. a plataforma nunca responde automaticamente a um número que seja `WhatsappInstance.phoneE164` de
+   alguma empresa.
+
+**Sem número conectado, ou com o número caído, a régua não quebra.**
+- O planejador continua criando as etapas de WhatsApp de quem deu opt-in. Sem conexão `ACTIVE` +
+  `CONNECTED`, o despachante marca:
+  - etapa não crítica: `SKIPPED` com `skipReason = NO_PLATFORM_NUMBER` (nunca configurado ou
+    desconectado pelo admin) ou `CHANNEL_DOWN` (há número ativo, mas ele caiu);
+  - etapa crítica (D, D+1, suspensão, C-7, C-1, cancelamento): fica `PENDING` por até 12 h esperando
+    a reconexão, sempre dentro da janela de horário, e depois vira `SKIPPED`.
+- E-mail e sino seguem iguais, porque são etapas independentes (outro `channel`).
+- Sino do Admin, com itens derivados do estado (mesmo padrão de `platform-notifications`):
+  - `PLATFORM_WHATSAPP_MISSING` ("WhatsApp da plataforma sem número"): chave ligada e nenhuma conexão
+    `ACTIVE`. Mostra quantos avisos foram pulados nas últimas 24 h;
+  - `PLATFORM_WHATSAPP_DISCONNECTED` ("WhatsApp da plataforma caiu"): número ativo com
+    `status = DISCONNECTED`. Id `pwa:<connectionId>:<disconnectedAt ms>`, volta como não lido a cada
+    nova queda;
+  - `PLATFORM_WHATSAPP_REPLY`: um assinante respondeu ao número.
+- A tela Saúde ganha a linha "WhatsApp da plataforma" (conectado, caído, sem número, desligado). No
+  `/api/health/billing` ela entra só como aviso, nunca como 503: sem WhatsApp, a cobrança continua
+  funcionando.
+- O tick confere o estado na Evolution a cada rodada (`connectionState` da instância ativa), porque o
+  `connection.update` pode se perder.
+
+**Ritmo anti-bloqueio:** o mesmo padrão do lembrete de véspera (`reminders/tick.ts`): teto por rodada
+(30), intervalo sorteado de 3 a 8 s entre envios e orçamento de tempo dentro do tick. Mensagem curta,
+sem link encurtado, sempre com o nome da empresa e do dono. Só envia para quem deu opt-in. Número
+recém-conectado começa com teto menor (10 por rodada nos primeiros 3 dias), porque número novo
+mandando volume é o perfil que o WhatsApp mais bloqueia.
+
+**Opt-in e opt-out:** o dono da empresa informa o WhatsApp de cobrança e marca "Quero receber avisos
+de cobrança no WhatsApp" na tela Assinatura. Para quem já é cliente, começa desligado. No cadastro
+novo, começa ligado com o telefone que o cadastro pede, com texto claro. Opt-out pela mesma chave ou
+respondendo SAIR a qualquer número da plataforma. O e-mail de cobrança não tem opt-out: é
+transacional e está no contrato.
+
+**Orientação ao dono sobre o número** (não é decisão de arquitetura; ele conecta o número que
+quiser): um chip dedicado só para avisos isola o risco de bloqueio. Se o volume passar de algumas
+centenas de assinantes, ou se houver bloqueio, a API oficial da Meta (Cloud API) entra como outro
+adaptador. O canal fica atrás da interface `BillingWhatsappChannel { send(to, text) }`, então o motor
+da régua não muda.
 
 ### 2.5 Regras de robustez
 
@@ -347,7 +448,7 @@ model BillingNotice {
   channel        String             // EMAIL | WHATSAPP
   cycleKey       String             // invoiceId, ou "<subscriptionId>:<inicio da suspensao ISO>", ou "<subscriptionId>:trial"
   status         String   @default("PENDING") // PENDING | SENDING | SENT | FAILED | SKIPPED
-  skipReason     String?            // PAID | STATUS_CHANGED | NO_RECIPIENT | OPTED_OUT | CHANNEL_DOWN | OUT_OF_WINDOW_EXPIRED | PERMANENT_REJECTION | LEGACY_SENT
+  skipReason     String?            // PAID | STATUS_CHANGED | NO_RECIPIENT | OPTED_OUT | NO_PLATFORM_NUMBER | CHANNEL_DOWN | OUT_OF_WINDOW_EXPIRED | PERMANENT_REJECTION | LEGACY_SENT
   attempts       Int      @default(0)
   notBefore      DateTime           // início da janela
   expiresAt      DateTime           // depois disso não faz mais sentido enviar
@@ -355,6 +456,8 @@ model BillingNotice {
   lastErrorCode  String?            // só código, nunca mensagem do provedor (pode trazer e-mail/telefone)
   recipientMasked String?           // "jo***@gmail.com", "+55 84 9****-1234"
   providerMessageId String?
+  platformConnectionId String?       // WhatsApp: qual número da plataforma enviou (FK para PlatformWhatsappConnection)
+  senderPhoneE164   String?          // cópia do número no envio: trocar de número não apaga o histórico
   sentAt         DateTime?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
@@ -504,11 +607,11 @@ versão (semver, CHANGELOG, tag) e faz build limpo no HEAD antes do push.
 | Fase | O quê | Dono | Depende de | Tam. |
 |---|---|---|---|---|
 | **F0** Correção urgente | Ler o retorno de `sendMail` antes de marcar (R1-R3); "vence hoje" restrito a 24 h depois do vencimento; e-mail no cancelamento automático (R4); `pg_try_advisory_lock` no tick (R8); descrição do MP sem travessão (R16). Sem migration | Vega, Íris | nada | P |
-| **F1** Migrations aditivas | `BillingNotice`, `BillingEvent`, `Tenant.billingEmail/billingWhatsappE164/billingWhatsappOptInAt/billingWhatsappOptOutAt`, colunas `platformWa*` em `PlatformSettings`. Só `CREATE TABLE` e `ADD COLUMN` nulos | Cronos | decisões D1, D4 (só nomes) | P |
+| **F1** Migrations aditivas | `BillingNotice`, `BillingEvent`, `Tenant.billingEmail/billingWhatsappE164/billingWhatsappOptInAt/billingWhatsappOptOutAt`, `PlatformWhatsappConnection` (com os dois índices únicos parciais em SQL), `PlatformSettings.platformWhatsappEnabled`, `BillingNotice.platformConnectionId/senderPhoneE164`. Só `CREATE TABLE`, `CREATE INDEX` e `ADD COLUMN` nulo ou com default | Cronos | D4 (só nomes) | P |
 | **F2** Motor da régua (e-mail) | `planNotices` puro + política em `src/core/billing/dunning-policy.ts`; despachante; templates novos (D+1, S+N, C-7, C-1, cancelamento automático, teste T-1/T); migração das 3 marcas antigas; `BillingEvent` nos pontos de mudança | Vega (Íris testa o planejador com relógio fixo, tabela de casos) | F1, D2, D3 | G |
 | **F3** Painel da empresa | Sino derivado (`INVOICE_OPEN`, `INVOICE_DUE`, `INVOICE_OVERDUE`, `SUBSCRIPTION_SUSPENDED`, `CANCEL_WARNING`, texto novo de `PAYMENT_CONFIRMED`; incluir prefixos em `KEY_PATTERN`, `notifications/service.ts:47`); banner novo com contador e "Pagar com Pix"; histórico de pagamentos; formulário de contato de cobrança; ajuda ⓘ | Lyra (UI), Vega (`getBillingBannerState`, actions) | F1. Pode rodar junto com F2 | M |
-| **F4** WhatsApp da plataforma | Card em Admin > Configurações (QR, status, teste); webhook próprio; SAIR; mensagem automática; trava `PLATFORM_SENDER` no claim; monitor de conexão no tick | Vega, Lyra (card) | F1, D1 (chip conectado) | M |
-| **F5** Canal WhatsApp na régua | `BillingWhatsappChannel`, janela, ritmo, opt-in, fallback e `BILLING_NOTICE_UNDELIVERED` | Vega | F2, F4 | M |
+| **F4** WhatsApp da plataforma (conectar e trocar pelo Admin) | **Vega:** as 7 actions da §2.4; estados PENDING, ACTIVE e RETIRED com troca atômica; logout da instância antiga fora da transação, com nova tentativa no tick; webhook próprio com token por conexão (410 para conexão aposentada); SAIR e mensagem automática; trava `PLATFORM_SENDER` com todos os números já usados; `connectionState` conferido no tick; QR abandonado em 30 min; itens `PLATFORM_WHATSAPP_MISSING/DISCONNECTED/REPLY` no sino do Admin e linha na Saúde. **Lyra:** card "WhatsApp da plataforma" separado do comercial (celular com QR, status, Trocar número, Cancelar troca, Desconectar com confirmação, teste, histórico de números) com ajuda ⓘ. **Íris:** troca sem intervalo sem canal, troca sem aviso duplicado, queda com fallback para e-mail, loop com bot de empresa | Vega, Lyra, Íris | F1. Não depende do número escolhido: testa com instância sandbox, e o dono conecta o dele depois | M |
+| **F5** Canal WhatsApp na régua | `BillingWhatsappChannel` resolvendo a conexão ativa no claim; janela; ritmo (teto menor para número novo); opt-in; aviso de "novo número"; fallback (`NO_PLATFORM_NUMBER`/`CHANNEL_DOWN`, críticos esperam 12 h); `BILLING_NOTICE_UNDELIVERED` | Vega | F2, F4 | M |
 | **F6** Visão financeira | `getFinanceOverviewAction`, detalhe da empresa com linha do tempo, CSV, carga inicial de `BillingEvent`, correção do fuso (R14) | Vega (consultas), Lyra (telas) | F1; linha do tempo completa depois de F2 | M |
 | **F7** Vigilância e revisão | `/api/health/billing` + monitor externo; Órion revisa webhook da plataforma (token, replay), CSV (injeção, autorização), dados pessoais em log, opt-out; Íris E2E da régua com relógio controlado | Vulcano, Órion, Íris | F2 a F6 | M |
 | **F8** Documentação | `contratos.md` (seções novas), `manual-do-cliente.md` (avisos e opt-out), runbook ("o que fazer quando o tick para", "WhatsApp de avisos caiu") | Alexandria (conferir caminhos citados antes do commit) | F7 | P |
@@ -516,8 +619,9 @@ versão (semver, CHANGELOG, tag) e faz build limpo no HEAD antes do push.
 **Paralelismo:** F0 sai já, sozinha. Depois de F1: F2, F3 e F4 em paralelo (contratos acima fecham a
 fronteira). F6 (métricas) também começa depois de F1. F5 junta F2 e F4.
 
-**Caminho crítico:** F1, F2, F5, F7. Com o dono decidindo D1 a D4 logo, F0 a F3 entregam a régua
-completa por e-mail e painel antes do WhatsApp, que depende de chip conectado.
+**Caminho crítico:** F1, F2, F5, F7. Com o dono decidindo D2 a D4 logo, F0 a F3 entregam a régua
+completa por e-mail e painel. O WhatsApp entra com F4+F5 e passa a funcionar no minuto em que o dono
+conectar um número pelo Admin. Até lá, a régua segue por e-mail e sino, com o alerta no sino do Admin.
 
 **Ordem de publicação sugerida:** F0 (v1.3.2), F1+F2+F3 (v1.4.0), F4+F5 (v1.5.0), F6 (v1.6.0), F7 e F8 junto da última.
 
@@ -525,8 +629,12 @@ completa por e-mail e painel antes do WhatsApp, que depende de chip conectado.
 
 ## 5. Riscos e dívidas conscientes
 
-- **Bloqueio do número de avisos** (Baileys não é oficial). Mitigação: chip dedicado, opt-in, ritmo
-  lento, poucos envios por ciclo, e-mail como canal base, interface pronta para a API oficial.
+- **Bloqueio do número de avisos** (Baileys não é oficial). Mitigação: opt-in, ritmo lento, teto
+  menor para número novo, poucos envios por ciclo, e-mail como canal base e interface pronta para a
+  API oficial. Se o número for bloqueado, o dono conecta outro pelo Admin, sem deploy (§2.4).
+- **Troca de número com o chip antigo ainda ativo:** o assinante pode responder ao número antigo e
+  ninguém ver. Mitigação: a primeira mensagem do número novo avisa a troca, e o número antigo continua
+  na trava anti-loop. Atender o chip antigo fica por conta do dono, fora do sistema.
 - **Loop com o bot da empresa** quando o dono usa o próprio celular como número do bot. Mitigação:
   as três travas da §2.4. A Íris precisa de um teste específico para isso.
 - **Mudar a carência mexe em quem já está atrasado** no dia do deploy: com 3 dias, quem foi
@@ -547,9 +655,21 @@ completa por e-mail e painel antes do WhatsApp, que depende de chip conectado.
 
 ## 6. Decisões para o dono
 
+### Decididas pelo dono em 2026-10-01
+
+- **D1, número de cobrança:** número dedicado, conectado e trocado pelo Admin quando o dono quiser. Nunca o comercial (84) 3113-2584.
+- **D2, régua:** vale a tabela da §2.2. O dono aceitou a régua recomendada como base.
+- **D3, carência:** 3 dias para quem paga, 1 dia no teste.
+- **D4, e-mail de cobrança:** campo opcional (`Tenant.billingEmail`). O dono continua recebendo as etapas críticas.
+- **D5, WhatsApp de cobrança:** **ativado para todos** os assinantes (sem pedir opt-in), com opção de desligar (opt-out) na tela Assinatura. A trava de horário (D9) e os tetos de envio continuam valendo.
+- **D9, janela do WhatsApp:** das 09h às 19h, de segunda a sábado. No domingo, só os avisos críticos (suspensão e cancelamento).
+- **D10, texto do Pix:** sem travessão (feito na F0).
+- **D6, D7 e D8:** seguem as recomendações do plano até o dono dizer o contrário: cancelar após 60 dias suspensa, vencimento às 23:59 do dia local e UptimeRobot como monitor externo.
+
+
 | # | Decisão | Opções | Recomendação |
 |---|---|---|---|
-| D1 | Número do WhatsApp de avisos | A. chip novo só para avisos; B. comercial (84) 3113-2584 como aparelho conectado; C. API oficial da Meta | **A.** Um bloqueio não derruba o comercial, e a mensagem automática encaminha as dúvidas para o (84) 3113-2584 |
+| D1 | ~~Número do WhatsApp de avisos~~ | | **Decidido pelo dono em 2026-10-01:** não é o comercial (84) 3113-2584, que fica só no site. O número de cobrança é conectado e trocado pelo próprio dono em Admin > Configurações (§2.4). Nada pendente de arquitetura |
 | D2 | Dias da régua | Tabela da §2.2 | Aprovar a §2.2. WhatsApp só em D-5, D-1, D, D+1, último dia de carência, suspensão, S+7, S+30, C-7, C-1, cancelamento, pagamento e teste. O resto fica no e-mail e no painel |
 | D3 | Carência antes de suspender | 1 dia (hoje), 3 dias, 5 dias | **3 dias para pagante, 1 dia para teste.** Pix pontual depende de o dono lembrar; 1 dia suspende quem esqueceu num fim de semana. Teste continua curto para não virar teste grátis estendido |
 | D4 | E-mail de cobrança separado | só o dono; só o financeiro; os dois | **Campo opcional de e-mail de cobrança.** Se preenchido, recebe tudo; o dono também recebe as etapas críticas |
