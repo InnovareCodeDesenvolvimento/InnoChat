@@ -99,7 +99,7 @@ export async function saveGoogleAuthConfig(
   const clientSecret = input.clientSecret?.trim();
 
   if (clientId && !isValidGoogleClientId(clientId)) {
-    throw new DomainError("INVALID_GOOGLE_CLIENT_ID", "O Client ID do Google termina em .apps.googleusercontent.com — confira o valor copiado.");
+    throw new DomainError("INVALID_GOOGLE_CLIENT_ID", "O Client ID do Google termina em .apps.googleusercontent.com. Confira o valor copiado.");
   }
 
   const data: Prisma.PlatformSettingsUncheckedUpdateInput = {};
@@ -153,7 +153,7 @@ export async function testGoogleAuthConfig(): Promise<GoogleAuthTestResult> {
   const ok = clientIdFormat && secretDecrypts;
   const problems = [
     !row?.googleClientId ? "Client ID não informado." : !clientIdFormat ? "O Client ID não tem o formato esperado (…apps.googleusercontent.com)." : null,
-    !row?.googleClientSecretEnc ? "Client Secret não informado." : !secretDecrypts ? "O Client Secret salvo não pôde ser lido — cadastre-o de novo." : null,
+    !row?.googleClientSecretEnc ? "Client Secret não informado." : !secretDecrypts ? "Não deu para ler o Client Secret salvo. Cadastre de novo." : null,
   ].filter(Boolean);
   return {
     ok,

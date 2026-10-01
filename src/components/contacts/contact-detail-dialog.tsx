@@ -72,7 +72,7 @@ const STATUS_VARIANT: Record<ContactAppointmentRow["status"], "success" | "dange
   NO_SHOW: "warning",
 };
 
-const WRITE_BLOCKED_HINT = "Assinatura suspensa — ação bloqueada até o pagamento.";
+const WRITE_BLOCKED_HINT = "Assinatura suspensa: só dá para alterar depois do pagamento.";
 
 type Props = {
   tenantSlug: string;
@@ -326,7 +326,7 @@ export function ContactDetailDialog({
                   <HelpButton helpKey="config.pausaCliente" />
                 </div>
                 <p className="mt-0.5 text-xs text-text-secondary">
-                  Pausar faz o bot parar de responder esse cliente — você atende pelo celular. Retome quando quiser
+                  Enquanto o bot estiver em pausa, você conversa com esse cliente pelo celular. Retome quando quiser
                   que o bot volte a responder.
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
@@ -385,7 +385,7 @@ export function ContactDetailDialog({
                     Pausado até {formatDateTimeLabel(detail.botPausedUntil, timezone)}.
                   </p>
                 ) : detail.botPaused ? (
-                  <p className="mt-2 text-xs text-text-secondary">Pausado sem prazo — retome manualmente quando quiser.</p>
+                  <p className="mt-2 text-xs text-text-secondary">Pausado sem prazo. Retome quando quiser.</p>
                 ) : null}
               </div>
 
@@ -478,8 +478,8 @@ export function ContactDetailDialog({
             <DialogTitle>Excluir cliente</DialogTitle>
             <DialogDescription>
               Tem certeza que quer excluir &ldquo;{detail?.displayName}&rdquo;? Clientes sem histórico são excluídos de
-              verdade; clientes com agendamentos são anonimizados — os dados pessoais somem, mas o histórico do
-              atendimento fica preservado nos relatórios. Essa ação não pode ser desfeita.
+              verdade; clientes com agendamentos são anonimizados: os dados pessoais somem, mas o histórico do
+              atendimento continua nos relatórios. Essa ação não pode ser desfeita.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

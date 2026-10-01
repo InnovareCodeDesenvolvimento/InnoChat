@@ -34,7 +34,7 @@ const HELP_ENTRIES = {
     purpose: "Mostra o resumo do seu dia: quantos clientes vêm hoje, o que vem pela frente e se o bot está atendendo no WhatsApp.",
     steps: [
       "Olhe os números no topo: cada cartão tem um ícone \"i\" que explica o que ele conta.",
-      "Clique em \"Novo agendamento\" para marcar um horário rapidamente.",
+      "Para marcar um horário na hora, clique em \"Novo agendamento\".",
       "Se aparecer um aviso amarelo (WhatsApp desconectado ou período de teste acabando), clique nele para resolver.",
     ],
     examples: [
@@ -70,7 +70,7 @@ const HELP_ENTRIES = {
       "Você quer saber quem faltou na semana passada: escolha as datas e a situação \"Faltou\".",
       "A coluna de origem mostra se o horário foi marcado pelo WhatsApp (pelo bot) ou pelo painel (pela equipe).",
     ],
-    tip: "Remarcar e cancelar só é possível até 2 horas antes do horário marcado — vale para a equipe no painel e para o cliente no WhatsApp. Ex.: um horário das 15h pode ser mudado até as 13h.",
+    tip: "Dá para remarcar ou cancelar até 2 horas antes do horário marcado. Vale para a equipe no painel e para o cliente no WhatsApp. Ex.: um horário das 15h pode ser mudado até as 13h.",
   },
   "pagina.atendimento": {
     title: "Atendimento",
@@ -86,7 +86,7 @@ const HELP_ENTRIES = {
       "Quem espera há mais tempo fica no topo da fila, com destaque depois de 10 minutos.",
     ],
     tip: "Se você responder o cliente direto pelo celular, o bot também fica em silêncio pelo tempo definido em Configurações > Atendimento pelo WhatsApp.",
-    warning: "Por segurança, o sistema envia no máximo 10 mensagens por hora para o mesmo cliente. Se passar disso, aguarde alguns instantes.",
+    warning: "Para o número da empresa não ser bloqueado no WhatsApp, o sistema envia no máximo 10 mensagens por hora para cada cliente. Se passar disso, espere um pouco.",
   },
   "pagina.clientes": {
     title: "Clientes",
@@ -194,7 +194,7 @@ const HELP_ENTRIES = {
       "Clique em \"Salvar tema\".",
     ],
     examples: [
-      "O Índigo Clínico é sóbrio e institucional, o Âmbar Estúdio é acolhedor (estilo boutique) e o Verde Slate é minimalista, bom para usar o dia todo.",
+      "O Índigo Clínico tem tons de azul mais sérios, bom para clínica e consultório. O Âmbar Estúdio puxa para cores quentes, com cara de salão. O Verde Slate é o mais discreto e cansa menos a vista de quem passa o dia no painel.",
     ],
     tip: "O tema muda só as cores do painel. Nada muda no que o cliente vê no WhatsApp.",
   },
@@ -316,7 +316,7 @@ const HELP_ENTRIES = {
   },
   "config.lembrete": {
     title: "Lembrete automático para clientes",
-    purpose: "O bot manda uma mensagem no WhatsApp antes do horário marcado, lembrando o cliente. Com isso há menos faltas e você não precisa ligar para ninguém.",
+    purpose: "O bot manda uma mensagem no WhatsApp antes do horário marcado, lembrando o cliente. Menos gente falta, e você não precisa ligar para ninguém.",
     steps: [
       "Ligue a chave \"Enviar lembrete automático\".",
       "Escolha com quantas horas de antecedência enviar (de 2 a 48; o padrão é 24).",
@@ -324,7 +324,7 @@ const HELP_ENTRIES = {
       "Para mudar o texto da mensagem, clique em \"Editar o texto do lembrete\".",
     ],
     examples: [
-      "Sua cliente Ana marcou corte às 14h de sexta. Com lembrete de 24h, ela recebe na quinta por volta das 14h: \"Olá, Ana! Lembrete: você tem Corte com Bruno amanhã às 14:00. Para remarcar ou cancelar, responda menu.\"",
+      "Sua cliente Ana marcou corte às 14h de sexta. Com lembrete de 24h, ela recebe na quinta por volta das 14h: \"Oi, Ana! Passando pra lembrar: você tem Corte com Bruno amanhã às 14:00. Se precisar remarcar ou cancelar, responda menu.\"",
       "Horário às 7h e lembrete de 24h: como o envio só acontece entre 8h e 21h, a mensagem sai por volta das 8h do dia anterior.",
       "Cliente que marcou com menos de 2 horas de antecedência não recebe lembrete, porque já está em cima da hora.",
     ],
@@ -391,7 +391,7 @@ const HELP_ENTRIES = {
   },
   "config.avisoCliente": {
     title: "Avisar o cliente quando a equipe mexer na agenda",
-    purpose: "Quando alguém da equipe agenda, remarca ou cancela um horário pelo painel, o cliente recebe uma mensagem no WhatsApp contando a mudança. O cliente não precisa descobrir sozinho.",
+    purpose: "Quando alguém da equipe agenda, remarca ou cancela um horário pelo painel, o cliente recebe uma mensagem no WhatsApp contando a mudança. Assim ele não é pego de surpresa.",
     steps: [
       "Ligue ou desligue a chave e clique em Salvar.",
       "Para mudar o texto das mensagens, vá em Mensagens do bot, aba Agendamento.",
@@ -432,7 +432,7 @@ const HELP_ENTRIES = {
       "Na confirmação: \"Pronto, {nome}! {servico} com {profissional} em {data}, às {hora}.\"",
       "\"Agendado pela equipe\", \"Remarcado pela equipe\" e \"Cancelado pela equipe\" também ficam aqui: são os avisos que o cliente recebe quando alguém da equipe mexe na agenda pelo painel (se o aviso estiver ligado em Configurações).",
     ],
-    tip: "Só aparecem para inserir as variáveis que fazem sentido em cada mensagem.",
+    tip: "Cada mensagem só mostra as variáveis que fazem sentido nela.",
   },
   "mensagens.meus": {
     title: "Mensagens de Meus agendamentos",
@@ -536,7 +536,7 @@ const HELP_ENTRIES = {
   "assinatura.planos": {
     title: "Planos disponíveis",
     purpose: "Compare os planos e troque quando a empresa crescer ou quando quiser gastar menos.",
-    steps: ["Clique no plano desejado e confirme.", "Só o dono da empresa pode trocar de plano."],
+    steps: ["Clique no plano que você quer e confirme.", "Só o dono da empresa pode trocar de plano."],
     examples: [
       "Subir de plano (upgrade) vale na hora, e a diferença vem na próxima fatura.",
       "Descer de plano (downgrade) só é aceito se o que você usa hoje couber no plano menor, e vale a partir do próximo ciclo. Por exemplo: se o plano menor permite 2 profissionais e você tem 3, remova 1 antes.",

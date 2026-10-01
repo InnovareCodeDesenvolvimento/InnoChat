@@ -124,7 +124,7 @@ export function OnboardingChecklistCard({ tenantSlug, state }: { tenantSlug: str
                 <div className="min-w-0 flex-1">
                   <p className={cn("text-sm font-medium", item.done ? "text-text-secondary line-through" : "text-text")}>
                     {item.title}
-                    {item.done ? <span className="sr-only"> — {CHECKLIST_UI.done}</span> : null}
+                    {item.done ? <span className="sr-only">, {CHECKLIST_UI.done}</span> : null}
                   </p>
                   {item.done ? null : <p className="mt-0.5 text-xs leading-relaxed text-text-secondary">{item.description}</p>}
                 </div>

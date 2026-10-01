@@ -7,7 +7,7 @@ export default function Loading() {
     <PageLoading
       icon={navIconFor("admin/configuracoes")}
       title="Configurações da plataforma"
-      description="Evolution, n8n, e-mail transacional, Mercado Pago e o segredo da API interna — tudo cadastrado aqui, nunca em variável de ambiente."
+      description="Evolution, n8n, e-mail transacional, Mercado Pago e o segredo da API interna. Tudo é cadastrado aqui, nunca em variável de ambiente."
     >
       <div className="flex flex-col gap-6">
         <SectionCardSkeleton bodyHeight="h-40" withFooter />

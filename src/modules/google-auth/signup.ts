@@ -29,7 +29,7 @@ async function assertNotRegistered(claims: SignupClaims): Promise<void> {
 
 function readClaims(token: string): SignupClaims {
   const claims = verifyGoogleToken<SignupClaims>("google-signup", token);
-  if (!claims.email || !claims.sub) throw new DomainError("TOKEN_INVALID", "Link inválido. Entre com o Google novamente.");
+  if (!claims.email || !claims.sub) throw new DomainError("TOKEN_INVALID", "Link inválido. Entre com o Google de novo.");
   return { email: claims.email, name: claims.name ?? "", sub: claims.sub };
 }
 

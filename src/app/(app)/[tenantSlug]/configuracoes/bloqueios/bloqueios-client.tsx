@@ -32,7 +32,7 @@ const TYPE_LABEL: Record<CompanyExceptionRow["type"], string> = {
   HOLIDAY: "Feriado/folga",
 };
 
-const WRITE_BLOCKED_HINT = "Assinatura suspensa — ação bloqueada até o pagamento.";
+const WRITE_BLOCKED_HINT = "Assinatura suspensa: só dá para alterar depois do pagamento.";
 
 type FormState = { type: "BLOCK" | "HOLIDAY"; startsAt: string; endsAt: string; reason: string };
 const EMPTY_FORM: FormState = { type: "HOLIDAY", startsAt: "", endsAt: "", reason: "" };
@@ -120,7 +120,7 @@ export function BloqueiosClient({
     <div>
       <PageHeader help="pagina.bloqueios" icon={navIconFor("configuracoes")}
         title="Bloqueios e feriados"
-        description="Períodos em que a empresa inteira não atende — vale para todos os profissionais, diferente do bloqueio individual em Profissionais."
+        description="Períodos em que a empresa inteira não atende. Vale para todos os profissionais, diferente do bloqueio individual em Profissionais."
         action={
           <Button onClick={openCreate} disabled={writeBlocked} title={writeBlocked ? WRITE_BLOCKED_HINT : undefined}>
             <Plus className="h-4 w-4" aria-hidden="true" />
@@ -166,7 +166,7 @@ export function BloqueiosClient({
                   <div className="flex items-center gap-2">
                     <Badge variant={exc.type === "HOLIDAY" ? "warning" : "neutral"}>{TYPE_LABEL[exc.type]}</Badge>
                     <p className="text-sm text-text">
-                      {formatDateTimeLabel(exc.startsAt, timezone)} — {formatDateTimeLabel(exc.endsAt, timezone)}
+                      {formatDateTimeLabel(exc.startsAt, timezone)} até {formatDateTimeLabel(exc.endsAt, timezone)}
                     </p>
                   </div>
                   {exc.reason ? <p className="mt-1 text-xs text-text-secondary">{exc.reason}</p> : null}
@@ -192,7 +192,7 @@ export function BloqueiosClient({
           <DialogHeader icon={CalendarOff}>
             <DialogTitle>Novo bloqueio/feriado da empresa</DialogTitle>
             <DialogDescription>
-              Bloqueia agendamentos para TODOS os profissionais no período informado — para bloquear só um
+              Ninguém consegue agendar com nenhum profissional nesse período. Para bloquear só um
               profissional, use a tela de Profissionais.
             </DialogDescription>
           </DialogHeader>

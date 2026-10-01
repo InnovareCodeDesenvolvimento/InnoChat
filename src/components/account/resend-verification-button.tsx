@@ -52,7 +52,7 @@ export function ResendVerificationButton({
   }
 
   if (state === "already-verified") {
-    return <p className="text-sm text-text-secondary">Seu e-mail já está confirmado — atualize a página.</p>;
+    return <p className="text-sm text-text-secondary">Seu e-mail já está confirmado. Atualize a página.</p>;
   }
 
   if (state === "sent") {

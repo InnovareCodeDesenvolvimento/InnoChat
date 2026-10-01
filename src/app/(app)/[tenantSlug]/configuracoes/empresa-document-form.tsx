@@ -59,7 +59,7 @@ export function EmpresaDocumentForm({
           {saved ? <Badge variant="success">Cadastrado</Badge> : <Badge variant="warning">Pendente</Badge>}
         </div>
         <CardDescription>
-          O CPF ou CNPJ da empresa é exigido pelo Mercado Pago para gerar o Pix das faturas — sem ele, a cobrança
+          O Mercado Pago exige o CPF ou CNPJ da empresa para gerar o Pix das faturas. Sem ele, a cobrança
           não é criada.
         </CardDescription>
       </CardHeader>

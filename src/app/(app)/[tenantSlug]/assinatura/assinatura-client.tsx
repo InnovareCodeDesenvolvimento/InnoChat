@@ -210,7 +210,7 @@ function PixCard({
       <CardHeader help="assinatura.fatura">
         <CardTitle>Fatura em aberto</CardTitle>
         <CardDescription>
-          {formatBRL(invoice.amountCents)} — vencimento em {formatDateTimeLabel(invoice.dueAt, timezone)}
+          {formatBRL(invoice.amountCents)}, com vencimento em {formatDateTimeLabel(invoice.dueAt, timezone)}
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col items-center gap-5 sm:flex-row sm:items-start">
@@ -275,7 +275,7 @@ function PixCard({
               </Alert>
             ) : (
               <Alert variant="info">
-                O Pix desta fatura ainda não foi gerado. Gere agora ou aguarde — atualizamos esta tela automaticamente.
+                O Pix desta fatura ainda não foi gerado. Gere agora ou espere um pouco: esta tela se atualiza sozinha.
               </Alert>
             )}
             <Button type="button" onClick={handleRegeneratePix} isLoading={isRegenerating} className="self-start">
@@ -354,8 +354,8 @@ function PlanosCard({
           <h2 className="font-display text-lg font-bold text-text">Planos disponíveis</h2>
           <p className="mt-1 text-sm text-text-secondary">
             {isOwner
-              ? "Upgrade entra em vigor imediatamente. Downgrade só é aplicado se o uso atual couber no plano novo, e vale a partir do próximo ciclo."
-              : "Só o proprietário da empresa pode trocar de plano."}
+              ? "Subir de plano vale na hora. Descer só é aceito se o que você usa hoje couber no plano novo, e vale a partir do próximo ciclo."
+              : "Só o dono da empresa pode trocar de plano."}
           </p>
         </div>
 
@@ -423,7 +423,7 @@ function PlanosCard({
                         className="w-full"
                         onClick={() => requestChange(plan)}
                         disabled={!canChangePlan || isPending}
-                        title={!isOwner ? "Só o proprietário pode trocar de plano." : undefined}
+                        title={!isOwner ? "Só o dono pode trocar de plano." : undefined}
                       >
                         {isUpgrade ? (
                           <ArrowUp className="h-3.5 w-3.5" aria-hidden="true" />
@@ -519,7 +519,7 @@ export function AssinaturaClient({
           <CardDescription>
             {snapshot.priceCents > 0
               ? `${formatBRL(snapshot.priceCents)} por mês`
-              : "Preço a definir — o teste continua funcionando normalmente."}
+              : "Preço a definir. O teste continua funcionando."}
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap items-center gap-3">
@@ -541,8 +541,8 @@ export function AssinaturaClient({
         {snapshot.status === "SUSPENDED" ? (
           <CardFooter>
             <Alert variant="danger" className="w-full">
-              O painel está somente leitura e o bot não responde no WhatsApp enquanto a fatura estiver em aberto. Pague
-              o Pix abaixo para reativar automaticamente.
+              Enquanto a fatura estiver em aberto, o painel fica só para consulta e o bot não responde no WhatsApp. Pague
+              o Pix abaixo e tudo volta sozinho.
             </Alert>
           </CardFooter>
         ) : null}

@@ -109,7 +109,7 @@ function slugErrorMessage(error: SlugValidationError): string {
     case "INVALID_FORMAT":
       return "O endereço da empresa só pode ter letras minúsculas, números e hífen (sem espaços ou acentos).";
     case "RESERVED":
-      return "Este endereço é reservado pelo sistema — escolha outro.";
+      return "Este endereço é reservado pelo sistema. Escolha outro.";
   }
 }
 
@@ -251,7 +251,7 @@ export async function signUp(input: SignUpInput, gateway?: MercadoPagoGateway): 
 
   const validatedDocument = validateCpfCnpj(input.document);
   if (!validatedDocument.valid) {
-    throw new DomainError("INVALID_DOCUMENT", "CPF ou CNPJ inválido — confira os dígitos.");
+    throw new DomainError("INVALID_DOCUMENT", "CPF ou CNPJ inválido. Confira os dígitos.");
   }
 
   const passwordHash = await hashPassword(input.password);
@@ -290,7 +290,7 @@ export type GoogleSignUpInput = {
 export async function signUpWithGoogle(input: GoogleSignUpInput, gateway?: MercadoPagoGateway): Promise<SignUpResult> {
   const validatedDocument = validateCpfCnpj(input.document);
   if (!validatedDocument.valid) {
-    throw new DomainError("INVALID_DOCUMENT", "CPF ou CNPJ inválido — confira os dígitos.");
+    throw new DomainError("INVALID_DOCUMENT", "CPF ou CNPJ inválido. Confira os dígitos.");
   }
   const email = input.email.trim().toLowerCase();
   const slug = await pickAvailableSlug(input.companyName);

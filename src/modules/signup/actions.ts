@@ -22,7 +22,7 @@ import { acceptInvite, inviteTeamMember, requestPasswordReset, resendVerificatio
 function assertRateLimit(scope: string, ip: string, limit: number, windowMs: number) {
   const result = checkRateLimit(`${scope}:${ip}`, limit, windowMs);
   if (!result.allowed) {
-    throw new DomainError("RATE_LIMITED", "Muitas tentativas. Tente novamente em alguns minutos.", {
+    throw new DomainError("RATE_LIMITED", "Muitas tentativas. Tente de novo daqui a alguns minutos.", {
       retryAfterMs: result.retryAfterMs,
     });
   }

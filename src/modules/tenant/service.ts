@@ -28,7 +28,7 @@ export async function updateTenantTheme(tenantId: string, theme: PanelTheme) {
 export async function updateTenantDocument(tenantId: string, rawDocument: string) {
   const validated = validateCpfCnpj(rawDocument);
   if (!validated.valid) {
-    throw new DomainError("INVALID_DOCUMENT", "CPF ou CNPJ inválido — confira os dígitos.");
+    throw new DomainError("INVALID_DOCUMENT", "CPF ou CNPJ inválido. Confira os dígitos.");
   }
   return getPrisma().tenant.update({
     where: { id: tenantId },

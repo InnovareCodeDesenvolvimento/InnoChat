@@ -71,7 +71,7 @@ export const TOUR_STEPS: TourStepContent[] = [
     desktopOnly: true,
     title: "Agenda e agendamentos",
     body:
-      "O dia ou a semana num só lugar. Clique num agendamento para concluir o atendimento, " +
+      "Seus horários por dia ou por semana. Clique num agendamento para concluir o atendimento, " +
       "marcar que o cliente faltou, remarcar ou cancelar. " +
       "A lista completa, com filtros, fica em Agendamentos.",
   },
@@ -157,7 +157,7 @@ export const TOUR_STEPS: TourStepContent[] = [
     id: "fim",
     kind: "finish",
     mood: "happy",
-    title: "Pronto! Agora é com a gente 🚀",
+    title: "Pronto! Agora é com você",
     body: "Siga o checklist de Primeiros passos no Início e deixe tudo pronto. Para rever o tour, é só pedir no menu.",
   },
 ];
@@ -240,7 +240,7 @@ export const CHECKLIST_UI = {
   hide: "Esconder",
   hideLabel: "Esconder o checklist de Primeiros passos",
   optionalLabel: "Opcional",
-  doneTitle: "Parabéns, está tudo pronto! 🎉",
+  doneTitle: "Tudo pronto!",
   doneBody: "O seu bot já pode agendar sozinho. Se precisar de mim, é só chamar pelo menu.",
   close: "Fechar",
   error: "Não consegui salvar agora. Tente de novo em instantes.",

@@ -333,7 +333,7 @@ export function AgendaClient({
           <Button
             onClick={() => openNovoBlank()}
             disabled={writeBlocked}
-            title={writeBlocked ? "Assinatura suspensa — ação bloqueada até o pagamento." : undefined}
+            title={writeBlocked ? "Assinatura suspensa: só dá para alterar depois do pagamento." : undefined}
           >
             <Plus className="h-4 w-4" aria-hidden="true" />
             Novo agendamento
@@ -889,7 +889,7 @@ function DayView({
                           key={exception.id}
                           style={{ top: position.top, height: position.height, ...EXCEPTION_BAND_STYLE }}
                           className="absolute left-0 right-0 z-[8] flex items-center overflow-hidden px-1.5 text-[11px] font-medium text-warning"
-                          title={`${EXCEPTION_TYPE_LABEL[exception.type]}${exception.reason ? ` — ${exception.reason}` : ""}`}
+                          title={`${EXCEPTION_TYPE_LABEL[exception.type]}${exception.reason ? `: ${exception.reason}` : ""}`}
                         >
                           <span className="truncate">{exceptionLabel(exception)}</span>
                         </div>
@@ -974,7 +974,7 @@ function DayView({
               </div>
               <div className="flex flex-col divide-y divide-border">
                 {isOffToday && items.length === 0 ? (
-                  <p className="p-4 text-sm text-text-secondary">Folga — não atende neste dia.</p>
+                  <p className="p-4 text-sm text-text-secondary">Folga. Não atende neste dia.</p>
                 ) : items.length === 0 ? (
                   <p className="p-4 text-sm text-text-secondary">Nenhum agendamento neste dia.</p>
                 ) : (
@@ -1152,7 +1152,7 @@ function WeekView({
                         key={exception.id}
                         style={{ top: position.top, height: position.height, ...EXCEPTION_BAND_STYLE }}
                         className="absolute left-0 right-0 z-[8] flex items-center overflow-hidden px-1 text-[10px] font-medium text-warning"
-                        title={`${EXCEPTION_TYPE_LABEL[exception.type]}${exception.reason ? ` — ${exception.reason}` : ""}`}
+                        title={`${EXCEPTION_TYPE_LABEL[exception.type]}${exception.reason ? `: ${exception.reason}` : ""}`}
                       >
                         <span className="truncate">{exceptionLabel(exception)}</span>
                       </div>

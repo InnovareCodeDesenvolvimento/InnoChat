@@ -189,7 +189,7 @@ export function NovoAgendamentoDialog({
         <form onSubmit={handleSubmit} className="mt-4 flex flex-col gap-4">
           {error ? <Alert variant="danger">{error}</Alert> : null}
           {disabled ? (
-            <Alert variant="danger">Assinatura suspensa — não é possível criar agendamentos até o pagamento.</Alert>
+            <Alert variant="danger">Assinatura suspensa: não dá para criar agendamentos até o pagamento.</Alert>
           ) : null}
 
           <fieldset disabled={disabled} className="flex flex-col gap-4">

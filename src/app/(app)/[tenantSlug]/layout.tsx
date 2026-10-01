@@ -10,7 +10,7 @@ import { NavigationProgress } from "@/components/shell/navigation-progress";
 import { PanelShell } from "@/components/shell/panel-shell";
 import { getOnboardingStateAction } from "@/modules/onboarding/actions";
 
-export const metadata: Metadata = { title: "InnoChat — Painel" };
+export const metadata: Metadata = { title: "InnoChat · Painel" };
 
 /**
  * Root layout do painel do tenant. Resolve o tema (`Tenant.theme`) e a

@@ -38,7 +38,7 @@ type ExceptionRow = {
   reason: string | null;
 };
 
-const WRITE_BLOCKED_HINT = "Assinatura suspensa — ação bloqueada até o pagamento.";
+const WRITE_BLOCKED_HINT = "Assinatura suspensa: só dá para alterar depois do pagamento.";
 
 export function ProfessionalDetailClient({
   tenantSlug,
@@ -283,7 +283,7 @@ export function ProfessionalDetailClient({
       <Card className="rounded-hero">
         <CardHeader help="profissional.expediente">
           <CardTitle>Expediente semanal</CardTitle>
-          <CardDescription>Vários intervalos por dia — por exemplo, manhã e tarde com almoço no meio.</CardDescription>
+          <CardDescription>Pode ter mais de um intervalo por dia, como manhã e tarde com o almoço no meio.</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-5">
           {WEEKDAYS.map((label, weekday) => {
@@ -367,7 +367,7 @@ export function ProfessionalDetailClient({
                       {exc.type === "HOLIDAY" ? "Feriado/folga" : "Bloqueio"}
                     </Badge>
                     <p className="text-sm text-text">
-                      {new Date(exc.startsAt).toLocaleString("pt-BR")} — {new Date(exc.endsAt).toLocaleString("pt-BR")}
+                      {new Date(exc.startsAt).toLocaleString("pt-BR")} até {new Date(exc.endsAt).toLocaleString("pt-BR")}
                     </p>
                   </div>
                   {exc.reason ? <p className="mt-1 text-xs text-text-secondary">{exc.reason}</p> : null}

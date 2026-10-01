@@ -19,7 +19,7 @@ const MESSAGES: Record<string, AuthErrorMessage> = {
 
 const GENERIC: AuthErrorMessage = {
   title: "Não foi possível entrar com o Google",
-  description: "Algo deu errado na volta do Google. Tente de novo em instantes ou entre com e-mail e senha.",
+  description: "O login com o Google não foi concluído. Tente de novo em instantes ou entre com e-mail e senha.",
 };
 
 export function authErrorMessage(code: string | undefined): AuthErrorMessage | null {

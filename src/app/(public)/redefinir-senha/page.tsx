@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { AuthShell } from "@/components/public/auth-shell";
 import { RedefinirSenhaForm } from "./redefinir-senha-form";
 
-export const metadata: Metadata = { title: "Redefinir senha — InnoChat" };
+export const metadata: Metadata = { title: "Redefinir senha · InnoChat" };
 
 export default async function RedefinirSenhaPage({
   searchParams,

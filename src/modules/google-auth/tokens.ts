@@ -40,7 +40,7 @@ export function signGoogleToken<T extends Record<string, unknown>>(purpose: Goog
 
 /** Lança `DomainError` `TOKEN_INVALID` (forma/assinatura/finalidade) ou `TOKEN_EXPIRED`. */
 export function verifyGoogleToken<T extends Record<string, unknown>>(purpose: GoogleTokenPurpose, token: string, nowMs = Date.now()): T & Claims {
-  const invalid = () => new DomainError("TOKEN_INVALID", "Link inválido. Entre com o Google novamente.");
+  const invalid = () => new DomainError("TOKEN_INVALID", "Link inválido. Entre com o Google de novo.");
   if (typeof token !== "string" || token.length > 2000) throw invalid();
   const parts = token.split(".");
   if (parts.length !== 2 || !parts[0] || !parts[1]) throw invalid();
@@ -57,7 +57,7 @@ export function verifyGoogleToken<T extends Record<string, unknown>>(purpose: Go
   }
   if (claims.purpose !== purpose || typeof claims.exp !== "number") throw invalid();
   if (claims.exp * 1000 <= nowMs) {
-    throw new DomainError("TOKEN_EXPIRED", "Este link expirou. Entre com o Google novamente.");
+    throw new DomainError("TOKEN_EXPIRED", "Este link expirou. Entre com o Google de novo.");
   }
   return claims as T & Claims;
 }

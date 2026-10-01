@@ -105,7 +105,7 @@ export function AgendamentosClient({
     <div>
       <PageHeader help="pagina.agendamentos" icon={navIconFor("agendamentos")}
         title="Agendamentos"
-        description="Lista filtrável por período, profissional e status."
+        description="Filtre por período, profissional e situação."
         action={
           <Button onClick={() => setNovoOpen(true)}>
             <Plus className="h-4 w-4" aria-hidden="true" />

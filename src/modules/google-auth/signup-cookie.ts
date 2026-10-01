@@ -33,7 +33,7 @@ export async function setGoogleSignupCookie(token: string): Promise<void> {
 
 /** Exige que o cookie do navegador seja o do `token`. Lança `TOKEN_INVALID` se faltar ou não bater. */
 export async function assertGoogleSignupCookie(token: string): Promise<void> {
-  const invalid = () => new DomainError("TOKEN_INVALID", "Link inválido. Entre com o Google novamente.");
+  const invalid = () => new DomainError("TOKEN_INVALID", "Link inválido. Entre com o Google de novo.");
   const given = (await cookies()).get(GOOGLE_SIGNUP_COOKIE)?.value;
   if (!given) throw invalid();
   const a = Buffer.from(given, "utf8");

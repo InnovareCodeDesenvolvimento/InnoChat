@@ -23,7 +23,7 @@ export async function saveThemeAction(
       message:
         result.error.code === "FORBIDDEN"
           ? "Só o dono da empresa pode trocar o tema."
-          : "Não foi possível salvar o tema. Tente novamente.",
+          : "Não foi possível salvar o tema. Tente de novo.",
     };
   }
 

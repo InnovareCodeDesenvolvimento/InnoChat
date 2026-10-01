@@ -72,14 +72,14 @@ function NavRow({ item, onNavigate }: { item: NavItem; onNavigate?: () => void }
               {badgeText(badgeCount)}
             </span>
             <span className="sr-only">
-              {badgeCount === 1 ? " — 1 cliente aguardando" : ` — ${badgeCount} clientes aguardando`}
+              {badgeCount === 1 ? ", 1 cliente aguardando" : `, ${badgeCount} clientes aguardando`}
             </span>
           </>
         ) : null}
         {item.dot ? (
           <>
             <span className="ml-auto h-2 w-2 shrink-0 rounded-full bg-danger" aria-hidden="true" title="Precisa de atenção" />
-            <span className="sr-only"> — precisa de atenção</span>
+            <span className="sr-only">, precisa de atenção</span>
           </>
         ) : null}
       </Link>

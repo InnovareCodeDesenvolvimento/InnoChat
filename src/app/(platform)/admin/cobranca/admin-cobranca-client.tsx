@@ -453,7 +453,7 @@ export function AdminCobrancaClient({
             <DialogDescription>
               Isso marca a fatura de &ldquo;{markPaidTarget?.invoice.tenantName}&rdquo; ({markPaidTarget ? formatCentsBRL(markPaidTarget.invoice.amountCents) : ""})
               como paga, avança o ciclo de cobrança e reativa a assinatura se estiver suspensa. Esta ação fica registrada com seu usuário e o
-              motivo abaixo — use só para pagamentos confirmados fora do Pix.
+              motivo abaixo. Use só para pagamentos confirmados fora do Pix.
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleMarkPaid} className="mt-4 flex flex-col gap-4">

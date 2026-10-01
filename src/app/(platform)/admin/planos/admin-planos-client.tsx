@@ -111,7 +111,7 @@ export function AdminPlanosClient({ initialPlans }: { initialPlans: PlanRow[] })
 
       {hasUndefinedPrice ? (
         <Alert variant="warning" title="Preço ainda não definido" className="mb-4">
-          Planos com preço R$ 0,00 e inativos continuam permitindo o teste gratuito normalmente — eles só não podem ser
+          Planos com preço R$ 0,00 e inativos continuam permitindo o teste gratuito. Eles só não podem ser
           vendidos até você definir um preço e ativá-los.
         </Alert>
       ) : null}

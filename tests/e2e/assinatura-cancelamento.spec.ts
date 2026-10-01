@@ -90,7 +90,7 @@ test.describe("Cancelar assinatura pelo painel", () => {
   test("equipe (STAFF): vê a explicação, sem botão de cancelar", async ({ page }) => {
     await loginAndWaitForPanel(page, STAFF_EMAIL, PASSWORD, SLUG);
     await page.goto(`/${SLUG}/assinatura`);
-    await expect(page.getByText(/Só o proprietário da empresa pode cancelar/)).toBeVisible();
+    await expect(page.getByText(/Só o dono da empresa pode cancelar a assinatura\. Se for o caso/)).toBeVisible();
     await expect(page.getByTestId("assinatura-cancelar-abrir")).toHaveCount(0);
   });
 

@@ -71,7 +71,7 @@ export function LembreteCard({
           <Badge variant={saved.enabled ? "success" : "neutral"}>{saved.enabled ? "Ligado" : "Desligado"}</Badge>
         </div>
         <CardDescription>
-          O bot avisa o cliente no WhatsApp antes do horário marcado — menos faltas sem você precisar ligar.
+          O bot avisa o cliente no WhatsApp antes do horário marcado. Menos faltas, e você não precisa ligar para ninguém.
         </CardDescription>
       </CardHeader>
       <form onSubmit={handleSubmit} noValidate>
@@ -135,7 +135,7 @@ export function LembreteCard({
           {!isOwner ? (
             <p className="text-sm text-text-secondary">Só o dono da empresa pode alterar o lembrete.</p>
           ) : writeBlocked ? (
-            <p className="text-sm text-text-secondary">Assinatura suspensa — edição bloqueada até o pagamento.</p>
+            <p className="text-sm text-text-secondary">Assinatura suspensa: a edição volta depois do pagamento.</p>
           ) : null}
         </CardContent>
         <CardFooter className="flex-wrap justify-between">

@@ -148,7 +148,7 @@ export function ContactFormDialog({ tenantSlug, open, onOpenChange, contact = nu
           <Field
             label="Telefone"
             required={!editing}
-            hint={phoneLocked ? "Telefone vindo do WhatsApp — não pode ser alterado por aqui." : undefined}
+            hint={phoneLocked ? "Este telefone veio do WhatsApp e não pode ser alterado por aqui." : undefined}
           >
             {(fieldProps) => (
               <Input

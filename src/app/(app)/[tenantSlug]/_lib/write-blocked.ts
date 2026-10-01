@@ -18,4 +18,4 @@ export async function isTenantWriteBlocked(tenantId: string): Promise<boolean> {
   return status === "SUSPENDED" || status === "CANCELED";
 }
 
-export const WRITE_BLOCKED_HINT = "Assinatura suspensa — ação bloqueada até o pagamento. Veja Assinatura.";
+export const WRITE_BLOCKED_HINT = "Assinatura suspensa: só dá para alterar depois do pagamento. Veja em Assinatura.";

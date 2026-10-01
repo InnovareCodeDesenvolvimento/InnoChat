@@ -34,7 +34,7 @@ export default async function AssinaturaPage({
     return (
       <div>
         <PageHeader help="pagina.assinatura" icon={navIconFor("assinatura")} title="Assinatura" description="Plano atual, fatura em aberto e histórico." />
-        <EmptyState icon={CreditCard} title="Sem assinatura" description="Nenhuma assinatura encontrada para esta empresa. Contate o suporte." />
+        <EmptyState icon={CreditCard} title="Sem assinatura" description="Não encontramos assinatura para esta empresa. Fale com o suporte." />
       </div>
     );
   }

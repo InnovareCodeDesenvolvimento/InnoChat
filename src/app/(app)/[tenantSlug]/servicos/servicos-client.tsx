@@ -54,7 +54,7 @@ const EMPTY_FORM: FormState = {
   sortOrder: "0",
 };
 
-const WRITE_BLOCKED_HINT = "Assinatura suspensa — ação bloqueada até o pagamento.";
+const WRITE_BLOCKED_HINT = "Assinatura suspensa: só dá para alterar depois do pagamento.";
 
 export function ServicosClient({
   tenantSlug,

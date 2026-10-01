@@ -35,7 +35,7 @@ export async function installPlatformAdminAction(input: unknown): Promise<Result
     const ip = await clientIp();
     const rate = checkRateLimit(`install:${ip}`, INSTALL_LIMIT, INSTALL_WINDOW_MS);
     if (!rate.allowed) {
-      throw new DomainError("RATE_LIMITED", "Muitas tentativas. Tente novamente em alguns minutos.", {
+      throw new DomainError("RATE_LIMITED", "Muitas tentativas. Tente de novo daqui a alguns minutos.", {
         retryAfterMs: rate.retryAfterMs,
       });
     }

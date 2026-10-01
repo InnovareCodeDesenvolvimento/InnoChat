@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { AuthShell } from "@/components/public/auth-shell";
 import { verifyEmailAction } from "@/modules/signup/actions";
 
-export const metadata: Metadata = { title: "Confirmar e-mail — InnoChat" };
+export const metadata: Metadata = { title: "Confirmar e-mail · InnoChat" };
 
 export default async function VerificarEmailPage({
   searchParams,
@@ -35,7 +35,7 @@ export default async function VerificarEmailPage({
         title={result.ok ? "E-mail confirmado!" : "Não foi possível confirmar"}
         description={
           result.ok
-            ? "Sua conta já está pronta para uso."
+            ? "Sua conta está pronta. Já pode entrar."
             : "Este link é inválido, já foi usado ou expirou. Peça um novo pelo login."
         }
       >

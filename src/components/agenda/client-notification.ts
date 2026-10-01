@@ -28,7 +28,7 @@ export function clientNotificationToast(value: ClientNotification): ClientNotifi
       return {
         variant: "info",
         title: "Aviso ao cliente desligado",
-        description: "O cliente não recebeu aviso. Ele pode ser ligado em Configurações, Regras do atendimento.",
+        description: "O cliente não recebeu aviso. Para ligar, vá em Configurações > Atendimento pelo WhatsApp.",
       };
     case "NO_WHATSAPP":
       return { variant: "info", title: "Cliente sem WhatsApp conectado", description: "O agendamento foi salvo, mas o cliente não foi avisado." };

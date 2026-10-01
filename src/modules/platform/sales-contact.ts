@@ -33,7 +33,7 @@ export async function updatePlatformSalesWhatsapp(raw: string | null, updatedByU
   if (trimmed) {
     e164 = normalizeBrPhoneToE164(trimmed);
     if (!e164) {
-      throw new DomainError("INVALID_PHONE", "Telefone inválido — informe DDD + número, ex.: (84) 3113-2584.");
+      throw new DomainError("INVALID_PHONE", "Telefone inválido. Informe DDD e número, ex.: (84) 3113-2584.");
     }
   }
   const row = await getPrisma().platformSettings.upsert({

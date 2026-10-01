@@ -25,7 +25,7 @@ test.describe("Admin → Configurações → Dados jurídicos", () => {
     await page.goto("/admin/configuracoes");
     const legalCard = page.getByRole("heading", { name: "Dados da empresa (Termos e Privacidade)" }).locator("xpath=ancestor::div[contains(@class,'rounded-hero')][1]");
     await legalCard.getByLabel("CNPJ", { exact: true }).fill(TEST_CNPJ);
-    await legalCard.getByRole("button", { name: "Salvar" }).click();
+    await legalCard.getByRole("button", { name: "Salvar", exact: true }).click();
     await expect(page.getByText("Dados da empresa salvos.").first()).toBeVisible();
 
     await page.goto("/termos");

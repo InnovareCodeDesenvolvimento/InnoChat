@@ -7,7 +7,7 @@ import { GoogleEntry } from "@/components/public/google-entry";
 import { authErrorMessage } from "@/components/public/google-auth-errors";
 import { LoginForm } from "./login-form";
 
-export const metadata: Metadata = { title: "Entrar — InnoChat" };
+export const metadata: Metadata = { title: "Entrar · InnoChat" };
 
 export default async function LoginPage({
   searchParams,

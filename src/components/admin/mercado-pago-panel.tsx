@@ -272,7 +272,7 @@ export function MercadoPagoPanel({
               tone="primary"
               icon={FlaskConical}
               title="Teste (sandbox)"
-              description="Pagamentos simulados — nada é cobrado de verdade."
+              description="Pagamentos simulados. Nada é cobrado de verdade."
               disabled={anyBusy}
               onClick={() => changeEnvironment("SANDBOX")}
             />
@@ -383,7 +383,7 @@ export function MercadoPagoPanel({
                 ? `A credencial salva de ${pending.env === "PRODUCTION" ? "produção" : "teste"} será apagada do servidor. Sem ela, esse ambiente deixa de funcionar até você cadastrar outra.`
                 : pending?.kind === "sandbox"
                   ? "As faturas passam a gerar Pix simulado e as notificações de pagamentos reais deixam de ser aceitas até voltar para produção."
-                  : "A partir de agora as faturas vão gerar Pix reais pelo Mercado Pago — o dinheiro é cobrado de verdade. Só confirme se as credenciais de produção já estiverem certas."}
+                  : "A partir de agora as faturas geram Pix reais pelo Mercado Pago, e o dinheiro é cobrado de verdade. Só confirme se as credenciais de produção estiverem certas."}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

@@ -28,7 +28,7 @@ export function GoogleSignupError({ reason, message }: { reason: string; message
           <div>
             <h1 className="font-display text-2xl font-extrabold tracking-tight text-text">Você já tem conta</h1>
             <p className="mt-2 text-sm leading-relaxed text-text-secondary sm:text-base">
-              Você já tem conta — entre com o Google.
+              Você já tem conta. Entre com o Google.
             </p>
           </div>
           <div className="w-full max-w-sm">

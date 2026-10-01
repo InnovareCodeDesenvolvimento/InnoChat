@@ -254,7 +254,7 @@ async function sendAgentMessageOnce(
   }
   if (result.outcome === "NO_PHONE") throw new DomainError("CONTACT_HAS_NO_PHONE", "Este cliente não tem telefone de WhatsApp cadastrado.");
   if (result.outcome === "NO_WHATSAPP") throw new DomainError("WHATSAPP_NOT_CONNECTED", "Nenhum número de WhatsApp conectado. Conecte um número para responder.");
-  if (result.outcome === "BUSY") throw new DomainError("CONVERSATION_BUSY", "O assistente está respondendo esse cliente agora. Tente de novo em instantes.");
+  if (result.outcome === "BUSY") throw new DomainError("CONVERSATION_BUSY", "O bot está respondendo esse cliente agora. Tente de novo em instantes.");
   if (result.outcome !== "SENT") throw new DomainError("SEND_FAILED", "Não foi possível enviar agora. Tente de novo.");
 
   try {

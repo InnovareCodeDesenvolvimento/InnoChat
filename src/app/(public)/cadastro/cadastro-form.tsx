@@ -19,7 +19,7 @@ import { TERMS_VERSION } from "@/lib/legal";
 const SLUG_ERROR_MESSAGE: Record<SlugValidationError, string> = {
   TOO_SHORT: "O endereço precisa ter pelo menos 3 letras.",
   TOO_LONG: "O endereço pode ter no máximo 60 caracteres.",
-  INVALID_FORMAT: "Use só letras minúsculas, números e hífen — sem espaços, acentos ou símbolos.",
+  INVALID_FORMAT: "Use só letras minúsculas, números e hífen, sem espaços, acentos ou símbolos.",
   RESERVED: "Esse endereço já é reservado pelo sistema. Escolha outro.",
 };
 
@@ -143,7 +143,7 @@ export function CadastroForm({ top }: { top?: React.ReactNode }) {
         <EmptyState
           icon={MailCheck}
           title="Confirme seu e-mail"
-          description={`Enviamos um link de confirmação para ${done.email}. Abra sua caixa de entrada (e o spam, por garantia) para ativar a conta.`}
+          description={`Enviamos um link de confirmação para ${done.email}. Abra sua caixa de entrada (e o spam também) para ativar a conta.`}
           action={
             <Button asChild variant="secondary">
               <Link href="/login">Ir para o login</Link>

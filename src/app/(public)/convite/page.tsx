@@ -4,7 +4,7 @@ import { GoogleInviteButton } from "@/components/public/google-invite-button";
 import { getPublicAuthOptions } from "@/modules/auth/public-options";
 import { ConviteForm } from "./convite-form";
 
-export const metadata: Metadata = { title: "Aceitar convite — InnoChat" };
+export const metadata: Metadata = { title: "Aceitar convite · InnoChat" };
 
 export default async function ConvitePage({
   searchParams,

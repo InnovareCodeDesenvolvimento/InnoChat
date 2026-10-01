@@ -65,7 +65,7 @@ test.describe("Assinatura: trocar plano", () => {
     await loginAndWaitForPanel(page, fixtures.staffEmail, STAFF_PASSWORD, SEED_TENANT_SLUG);
     await page.goto(`/${SEED_TENANT_SLUG}/assinatura`);
 
-    await expect(page.getByText("Só o proprietário da empresa pode trocar de plano.").first()).toBeVisible();
+    await expect(page.getByText("Só o dono da empresa pode trocar de plano.").first()).toBeVisible();
     const upgradeButton = page.getByRole("button", { name: /Fazer upgrade|Fazer downgrade/ }).first();
     await expect(upgradeButton).toBeDisabled();
   });

@@ -53,7 +53,7 @@ const FILTER_CHIPS: { value: ContactFilter; label: string }[] = [
   { value: "inactive90d", label: "Sem vir há 90 dias" },
 ];
 
-const WRITE_BLOCKED_HINT = "Assinatura suspensa — ação bloqueada até o pagamento.";
+const WRITE_BLOCKED_HINT = "Assinatura suspensa: só dá para alterar depois do pagamento.";
 
 function SourceBadge({ source }: { source: ContactSource }) {
   return (

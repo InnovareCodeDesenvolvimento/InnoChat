@@ -96,7 +96,7 @@ function MercadoPagoWebhookCard({ webhook }: { webhook: MercadoPagoWebhookHealth
         </p>
         <p className="text-text">
           {webhook.lastRejectedAt
-            ? `Última rejeição ${formatRelativeTimeLabel(webhook.lastRejectedAt)} — ${WEBHOOK_REASON_LABEL[webhook.lastRejectionReason ?? ""] ?? webhook.lastRejectionReason ?? "motivo desconhecido"}`
+            ? `Última rejeição ${formatRelativeTimeLabel(webhook.lastRejectedAt)}: ${WEBHOOK_REASON_LABEL[webhook.lastRejectionReason ?? ""] ?? webhook.lastRejectionReason ?? "motivo desconhecido"}`
             : "Nenhuma rejeição registrada."}
         </p>
         <Alert variant="info">
@@ -179,7 +179,7 @@ export function AdminSaudeClient({ initialHealth }: { initialHealth: PlatformHea
       />
 
       <p className="text-xs text-text-secondary">
-        Integrações verificadas {formatRelativeTimeLabel(health.integrations.checkedAt)} — resultado fica em cache por ~60s.
+        Integrações verificadas {formatRelativeTimeLabel(health.integrations.checkedAt)}. O resultado fica guardado por uns 60 segundos.
       </p>
 
       {health.alerts.length > 0 ? (

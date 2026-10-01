@@ -137,7 +137,7 @@ export function OnboardingClient({
       notify({
         variant: "success",
         title: "Profissional criado.",
-        description: "Expediente padrão (seg. a sex., 9h às 18h) já aplicado — ajuste depois em Profissionais, se precisar.",
+        description: "Já deixamos o expediente padrão (seg. a sex., 9h às 18h). Se precisar, ajuste depois em Profissionais.",
       });
     });
   }
@@ -155,7 +155,7 @@ export function OnboardingClient({
         <Card className="rounded-hero">
           <CardHeader>
             <CardTitle>Cadastre seus serviços</CardTitle>
-            <CardDescription>O que sua empresa oferece — corte de cabelo, consulta, sessão, etc.</CardDescription>
+            <CardDescription>O que sua empresa oferece: corte de cabelo, consulta, sessão etc.</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             {services.length > 0 ? (
@@ -168,7 +168,7 @@ export function OnboardingClient({
                 ))}
               </ul>
             ) : (
-              <p className="text-sm text-text-secondary">Nenhum serviço ainda — adicione o primeiro abaixo.</p>
+              <p className="text-sm text-text-secondary">Nenhum serviço ainda. Adicione o primeiro abaixo.</p>
             )}
 
             <form onSubmit={handleAddService} className="flex flex-col gap-4 border-t border-border pt-4 sm:flex-row sm:items-end">
@@ -215,7 +215,7 @@ export function OnboardingClient({
         <Card className="rounded-hero">
           <CardHeader>
             <CardTitle>Profissionais e expediente</CardTitle>
-            <CardDescription>Quem atende. Já deixamos um expediente padrão (seg. a sex., 9h às 18h) — ajuste depois.</CardDescription>
+            <CardDescription>Quem atende. Já deixamos um expediente padrão (seg. a sex., 9h às 18h), que você ajusta depois.</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             {professionals.length > 0 ? (
@@ -230,7 +230,7 @@ export function OnboardingClient({
                 ))}
               </ul>
             ) : (
-              <p className="text-sm text-text-secondary">Nenhum profissional ainda — adicione o primeiro abaixo.</p>
+              <p className="text-sm text-text-secondary">Nenhum profissional ainda. Adicione o primeiro abaixo.</p>
             )}
 
             <form onSubmit={handleAddProfessional} className="flex flex-col gap-4 border-t border-border pt-4 sm:flex-row sm:items-end">
@@ -273,8 +273,8 @@ export function OnboardingClient({
               <Alert variant="success">Número conectado. Você pode conectar outro a qualquer momento por aqui ou em WhatsApp, na barra lateral.</Alert>
             ) : (
               <Alert variant="info">
-                Você já pode continuar configurando e usar a agenda manualmente sem conectar agora — nada aqui trava
-                seu uso do painel.
+                Dá para conectar depois. Enquanto isso, você continua configurando e já pode marcar horários
+                pela agenda do painel.
               </Alert>
             )}
             <div>

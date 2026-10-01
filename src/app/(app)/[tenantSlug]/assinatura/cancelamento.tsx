@@ -58,7 +58,7 @@ export function CancelamentoAgendadoAviso({ tenantSlug, snapshot, isOwner }: { t
           Desfazer cancelamento
         </Button>
       ) : (
-        <p className="mt-2">Só o proprietário da empresa pode desfazer o cancelamento.</p>
+        <p className="mt-2">Só o dono da empresa pode desfazer o cancelamento.</p>
       )}
     </Alert>
   );
@@ -117,7 +117,7 @@ export function CancelarAssinaturaCard({ tenantSlug, snapshot, isOwner }: { tena
             </Button>
           ) : (
             <p className="text-sm text-text-secondary">
-              Só o proprietário da empresa pode cancelar a assinatura. Se for o caso, peça a ele. Ao cancelar, o acesso vai até {immediate ? "o mesmo momento" : endsAtLabel}.
+              Só o dono da empresa pode cancelar a assinatura. Se for o caso, peça a ele. Ao cancelar, o acesso termina {immediate ? "na hora" : `em ${endsAtLabel}`}.
             </p>
           )}
         </CardContent>
@@ -231,7 +231,7 @@ export function AssinaturaCanceladaCard({ tenantSlug, snapshot, isOwner }: { ten
             </Button>
           )
         ) : (
-          <p className="text-sm text-text-secondary">Só o proprietário da empresa pode reativar a assinatura.</p>
+          <p className="text-sm text-text-secondary">Só o dono da empresa pode reativar a assinatura.</p>
         )}
       </CardContent>
     </Card>

@@ -399,7 +399,7 @@ export function AdminConfiguracoesClient({
     <div className="flex flex-col gap-6">
       <PageHeader icon={navIconFor("admin/configuracoes")}
         title="Configurações da plataforma"
-        description="Evolution, n8n, e-mail transacional, Mercado Pago e o segredo da API interna — tudo cadastrado aqui, nunca em variável de ambiente."
+        description="Evolution, n8n, e-mail transacional, Mercado Pago e o segredo da API interna. Tudo é cadastrado aqui, nunca em variável de ambiente."
       />
 
       {error ? <Alert variant="danger">{error}</Alert> : null}
@@ -415,7 +415,7 @@ export function AdminConfiguracoesClient({
       <Card className="rounded-hero">
         <CardHeader>
           <CardTitle>URLs detectadas</CardTitle>
-          <CardDescription>Detectadas automaticamente pelo servidor — não são digitadas aqui.</CardDescription>
+          <CardDescription>O servidor detecta esses endereços sozinho. Não precisa digitar.</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <CopyField
@@ -560,8 +560,8 @@ export function AdminConfiguracoesClient({
         <CardHeader>
           <CardTitle>Bot no n8n</CardTitle>
           <CardDescription>
-            Sincroniza a URL do painel, a URL da Evolution e as credenciais no workflow do bot — nunca ativa
-            sozinho.
+            Leva a URL do painel, a URL da Evolution e as credenciais para o workflow do bot. A sincronização
+            nunca ativa o bot.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
@@ -656,7 +656,7 @@ export function AdminConfiguracoesClient({
                 />
               )}
             </Field>
-            <Field label="Remetente" hint="Como aparece na caixa de entrada. Ex.: InnoChat <no-reply@seudominio.com.br>. Só o e-mail também funciona — o nome InnoChat é usado.">
+            <Field label="Remetente" hint="Como aparece na caixa de entrada. Ex.: InnoChat <no-reply@seudominio.com.br>. Se puser só o e-mail, o nome InnoChat entra no lugar.">
               {(fieldProps) => (
                 <Input {...fieldProps} type="text" inputMode="email" autoComplete="off" value={smtpFrom} onChange={(e) => setSmtpFrom(e.target.value)} placeholder="InnoChat <no-reply@seudominio.com.br>" />
               )}
@@ -690,7 +690,7 @@ export function AdminConfiguracoesClient({
           <CardTitle>Segredo da API interna (n8n → painel)</CardTitle>
           <CardDescription>
             Usado pelo n8n para autenticar chamadas ao painel. Gerar um novo segredo invalida o anterior
-            imediatamente — sincronize o n8n de novo em seguida.
+            na hora. Depois, sincronize o n8n de novo.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -755,7 +755,7 @@ export function AdminConfiguracoesClient({
                   {...fieldProps}
                   value={legalForm.companyAddress}
                   onChange={(e) => setLegalForm((f) => ({ ...f, companyAddress: e.target.value }))}
-                  placeholder="Rua Exemplo, 123, Bairro, Cidade — UF, CEP 00000-000"
+                  placeholder="Rua Exemplo, 123, Bairro, Cidade/UF, CEP 00000-000"
                 />
               )}
             </Field>
@@ -869,7 +869,7 @@ export function AdminConfiguracoesClient({
           </CardContent>
           <CardFooter>
             <Button icon={Check} type="submit" isLoading={isPending} loadingText="Salvando…">
-              Salvar
+              Salvar WhatsApp
             </Button>
           </CardFooter>
         </form>
@@ -880,7 +880,7 @@ export function AdminConfiguracoesClient({
           <DialogHeader icon={KeyRound}>
             <DialogTitle>Segredo gerado</DialogTitle>
             <DialogDescription>
-              Copie agora — por segurança, ele não pode ser mostrado de novo depois que você fechar esta janela.
+              Copie agora. Por segurança, ele não aparece de novo depois que você fechar esta janela.
             </DialogDescription>
           </DialogHeader>
           <div className="mt-4 flex items-center gap-2 rounded-card border border-border bg-bg p-3">

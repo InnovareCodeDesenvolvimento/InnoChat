@@ -33,7 +33,7 @@ const SECTIONS: ConfigSection[] = [
     href: "agenda",
     icon: <Clock aria-hidden="true" />,
     title: "Regras de agenda e do bot",
-    description: "Antecedência mínima, horizonte máximo, timeout da sessão.",
+    description: "Com quanta antecedência o cliente pode marcar e quanto tempo o bot espera uma resposta.",
     ready: false,
   },
   {

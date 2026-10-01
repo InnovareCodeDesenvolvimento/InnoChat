@@ -8,7 +8,7 @@ import { ToastProvider } from "@/components/ui/toast";
 import { NavigationProgress } from "@/components/shell/navigation-progress";
 import { AdminShell } from "@/components/shell/admin-shell";
 
-export const metadata: Metadata = { title: "InnoChat — Admin da plataforma" };
+export const metadata: Metadata = { title: "InnoChat · Admin da plataforma" };
 
 /**
  * Root layout do admin da plataforma. Tema fixo Índigo Clínico — não é

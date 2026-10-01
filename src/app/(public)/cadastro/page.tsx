@@ -5,7 +5,7 @@ import { GoogleEntry } from "@/components/public/google-entry";
 import { authErrorMessage } from "@/components/public/google-auth-errors";
 import { CadastroForm } from "./cadastro-form";
 
-export const metadata: Metadata = { title: "Criar conta — InnoChat" };
+export const metadata: Metadata = { title: "Criar conta · InnoChat" };
 
 export default async function CadastroPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const authError = authErrorMessage((await searchParams).error);

@@ -36,7 +36,7 @@ export async function billingUrlFor(tenantSlug: string): Promise<string> {
 export async function getDefaultSignupPlan() {
   const plan = await getPrisma().plan.findFirst({ orderBy: { sortOrder: "asc" } });
   if (!plan) {
-    throw new DomainError("NO_PLAN_AVAILABLE", "Nenhum plano cadastrado — contate o suporte.");
+    throw new DomainError("NO_PLAN_AVAILABLE", "Nenhum plano cadastrado. Fale com o suporte.");
   }
   return plan;
 }
@@ -198,15 +198,15 @@ const DOMAIN_ERROR_BY_MP_FAILURE: Readonly<Record<MercadoPagoFailureKind, { code
   },
   rate_limited: {
     code: "MERCADOPAGO_UNAVAILABLE",
-    message: "O Mercado Pago recusou por excesso de chamadas. Tente novamente em alguns minutos.",
+    message: "O Mercado Pago recusou por excesso de chamadas. Tente de novo daqui a alguns minutos.",
   },
   payload_rejected: {
     code: "MERCADOPAGO_UNAVAILABLE",
-    message: "O Mercado Pago recusou a cobrança. Tente novamente ou contate o suporte.",
+    message: "O Mercado Pago recusou a cobrança. Tente de novo ou fale com o suporte.",
   },
   unavailable: {
     code: "MERCADOPAGO_UNAVAILABLE",
-    message: "Não foi possível gerar o Pix agora. Tente novamente em alguns minutos.",
+    message: "Não deu para gerar o Pix agora. Tente de novo daqui a alguns minutos.",
   },
 };
 

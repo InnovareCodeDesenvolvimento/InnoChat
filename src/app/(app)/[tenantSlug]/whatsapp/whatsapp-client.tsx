@@ -24,7 +24,7 @@ import {
   type WhatsappInstanceView,
 } from "@/modules/whatsapp/actions";
 
-const WRITE_BLOCKED_HINT = "Assinatura suspensa — ação bloqueada até o pagamento.";
+const WRITE_BLOCKED_HINT = "Assinatura suspensa: só dá para alterar depois do pagamento.";
 
 export type WhatsappPageExtras = {
   maxNumbers: number | null;

@@ -331,7 +331,7 @@ export async function updatePlatformLegalInfoAction(input: unknown): Promise<Res
     if (data.companyCnpj) {
       const digits = normalizeDocumentDigits(data.companyCnpj);
       if (!isValidCnpj(digits)) {
-        throw new DomainError("INVALID_CNPJ", "CNPJ inválido — confira os dígitos.");
+        throw new DomainError("INVALID_CNPJ", "CNPJ inválido. Confira os dígitos.");
       }
       data.companyCnpj = digits;
     }

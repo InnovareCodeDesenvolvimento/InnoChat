@@ -30,7 +30,7 @@ const ART_ALT =
 const BENEFITS = [
   { icon: CalendarCheck, title: "Agenda automática", description: "O bot marca, remarca e cancela por você." },
   { icon: BellRing, title: "Lembretes e confirmações", description: "Menos faltas, sem mandar mensagem à mão." },
-  { icon: LayoutDashboard, title: "Painel simples", description: "Tudo da sua agenda num só lugar." },
+  { icon: LayoutDashboard, title: "Agenda à vista", description: "Abra o painel e veja quem vem hoje." },
 ];
 
 export type AuthTopLink = { prompt: string; label: string; href: string };

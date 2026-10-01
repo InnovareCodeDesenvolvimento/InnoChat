@@ -3,7 +3,7 @@ import { AuthShell } from "@/components/public/auth-shell";
 import { getGoogleSignUpPrefillAction } from "@/modules/signup/actions";
 import { GoogleSignupError, GoogleSignupForm } from "./google-signup-form";
 
-export const metadata: Metadata = { title: "Concluir cadastro — InnoChat" };
+export const metadata: Metadata = { title: "Concluir cadastro · InnoChat" };
 // Cada acesso valida um token de uso único: nunca pode ser estático nem cacheado.
 export const dynamic = "force-dynamic";
 

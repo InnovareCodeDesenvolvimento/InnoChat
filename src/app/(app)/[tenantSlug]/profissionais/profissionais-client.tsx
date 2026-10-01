@@ -31,7 +31,7 @@ export type ProfessionalRow = {
   workingHours: { id: string; weekday: number; startTime: string; endTime: string }[];
 };
 
-const WRITE_BLOCKED_HINT = "Assinatura suspensa — ação bloqueada até o pagamento.";
+const WRITE_BLOCKED_HINT = "Assinatura suspensa: só dá para alterar depois do pagamento.";
 
 export function ProfissionaisClient({
   tenantSlug,

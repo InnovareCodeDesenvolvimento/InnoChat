@@ -53,7 +53,7 @@ export async function testEvolutionConnection(baseUrl: string, apiKey: string): 
   const url = `${baseUrl.replace(/\/$/, "")}/instance/fetchInstances`;
   try {
     const response = await safeFetchWithTimeout(url, { method: "GET", headers: { apikey: apiKey } });
-    if (response.ok) return { ok: true, detalhe: "Conectado — a Evolution respondeu normalmente." };
+    if (response.ok) return { ok: true, detalhe: "Conectado. A Evolution respondeu." };
     if (response.status === 401 || response.status === 403) {
       return { ok: false, detalhe: "Conectou, mas a chave de API foi rejeitada (401/403)." };
     }
@@ -70,7 +70,7 @@ export async function testMercadoPagoConnection(accessToken: string): Promise<Co
       method: "GET",
       headers: { Authorization: `Bearer ${accessToken}` },
     });
-    if (response.ok) return { ok: true, detalhe: "Conectado — o access token do Mercado Pago é válido." };
+    if (response.ok) return { ok: true, detalhe: "Conectado. O access token do Mercado Pago é válido." };
     if (response.status === 401) return { ok: false, detalhe: "Access token inválido ou expirado (401)." };
     return { ok: false, detalhe: `O Mercado Pago respondeu com status ${response.status}.` };
   } catch (error) {
@@ -83,7 +83,7 @@ export async function testN8nConnection(baseUrl: string, apiKey: string): Promis
   const url = `${baseUrl.replace(/\/$/, "")}/api/v1/workflows?limit=1`;
   try {
     const response = await safeFetchWithTimeout(url, { method: "GET", headers: { "X-N8N-API-KEY": apiKey } });
-    if (response.ok) return { ok: true, detalhe: "Conectado — a API do n8n respondeu normalmente." };
+    if (response.ok) return { ok: true, detalhe: "Conectado. A API do n8n respondeu." };
     if (response.status === 401 || response.status === 403) {
       return { ok: false, detalhe: "Conectou, mas a API key do n8n foi rejeitada (401/403)." };
     }
@@ -114,7 +114,7 @@ export async function testSmtpConnection(config: SmtpConnectionInput): Promise<C
 
   try {
     await transporter.verify();
-    return { ok: true, detalhe: "Conectado — o servidor SMTP aceitou o login." };
+    return { ok: true, detalhe: "Conectado. O servidor SMTP aceitou o login." };
   } catch (error) {
     logger.warn("platform.connection_test.smtp_failed", { errorMessage: error instanceof Error ? error.message : String(error) });
     return { ok: false, detalhe: "Não foi possível autenticar no SMTP. Confira host, porta, usuário e senha." };

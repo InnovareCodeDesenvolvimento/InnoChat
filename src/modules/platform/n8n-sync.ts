@@ -224,11 +224,11 @@ const WEBHOOK_NODE_TYPE = "n8n-nodes-base.webhook";
 export function deriveWebhookBaseUrl(n8nBaseUrl: string, nodes: N8nNode[]): string {
   const node = nodes.find((n) => n.type === WEBHOOK_NODE_TYPE);
   if (!node) {
-    throw new DomainError("N8N_WEBHOOK_NODE_NOT_FOUND", 'O workflow "innochat-bot" não tem o nó Webhook — reimporte innochat-bot.json (ver n8n/README.md).');
+    throw new DomainError("N8N_WEBHOOK_NODE_NOT_FOUND", 'O workflow "innochat-bot" não tem o nó Webhook. Reimporte innochat-bot.json (veja n8n/README.md).');
   }
   const rawPath = String((node.parameters as { path?: unknown } | undefined)?.path ?? "").replace(/^\/+|\/+$/g, "");
   if (!rawPath) {
-    throw new DomainError("N8N_WEBHOOK_PATH_INVALID", "O nó Webhook do bot está sem path — reimporte innochat-bot.json.");
+    throw new DomainError("N8N_WEBHOOK_PATH_INVALID", "O nó Webhook do bot está sem path. Reimporte innochat-bot.json.");
   }
   const segments = rawPath.split("/");
   const root = `${n8nBaseUrl.replace(/\/+$/, "")}/webhook`;
@@ -241,7 +241,7 @@ export function deriveWebhookBaseUrl(n8nBaseUrl: string, nodes: N8nNode[]): stri
   }
   const webhookId = typeof node.webhookId === "string" ? node.webhookId.trim() : "";
   if (!webhookId) {
-    throw new DomainError("N8N_WEBHOOK_ID_MISSING", "O nó Webhook do bot não tem webhookId — abra e salve o workflow no n8n (ou reimporte innochat-bot.json) e sincronize de novo.");
+    throw new DomainError("N8N_WEBHOOK_ID_MISSING", "O nó Webhook do bot não tem webhookId. Abra e salve o workflow no n8n (ou reimporte innochat-bot.json) e sincronize de novo.");
   }
   return `${root}/${webhookId}${fixed.length ? `/${fixed.join("/")}` : ""}`;
 }
@@ -360,7 +360,7 @@ export async function syncN8n(updatedByUserId: string): Promise<N8nSyncSummary> 
       settings: cronWorkflow.settings,
     });
   } else {
-    warnings.push(`Workflow "${CRON_WORKFLOW_NAME}" não encontrado no n8n — importe-o para a cobrança automática (POST /billing/tick) funcionar.`);
+    warnings.push(`Workflow "${CRON_WORKFLOW_NAME}" não encontrado no n8n. Importe esse workflow para a cobrança automática (POST /billing/tick) funcionar.`);
   }
 
   await prisma.platformSettings.update({
@@ -382,7 +382,7 @@ export async function syncN8n(updatedByUserId: string): Promise<N8nSyncSummary> 
   // Depois de gravar a base: instâncias criadas com a URL antiga (sem o webhookId) recebiam 404.
   const { repointed, failed } = await repointInstanceWebhooks(config.evolutionApiUrl, config.evolutionApiKey, webhookBaseUrl);
   if (failed > 0) {
-    warnings.push(`${failed} número(s) de WhatsApp não tiveram o webhook reapontado na Evolution — verifique a Evolution e sincronize de novo.`);
+    warnings.push(`${failed} número(s) de WhatsApp não tiveram o webhook reapontado na Evolution. Confira a Evolution e sincronize de novo.`);
   }
 
   logger.info("platform.n8n_sync.completed", {

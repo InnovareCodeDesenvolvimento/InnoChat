@@ -41,7 +41,7 @@ test.describe("Minha conta", () => {
     await expect(page.getByText("Nome atualizado.", { exact: true })).toBeVisible();
 
     // Bloco do usuário na sidebar (desktop) mostra o nome e leva para a mesma página.
-    await expect(page.getByRole("link", { name: "Minha conta — Zelda Teste E2E" }).first()).toBeVisible();
+    await expect(page.getByRole("link", { name: "Minha conta de Zelda Teste E2E" }).first()).toBeVisible();
 
     await page.goto(`/${SEED_TENANT_SLUG}/inicio`);
     await expect(page.getByRole("heading", { level: 1 })).toContainText("Zelda");

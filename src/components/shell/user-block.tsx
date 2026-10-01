@@ -20,7 +20,7 @@ export function UserBlock({
     <div data-tour="user-block" className="flex items-center gap-1 rounded-card border border-white/10 bg-white/5 p-1">
       <Link
         href={accountHref}
-        aria-label={`Minha conta — ${label}`}
+        aria-label={`Minha conta de ${label}`}
         className="flex min-h-11 min-w-0 flex-1 items-center gap-2.5 rounded-card px-1.5 text-left transition-colors duration-150 hover:bg-white/10 motion-reduce:transition-none"
       >
         <span

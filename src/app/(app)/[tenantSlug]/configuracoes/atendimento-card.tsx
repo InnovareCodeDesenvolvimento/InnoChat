@@ -297,7 +297,7 @@ export function AtendimentoCard({
           {!isOwner ? (
             <p className="text-sm text-text-secondary">Só o dono da empresa pode alterar estas regras.</p>
           ) : writeBlocked ? (
-            <p className="text-sm text-text-secondary">Assinatura suspensa — edição bloqueada até o pagamento.</p>
+            <p className="text-sm text-text-secondary">Assinatura suspensa: a edição volta depois do pagamento.</p>
           ) : null}
         </CardContent>
         {canEdit ? (

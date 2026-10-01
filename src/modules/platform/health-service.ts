@@ -190,10 +190,10 @@ export async function getPlatformHealth(now: Date = new Date()): Promise<Platfor
   );
 
   const alerts: string[] = [];
-  if (billingTick.stale) alerts.push("O billing/tick não roda há mais de 2h — assinaturas podem parar de avançar/cobrar no prazo.");
-  if (maintenanceTick.stale) alerts.push("O maintenance/tick não roda há mais de 26h — retenção/anonimização de LGPD pode estar atrasada.");
-  if (!integrations.evolution.ok) alerts.push("Evolution API fora do ar ou mal configurada — o WhatsApp de novas conexões pode falhar.");
-  if (!integrations.mercadoPago.ok) alerts.push("Mercado Pago fora do ar ou mal configurado — novos Pix podem não ser gerados.");
+  if (billingTick.stale) alerts.push("O billing/tick não roda há mais de 2h. As assinaturas podem parar de avançar e de cobrar no prazo.");
+  if (maintenanceTick.stale) alerts.push("O maintenance/tick não roda há mais de 26h. A retenção e a anonimização da LGPD podem estar atrasadas.");
+  if (!integrations.evolution.ok) alerts.push("Evolution API fora do ar ou mal configurada. Conectar números novos de WhatsApp pode falhar.");
+  if (!integrations.mercadoPago.ok) alerts.push("Mercado Pago fora do ar ou mal configurado. Pix novos podem não ser gerados.");
 
   const jsonField = (value: unknown, key: string): string | null => {
     const v = value && typeof value === "object" ? (value as Record<string, unknown>)[key] : null;
@@ -208,7 +208,7 @@ export async function getPlatformHealth(now: Date = new Date()): Promise<Platfor
   };
 
   if (mercadoPagoWebhook.lastOutcome === "rejected") {
-    alerts.push("O último webhook do Mercado Pago foi rejeitado — pagamentos Pix podem não estar sendo baixados automaticamente. Veja o diagnóstico abaixo.");
+    alerts.push("O último webhook do Mercado Pago foi rejeitado. Os pagamentos Pix podem não estar sendo baixados sozinhos. Veja o diagnóstico abaixo.");
   }
 
   return {

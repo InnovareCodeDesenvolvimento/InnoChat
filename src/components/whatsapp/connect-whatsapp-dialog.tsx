@@ -54,7 +54,7 @@ function mapCreateError(code: string, message: string, details: unknown): ErrorV
         title: "Limite do plano atingido",
         description:
           d?.limit !== undefined
-            ? `Seu plano permite até ${d.limit} número(s) de WhatsApp e você já tem ${d.current}. Faça upgrade para conectar mais um.`
+            ? `Seu plano permite até ${d.limit} número(s) de WhatsApp e você já tem ${d.current}. Mude para um plano maior para conectar mais um.`
             : message,
         showAssinaturaLink: true,
       };
@@ -68,7 +68,7 @@ function mapCreateError(code: string, message: string, details: unknown): ErrorV
     case "TENANT_SUSPENDED":
       return {
         title: "Assinatura suspensa",
-        description: "Sua assinatura está suspensa — regularize o pagamento para conectar um número novo.",
+        description: "Sua assinatura está suspensa. Pague a fatura para conectar um número novo.",
         showAssinaturaLink: true,
       };
     default:
@@ -82,7 +82,7 @@ function QrImage({ dataUrl }: { dataUrl: string }) {
       {/* eslint-disable-next-line @next/next/no-img-element -- imagem base64 gerada em runtime pela Evolution, não é asset estático */}
       <img
         src={dataUrl}
-        alt="QR code para conectar o WhatsApp — abra a câmera do WhatsApp e escaneie"
+        alt="QR code para conectar o WhatsApp. Abra a câmera do WhatsApp e escaneie."
         width={272}
         height={272}
         className="h-[272px] w-[272px]"
@@ -188,7 +188,7 @@ export function ConnectWhatsappDialog({
     try {
       const result = await getQrCodeAction(tenantSlug, currentInstanceId);
       if (!result.ok) {
-        setStatusMessage("Não foi possível atualizar o QR code agora. Tentando novamente…");
+        setStatusMessage("Não deu para atualizar o QR code agora. Tentando de novo…");
         return;
       }
       const data = result.data;
@@ -298,7 +298,7 @@ export function ConnectWhatsappDialog({
           <>
             <DialogHeader icon={navIconFor("whatsapp")}>
               <DialogTitle>Conectar número de WhatsApp</DialogTitle>
-              <DialogDescription>Dê um nome para identificar este número — ele aparece na lista de conexões.</DialogDescription>
+              <DialogDescription>Dê um nome para identificar este número. Ele aparece na lista de conexões.</DialogDescription>
             </DialogHeader>
             <form onSubmit={handleSubmitLabel} className="mt-4 flex flex-col gap-4">
               {createError ? (

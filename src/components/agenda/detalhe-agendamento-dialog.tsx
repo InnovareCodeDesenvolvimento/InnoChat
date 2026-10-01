@@ -107,7 +107,7 @@ export function DetalheAgendamentoDialog({
     startTransition(async () => {
       const result = await cancelAppointmentAction(tenantSlug, appointment.id, { note: cancelNote.trim() || undefined });
       if (!result.ok) {
-        setError(result.error.code === "TOO_LATE" ? "Prazo mínimo para cancelar já passou." : result.error.message);
+        setError(result.error.code === "TOO_LATE" ? "Já passou do prazo para cancelar este horário." : result.error.message);
         return;
       }
       onUpdated(result.data);
@@ -168,7 +168,7 @@ export function DetalheAgendamentoDialog({
           setError("Esse horário acabou de ser ocupado. Escolha outro.");
           return;
         }
-        setError(result.error.code === "TOO_LATE" ? "Prazo mínimo para remarcar já passou." : result.error.message);
+        setError(result.error.code === "TOO_LATE" ? "Já passou do prazo para remarcar este horário." : result.error.message);
         return;
       }
       onUpdated(result.data);
@@ -273,7 +273,7 @@ export function DetalheAgendamentoDialog({
           <div className="mt-6 flex flex-col gap-2">
             {disabled ? (
               <p className="text-sm text-danger">
-                Assinatura suspensa — remarcação e cancelamento bloqueados até o pagamento.
+                Assinatura suspensa: remarcar e cancelar só depois do pagamento.
               </p>
             ) : (
               <>

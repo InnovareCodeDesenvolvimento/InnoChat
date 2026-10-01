@@ -141,7 +141,7 @@ async function planBooking(
     if (!professional.active) throw new DomainError("RULE_VIOLATION", "Profissional inativo.", { rule: "INACTIVE" });
     const canPerform = await getPrisma().professionalService.findFirst({ where: { professionalId: professional.id, serviceId: service.id } });
     if (!canPerform) {
-      throw new DomainError("RULE_VIOLATION", "Este profissional não realiza este serviço.", { rule: "OUTSIDE_HOURS" });
+      throw new DomainError("RULE_VIOLATION", "Este profissional não faz este serviço.", { rule: "OUTSIDE_HOURS" });
     }
   }
 
@@ -357,7 +357,7 @@ export async function cancelAppointmentDetailed(
   const now = new Date();
   const tooLate = appointment.status === "SCHEDULED" && appointment.startsAt.getTime() - now.getTime() < tenant.cancelMinLeadMin * 60_000;
   if (tooLate) {
-    throw new DomainError("TOO_LATE", "Prazo mínimo para cancelar já passou.");
+    throw new DomainError("TOO_LATE", "Já passou do prazo para cancelar este horário.");
   }
 
   return getPrisma().$transaction(async (tx) => {
@@ -390,7 +390,7 @@ export async function rescheduleAppointment(
   const now = new Date();
   const tooLate = appointment.startsAt.getTime() - now.getTime() < tenant.cancelMinLeadMin * 60_000;
   if (tooLate) {
-    throw new DomainError("TOO_LATE", "Prazo mínimo para remarcar já passou.");
+    throw new DomainError("TOO_LATE", "Já passou do prazo para remarcar este horário.");
   }
 
   const plan = await planBooking(

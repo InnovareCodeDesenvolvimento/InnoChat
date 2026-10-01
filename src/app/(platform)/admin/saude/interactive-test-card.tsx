@@ -92,7 +92,7 @@ export function InteractiveTestCard() {
               <Select {...fieldProps} value={instanceId} onChange={(e) => setInstanceId(e.target.value)} disabled={!instances || noInstances}>
                 {(instances ?? []).map((i) => (
                   <option key={i.id} value={i.id}>
-                    {i.tenantName} — {i.label}
+                    {i.tenantName} · {i.label}
                   </option>
                 ))}
               </Select>
