@@ -591,3 +591,71 @@ body {
   0%, 60%, 100% { opacity: 0.35; transform: translateY(0); }
   30% { opacity: 1; transform: translateY(-3px); }
 }
+
+/* ---------------------------------------------------------------------------------------------
+   Landing pública (src/app/(public)/page.tsx + src/components/landing/*). Só o que o Tailwind não
+   expressa: rolagem suave com respiro para o header fixo, e a demonstração do celular. Todo
+   movimento fica dentro de `prefers-reduced-motion: no-preference`.
+   --------------------------------------------------------------------------------------------- */
+html:has(.landing-root) {
+  scroll-padding-top: 5rem;
+}
+@media (prefers-reduced-motion: no-preference) {
+  html:has(.landing-root) {
+    scroll-behavior: smooth;
+  }
+}
+
+/* Fundo escuro de seção (hero, painel, CTA final): o mesmo `.auth-brand-bg` do login, com o brilho
+   do primário deslocado por seção para não repetir a mesma "mancha" em todas. */
+.landing-dark {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+/* Linha pontilhada que liga os 3 passos (só desktop). */
+.landing-steps-line {
+  background-image: linear-gradient(90deg, var(--color-border) 50%, transparent 50%);
+  background-size: 12px 2px;
+  background-repeat: repeat-x;
+}
+
+/* Demonstração do celular: o servidor entrega TODAS as mensagens visíveis (leitura estática); com
+   movimento permitido, o relógio do componente esconde o que ainda não chegou. */
+.demo-chat {
+  mask-image: linear-gradient(to bottom, transparent 0, black 2.5rem);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, black 2.5rem);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .demo[data-mode="idle"] .demo-msg,
+  .demo[data-mode="playing"] .demo-msg[data-shown="false"] {
+    display: none;
+  }
+  .demo[data-mode="playing"] .demo-msg {
+    animation: demo-msg-in 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .demo-dot {
+    animation: demo-dot 1s ease-in-out infinite;
+  }
+  .landing-float {
+    animation: landing-float 6s ease-in-out infinite;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .demo-replay {
+    display: none;
+  }
+}
+@keyframes demo-msg-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes demo-dot {
+  0%, 60%, 100% { opacity: 0.35; transform: translateY(0); }
+  30% { opacity: 1; transform: translateY(-3px); }
+}
+@keyframes landing-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}

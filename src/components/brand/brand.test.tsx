@@ -116,7 +116,7 @@ describe("cobertura", () => {
   it.each([
     ["telas de autenticação (AuthShell)", "src/components/public/auth-shell.tsx"],
     ["termos e privacidade", "src/components/legal/legal-document.tsx"],
-    ["landing", "src/app/(public)/page.tsx"],
+    ["landing", "src/components/landing/landing-footer.tsx"],
   ])("%s exibe a assinatura", (_n, arq) => {
     expect(fonte(arq)).toMatch(/<AppSignature\b/);
   });

@@ -1,75 +1,121 @@
-import Link from "next/link";
-import { Calendar, MessageCircle, ShieldCheck } from "lucide-react";
-import { AppSignature } from "@/components/brand/app-signature";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import type { Metadata } from "next";
+import { Faq } from "@/components/landing/faq";
+import { Features } from "@/components/landing/features";
+import { FinalCta } from "@/components/landing/final-cta";
+import { Hero } from "@/components/landing/hero";
+import { HowItWorks } from "@/components/landing/how-it-works";
+import { LandingFooter } from "@/components/landing/landing-footer";
+import { LandingHeader } from "@/components/landing/landing-header";
+import { PainSolution } from "@/components/landing/pain-solution";
+import { PanelShowcase } from "@/components/landing/panel-showcase";
+import { Pricing } from "@/components/landing/pricing";
+import { Segments } from "@/components/landing/segments";
+import { SocialProof } from "@/components/landing/social-proof";
+import { TRIAL_DAYS } from "@/core/billing";
+import { SITE_URL } from "@/lib/site";
+import { getLandingPlans } from "@/modules/billing/landing-plans";
+import { getPublicLegalInfo } from "@/modules/platform/legal-service";
 
-const FEATURES = [
-  {
-    icon: Calendar,
-    title: "Agenda sem fricção",
-    description: "Serviços, profissionais e horários — sua equipe organiza tudo em um só lugar.",
-  },
-  {
-    icon: MessageCircle,
-    title: "Atendimento pelo WhatsApp",
-    description: "O bot agenda, remarca e cancela pelo número que sua empresa já usa.",
-  },
-  {
-    icon: ShieldCheck,
-    title: "Cada empresa isolada",
-    description: "Dados, conversas e agenda de cada cliente ficam só com ele.",
-  },
-];
+const TITLE = "InnoChat: agenda e atendimento no WhatsApp para quem vive de horário marcado";
+const DESCRIPTION =
+  `Seu WhatsApp agenda, remarca e cancela sozinho, 24 horas por dia, e lembra o cliente antes do horário. Teste grátis por ${TRIAL_DAYS} dias, sem cartão de crédito.`;
 
-export default function LandingPage() {
+export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
+  title: TITLE,
+  description: DESCRIPTION,
+  alternates: { canonical: SITE_URL },
+  openGraph: {
+    type: "website",
+    url: SITE_URL,
+    siteName: "InnoChat",
+    locale: "pt_BR",
+    title: TITLE,
+    description: DESCRIPTION,
+    images: [
+      {
+        url: "/landing/og.png",
+        width: 1200,
+        height: 630,
+        alt: "InnoChat: seu WhatsApp agenda sozinho, 24 horas por dia, com o mascote Inno",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: TITLE,
+    description: DESCRIPTION,
+    images: ["/landing/og.png"],
+  },
+};
+
+/**
+ * Renderizada a cada requisição: os planos vêm do banco e o build de produção roda SEM banco
+ * (mesma regra de `/termos` e `/privacidade`). O custo é pequeno: `getLandingPlans` guarda o
+ * resultado por 60 s em memória, e a página é quase toda Server Component (só o celular da hero
+ * é Client Component). Se o banco falhar, a seção de planos mostra o convite sem preços.
+ *
+ * Sem redirecionamento para quem está logado: a home sempre foi a mesma para todos, e o
+ * "Entrar" leva ao painel pela tela de login.
+ */
+export const dynamic = "force-dynamic";
+
+async function readContactEmail(): Promise<string | null> {
+  try {
+    const info = await getPublicLegalInfo();
+    return info.contactEmail?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+export default async function LandingPage() {
+  const [plans, contactEmail] = await Promise.all([getLandingPlans(), readContactEmail()]);
+
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    name: "InnoChat",
+    url: SITE_URL,
+    description: DESCRIPTION,
+    applicationCategory: "BusinessApplication",
+    operatingSystem: "Web",
+    inLanguage: "pt-BR",
+    publisher: { "@type": "Organization", name: "InnovareCode", url: "https://innovarecode.com.br" },
+    ...(plans && plans.length > 0
+      ? {
+          offers: {
+            "@type": "AggregateOffer",
+            priceCurrency: "BRL",
+            lowPrice: (Math.min(...plans.map((p) => p.priceCents)) / 100).toFixed(2),
+            highPrice: (Math.max(...plans.map((p) => p.priceCents)) / 100).toFixed(2),
+            offerCount: plans.length,
+          },
+        }
+      : {}),
+  };
+
   return (
-    <main>
-      <header className="flex items-center justify-between px-4 py-5 sm:px-8">
-        <span className="font-display text-lg font-bold text-text">InnoChat</span>
-        <nav className="flex items-center gap-3">
-          <Button asChild variant="ghost" size="sm">
-            <Link href="/login">Entrar</Link>
-          </Button>
-          <Button asChild size="sm">
-            <Link href="/cadastro">Criar conta</Link>
-          </Button>
-        </nav>
-      </header>
-
-      <section className="px-4 py-16 text-center sm:px-8">
-        <h1 className="mx-auto max-w-2xl font-display text-3xl font-bold text-text sm:text-4xl">
-          Agenda e atendimento no WhatsApp, num painel só.
-        </h1>
-        <p className="mx-auto mt-4 max-w-xl text-base text-text-secondary">
-          O InnoChat cuida da agenda do seu negócio e responde seus clientes no WhatsApp — sem
-          perder um horário.
-        </p>
-        <div className="mt-8 flex justify-center gap-3">
-          <Button asChild size="lg">
-            <Link href="/cadastro">Começar agora</Link>
-          </Button>
-          <Button asChild variant="secondary" size="lg">
-            <Link href="/login">Já tenho conta</Link>
-          </Button>
-        </div>
-      </section>
-
-      <section className="mx-auto grid max-w-4xl gap-4 px-4 pb-16 sm:grid-cols-3 sm:px-8">
-        {FEATURES.map((feature) => (
-          <Card key={feature.title}>
-            <CardContent>
-              <feature.icon className="h-6 w-6 text-primary" aria-hidden="true" />
-              <p className="mt-3 font-display text-sm font-bold text-text">{feature.title}</p>
-              <p className="mt-1 text-sm text-text-secondary">{feature.description}</p>
-            </CardContent>
-          </Card>
-        ))}
-      </section>
-
-      <footer className="border-t border-border px-4 py-6 text-center sm:px-8">
-        <AppSignature />
-      </footer>
-    </main>
+    <div className="landing-root">
+      <script
+        type="application/ld+json"
+        // JSON-LD próprio (sem entrada de usuário); `<` escapado para nunca fechar o <script>.
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c") }}
+      />
+      <LandingHeader />
+      <main>
+        <Hero />
+        <PainSolution />
+        <HowItWorks />
+        <Features />
+        <PanelShowcase />
+        <Segments />
+        <SocialProof />
+        <Pricing plans={plans} />
+        <Faq />
+        <FinalCta />
+      </main>
+      <LandingFooter contactEmail={contactEmail} />
+    </div>
   );
 }
