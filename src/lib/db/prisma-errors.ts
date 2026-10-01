@@ -14,6 +14,15 @@ export function isUniqueViolation(error: unknown): boolean {
   return error.constructor?.name === "PrismaClientKnownRequestError" && (error as unknown as { code?: string }).code === "P2002";
 }
 
+/**
+ * `P2028` = a transação interativa estourou o `timeout` (ou já estava fechada). Mesma detecção por
+ * nome de classe de `isUniqueViolation` (sem `instanceof` fora de `src/lib/db/`).
+ */
+export function isTransactionTimeout(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  return error.constructor?.name === "PrismaClientKnownRequestError" && (error as unknown as { code?: string }).code === "P2028";
+}
+
 export type SafeDbErrorInfo = { errorName: string; code?: string; target?: string };
 
 /**

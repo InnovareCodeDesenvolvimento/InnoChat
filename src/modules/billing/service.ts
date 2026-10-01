@@ -624,15 +624,23 @@ export async function sendInvoiceGeneratedEmail(params: {
   pixCopyPaste: string | null;
   timezone: string;
 }): Promise<boolean> {
-  const { subject, html, text } = invoiceGeneratedEmail({
-    tenantName: params.tenantName,
-    amountReais: formatCentsBRL(params.amountCents),
-    dueDateBr: formatDateBR(params.dueAt, params.timezone),
-    pixCopyPaste: params.pixCopyPaste,
-    billingUrl: await billingUrlFor(params.tenantSlug),
-    ctx: await loadEmailContext(),
-  });
-  return sendBillingMail({ to: params.toEmail, subject, html, text }, "billing.email.invoice_generated.not_sent");
+  const logEvent = "billing.email.invoice_generated.not_sent";
+  let mail: { subject: string; html: string; text: string };
+  try {
+    mail = invoiceGeneratedEmail({
+      tenantName: params.tenantName,
+      amountReais: formatCentsBRL(params.amountCents),
+      dueDateBr: formatDateBR(params.dueAt, params.timezone),
+      pixCopyPaste: params.pixCopyPaste,
+      billingUrl: await billingUrlFor(params.tenantSlug),
+      ctx: await loadEmailContext(),
+    });
+  } catch (error) {
+    // Falha ao MONTAR o e-mail (URL publica/contexto): conta como "nao saiu", nunca aborta quem chama.
+    logger.warn(logEvent, { reason: "BUILD_FAILED", errorName: error instanceof Error ? error.name : "unknown" });
+    return false;
+  }
+  return sendBillingMail({ to: params.toEmail, ...mail }, logEvent);
 }
 
 export async function sendSubscriptionSuspendedEmail(params: {
@@ -642,14 +650,21 @@ export async function sendSubscriptionSuspendedEmail(params: {
   /** `true` para quem nunca pagou: e-mail de "seu teste terminou", não de atraso. */
   trialNotConverted?: boolean;
 }): Promise<boolean> {
-  const { subject, html, text } = subscriptionSuspendedEmail({
-    tenantName: params.tenantName,
-    billingUrl: await billingUrlFor(params.tenantSlug),
-    trialNotConverted: params.trialNotConverted,
-    cancelInDays: params.trialNotConverted ? CANCEL_AFTER_SUSPENDED_TRIAL_DAYS : undefined,
-    ctx: await loadEmailContext(),
-  });
-  return sendBillingMail({ to: params.toEmail, subject, html, text }, "billing.email.suspended.not_sent");
+  const logEvent = "billing.email.suspended.not_sent";
+  let mail: { subject: string; html: string; text: string };
+  try {
+    mail = subscriptionSuspendedEmail({
+      tenantName: params.tenantName,
+      billingUrl: await billingUrlFor(params.tenantSlug),
+      trialNotConverted: params.trialNotConverted,
+      cancelInDays: params.trialNotConverted ? CANCEL_AFTER_SUSPENDED_TRIAL_DAYS : undefined,
+      ctx: await loadEmailContext(),
+    });
+  } catch (error) {
+    logger.warn(logEvent, { reason: "BUILD_FAILED", errorName: error instanceof Error ? error.name : "unknown" });
+    return false;
+  }
+  return sendBillingMail({ to: params.toEmail, ...mail }, logEvent);
 }
 
 /** E-mail de quem recebe cobrança: o OWNER mais antigo da empresa (não há campo de e-mail de cobrança dedicado na v1). */

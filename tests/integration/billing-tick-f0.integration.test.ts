@@ -5,7 +5,7 @@
  * controlável; Postgres real.
  */
 import { randomUUID } from "node:crypto";
-import { addDays, addHours } from "date-fns";
+import { addDays, addHours, addMinutes } from "date-fns";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { getPrisma } from "@/lib/db/prisma";
 
@@ -179,7 +179,8 @@ describe("F0 R2: e-mail de fatura gerada (envio único, com nova tentativa)", ()
     expect(mailsTo(email)).toHaveLength(0);
 
     mailControl.mode = "ok";
-    await runBillingTick(new Date(), gateway);
+    // O reenvio espera 10 min (a 1a tentativa pode estar em curso): a rodada seguinte "11 min depois".
+    await runBillingTick(addMinutes(new Date(), 11), gateway);
     expect(mailsTo(email).filter((m) => m.subject.toLowerCase().includes("fatura"))).toHaveLength(1);
 
     await runBillingTick(new Date(), gateway);
@@ -275,7 +276,7 @@ describe("F0 R4: cancelamento automático avisa o dono (uma vez)", () => {
     expect(mailsTo(email)).toHaveLength(0);
 
     mailControl.mode = "ok";
-    await runBillingTick(new Date(), gateway);
+    await runBillingTick(addMinutes(new Date(), 11), gateway);
     const mails = mailsTo(email);
     expect(mails).toHaveLength(1);
     expect(mails[0]!.text).toContain("teste terminou");

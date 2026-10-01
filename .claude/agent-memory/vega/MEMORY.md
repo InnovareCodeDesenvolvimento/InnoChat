@@ -51,3 +51,4 @@
 - [Pausa unificada em handoffResumeMinutes (v2/painel); v1 fica em humanPauseMin](pause_unified_handoff_resume.md) — decisão 2026-09-30, gate por flow no claim.
 - [Cancelamento pelo painel](cancellation_design.md) — agendado vs imediato, void/reabrir faturas, efeitos no tick, reativacao paga, armadilhas de teste.
 - [F0 da régua: marcas só com sent===true, outbox em ProviderEvent, advisory lock](billing_f0_email_marks_lock.md) — 2026-10-01; armadilhas de teste e CRLF.
+- [Revisão do Órion à F0: orçamento, try/catch por item, janela de migration](billing_f0_review_fixes.md) — 2026-10-01; reenvio só após 10 min, suspensão manual com marca.

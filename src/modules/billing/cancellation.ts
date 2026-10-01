@@ -115,7 +115,10 @@ type CancelableSubscription = {
 export async function persistCanceledTransition(
   subscription: CancelableSubscription,
   now: Date,
-  deps: CancellationEffectsDeps = {},
+  deps: CancellationEffectsDeps & {
+    /** `false` quando o dono esta reativando AGORA (`startReactivation`): "conta encerrada" seria mentira. Padrao `true`. */
+    announce?: boolean;
+  } = {},
 ): Promise<{ claimed: boolean; invoicesVoided: number }> {
   const claim = await getPrisma().subscription.updateMany({
     where: {
@@ -134,17 +137,20 @@ export async function persistCanceledTransition(
   });
   if (claim.count === 0) return { claimed: false, invoicesVoided: 0 };
 
-  // Cancelamento AUTOMÁTICO (sem pedido do dono): ele não sabe que perdeu a conta. O agendado já
-  // avisou no pedido (`requestCancellation`), então não repete aqui.
-  if (!subscription.cancelAtPeriodEnd) await announceAutoCancel(subscription.id);
-
+  let invoicesVoided = 0;
   try {
     const effects = await applyCancellationEffects(subscription.id, subscription.tenantId, deps);
-    return { claimed: true, invoicesVoided: effects.invoicesVoided };
+    invoicesVoided = effects.invoicesVoided;
   } catch (error) {
     logger.warn("billing.cancel.effects_failed", { tenantId: subscription.tenantId, errorMessage: error instanceof Error ? error.message : String(error) });
-    return { claimed: true, invoicesVoided: 0 };
   }
+
+  // Cancelamento AUTOMÁTICO (sem pedido do dono): ele não sabe que perdeu a conta. O agendado já
+  // avisou no pedido (`requestCancellation`), então não repete aqui. Só DEPOIS dos efeitos: o aviso
+  // fala em números desconectados e faturas anuladas, então não pode sair antes disso ser verdade.
+  if (!subscription.cancelAtPeriodEnd && deps.announce !== false) await announceAutoCancel(subscription.id);
+
+  return { claimed: true, invoicesVoided };
 }
 
 /**
@@ -352,7 +358,8 @@ export async function startReactivation(
   // de reativação nascer: senão o tick, ao persistir depois, anularia a fatura nova e o estado
   // ficaria incoerente. Concorrente que já persistiu: o claim devolve `claimed: false` e segue.
   if (subscription.status !== "CANCELED") {
-    await persistCanceledTransition(subscription, now, options);
+    // `announce: false`: quem pede reativação está no painel agora; "sua conta foi encerrada" seria ruído.
+    await persistCanceledTransition(subscription, now, { ...options, announce: false });
   }
 
   const open = await prisma.invoice.findFirst({ where: { subscriptionId: subscription.id, status: "OPEN" }, orderBy: { periodStart: "desc" } });

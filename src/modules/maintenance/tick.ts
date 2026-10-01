@@ -35,6 +35,7 @@ const ANON_WAJID_PREFIX = "anon:";
 const CHAT_MESSAGE_RETENTION_DAYS = 90;
 const CHAT_PURGE_BATCH = 5000;
 const CHAT_PURGE_MAX_BATCHES = 20;
+const BILLING_EMAIL_MARK_RETENTION_DAYS = 90;
 
 export type MaintenanceTickSummary = {
   inboundEventsPurged: number;
@@ -124,6 +125,16 @@ export async function runMaintenanceTick(now: Date = new Date()): Promise<Mainte
     logger.warn("maintenance.notification_reads_purge_failed", {
       errorMessage: error instanceof Error ? error.message : String(error),
     });
+  }
+
+  // Marcas de e-mail de cobranca (`billing-email`, ver `billing/email-outbox.ts`) ja processadas ha
+  // mais de 90 dias: a auditoria "enviou/desistiu" nao precisa durar mais que a retencao dos dados.
+  // Falha isolada (limpeza nunca impede o resto).
+  try {
+    const billingEmailCutoff = new Date(now.getTime() - BILLING_EMAIL_MARK_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+    await prisma.providerEvent.deleteMany({ where: { provider: "billing-email", processedAt: { not: null, lt: billingEmailCutoff } } });
+  } catch (error) {
+    logger.warn("maintenance.billing_email_marks_purge_failed", { errorMessage: error instanceof Error ? error.message : String(error) });
   }
 
   const summary: MaintenanceTickSummary = {

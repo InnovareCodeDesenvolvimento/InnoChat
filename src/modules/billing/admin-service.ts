@@ -106,7 +106,9 @@ export async function suspendCompanyManually(tenantId: string): Promise<void> {
 
   await prisma.subscription.update({
     where: { tenantId },
-    data: { status: "SUSPENDED", currentPeriodEnd: pastDueAt, trialEndsAt: null },
+    // `suspendedEmailSentAt: now` = "não mandar o e-mail de cobrança": a suspensão manual pode ter
+    // qualquer motivo (não é atraso), e a varredura da régua só avisa quem tem a marca nula.
+    data: { status: "SUSPENDED", currentPeriodEnd: pastDueAt, trialEndsAt: null, suspendedEmailSentAt: now },
   });
 }
 

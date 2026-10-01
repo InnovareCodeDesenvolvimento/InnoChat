@@ -18,6 +18,17 @@ export type OnceEmailKind = "invoice_generated" | "auto_cancel";
 /** Depois deste prazo sem sucesso o aviso deixa de fazer sentido e a linha é encerrada sem reenviar. */
 export const ONCE_EMAIL_GIVE_UP_DAYS = 7;
 
+/** Espera mínima antes de reenviar uma marca pendente (a 1ª tentativa pode ainda estar em curso). */
+export const ONCE_EMAIL_RETRY_WAIT_MINUTES = 10;
+
+/** Encerra a marca sem enviar (prazo vencido). `payload.gaveUp` distingue "desistiu" de "enviou" na auditoria. */
+export async function giveUpOnceEmail(kind: OnceEmailKind, key: string, at: Date = new Date()): Promise<void> {
+  await getPrisma().providerEvent.updateMany({
+    where: { provider: ONCE_EMAIL_PROVIDER, providerEventId: onceEmailId(kind, key), processedAt: null },
+    data: { processedAt: at, payload: { kind, gaveUp: true } },
+  });
+}
+
 export function onceEmailId(kind: OnceEmailKind, key: string): string {
   return `${kind}:${key}`;
 }
@@ -42,9 +53,14 @@ export async function markOnceEmailSent(kind: OnceEmailKind, key: string, at: Da
   });
 }
 
-export async function listPendingOnceEmails(kind: OnceEmailKind, limit = 50): Promise<{ key: string; createdAt: Date }[]> {
+/**
+ * Linhas ainda não enviadas. `createdBefore`: só as criadas antes disso. O reenvio espera
+ * `ONCE_EMAIL_RETRY_WAIT_MINUTES` para não colidir com uma tentativa ainda em andamento (quem
+ * acabou de reivindicar a marca está enviando AGORA).
+ */
+export async function listPendingOnceEmails(kind: OnceEmailKind, createdBefore: Date, limit = 50): Promise<{ key: string; createdAt: Date }[]> {
   const rows = await getPrisma().providerEvent.findMany({
-    where: { provider: ONCE_EMAIL_PROVIDER, processedAt: null, providerEventId: { startsWith: `${kind}:` } },
+    where: { provider: ONCE_EMAIL_PROVIDER, processedAt: null, createdAt: { lt: createdBefore }, providerEventId: { startsWith: `${kind}:` } },
     orderBy: { createdAt: "asc" },
     take: limit,
     select: { providerEventId: true, createdAt: true },

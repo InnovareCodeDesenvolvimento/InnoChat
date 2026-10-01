@@ -11,6 +11,9 @@ import { toMailFrom } from "./sender";
  * pool vivo com credenciais que podem trocar a qualquer momento no admin da plataforma.
  */
 
+/** Teto de cada fase da conversa SMTP (conexão, saudação, inatividade do socket). */
+export const SMTP_TIMEOUT_MS = 15_000;
+
 export type SendMailInput = {
   to: string;
   subject: string;
@@ -47,7 +50,7 @@ async function loadSmtpConfig() {
 
 /**
  * Envia um e-mail. Nunca lança para "SMTP indisponível/erro de rede" — loga (sem segredo, sem
- * corpo do e-mail — só destino e assunto, docs/arquitetura.md §11 "nunca logar... dado
+ * corpo, destinatário nem assunto — só o tipo/código do erro, docs/arquitetura.md §11 "nunca logar... dado
  * pessoal") e devolve `{ sent: false }`; quem chama decide se isso bloqueia o fluxo (ex.:
  * cadastro segue mesmo se o e-mail de verificação falhar ao enviar — a conta existe, o usuário
  * pode pedir reenvio depois) ou não. Só lança `SmtpNotConfiguredError` (erro de domínio, não de
@@ -62,6 +65,11 @@ export async function sendMail(input: SendMailInput): Promise<{ sent: boolean }>
     port: config.smtpPort!,
     secure: !!config.smtpSecure,
     auth: config.smtpUser ? { user: config.smtpUser, pass: config.smtpPassword ?? undefined } : undefined,
+    // Sem estes tetos o nodemailer espera minutos (padrão 2 min a 10 min) por um SMTP travado, e o tick
+    // de cobrança (serial, sob trava) estouraria o prazo da trava. Falha rápida = reenvio na rodada seguinte.
+    connectionTimeout: SMTP_TIMEOUT_MS,
+    greetingTimeout: SMTP_TIMEOUT_MS,
+    socketTimeout: SMTP_TIMEOUT_MS,
   });
 
   try {
@@ -74,11 +82,12 @@ export async function sendMail(input: SendMailInput): Promise<{ sent: boolean }>
     });
     return { sent: true };
   } catch (error) {
-    // Nunca loga `input.to` (e-mail é dado pessoal, docs/arquitetura.md §11) — só o assunto
-    // (identifica o TIPO de e-mail, não o destinatário) e a mensagem de erro do transporte.
+    // Nunca loga destinatário, assunto (carrega o nome da empresa) nem a mensagem bruta do transporte
+    // (pode repetir o endereço do destinatário): só o tipo/código do erro.
+    const code = error && typeof error === "object" && "code" in error ? String((error as { code: unknown }).code) : undefined;
     logger.error("email.send.failed", {
-      subject: input.subject,
-      errorMessage: error instanceof Error ? error.message : String(error),
+      errorName: error instanceof Error ? error.name : "unknown",
+      errorCode: code,
     });
     return { sent: false };
   }
