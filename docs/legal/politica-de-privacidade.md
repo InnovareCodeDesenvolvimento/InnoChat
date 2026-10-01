@@ -1,8 +1,6 @@
 # Política de privacidade — InnoChat
 
-> Documento-modelo elaborado para o InnoChat; recomenda-se revisão por advogado antes da publicação definitiva.
-
-**Vigência:** 29 de setembro de 2026 · **Versão:** 2026-09-29
+**Vigência:** 1º de outubro de 2026 · **Versão:** 2026-10-01
 
 Esta Política explica quais dados pessoais o InnoChat trata, para quê, com quem são compartilhados, por quanto tempo são guardados e como você pode exercer seus direitos, de acordo com a Lei Geral de Proteção de Dados Pessoais (Lei nº 13.709/2018, "LGPD").
 

@@ -13,14 +13,10 @@ import { DomainError } from "@/lib/errors";
  *
  * Formato da versão: data ISO (`AAAA-MM-DD`) do dia em que a redação entra em vigor.
  */
-export const TERMS_VERSION = "2026-09-29";
+export const TERMS_VERSION = "2026-10-01";
 
 /** Data de vigência por extenso, para exibição. Mantenha em sincronia com `TERMS_VERSION`. */
-export const LEGAL_EFFECTIVE_DATE = "29 de setembro de 2026";
-
-/** Aviso exibido no topo das duas páginas enquanto o texto não passa por revisão jurídica. */
-export const LEGAL_DRAFT_NOTICE =
-  "Documento-modelo elaborado para o InnoChat; recomenda-se revisão por advogado antes da publicação definitiva.";
+export const LEGAL_EFFECTIVE_DATE = "1º de outubro de 2026";
 
 /**
  * Confere a `termsVersion` que o cadastro público manda contra a versão vigente ANTES de

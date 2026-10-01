@@ -28,11 +28,13 @@ const FAQS: Faq[] = [
     question: "Existe contrato ou fidelidade?",
     answer: (
       <>
-        O uso do InnoChat segue os{" "}
+        Não. Não há fidelidade nem multa: a cobrança é mensal, por Pix, e nenhum cartão fica salvo. Você pode
+        cancelar quando quiser pela tela Assinatura do painel, e o cancelamento vale ao fim do período já pago.
+        Os detalhes estão nos{" "}
         <Link href="/termos" className="font-semibold text-primary underline underline-offset-4">
           Termos de uso
         </Link>
-        , que você pode ler antes de criar a conta. A cobrança é mensal e nenhum cartão fica salvo.
+        .
       </>
     ),
   },

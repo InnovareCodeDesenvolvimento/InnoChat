@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { AppSignature } from "@/components/brand/app-signature";
 import { Info } from "lucide-react";
-import { LEGAL_DRAFT_NOTICE, LEGAL_EFFECTIVE_DATE, TERMS_VERSION } from "@/lib/legal";
+import { LEGAL_EFFECTIVE_DATE, TERMS_VERSION } from "@/lib/legal";
 import { fillLegalPlaceholders, type PlatformLegalInfo } from "@/core/legal/placeholders";
 
 /**
@@ -133,11 +133,6 @@ export function LegalDocument({ title, intro, sections, related }: LegalDocument
       </header>
 
       <main className="mx-auto max-w-[calc(70ch+3rem)] px-4 py-10 sm:px-6 sm:py-14">
-        <p className="mb-6 flex gap-3 rounded-card border border-warning/30 bg-warning-bg p-4 text-sm text-warning">
-          <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-          <span>{LEGAL_DRAFT_NOTICE}</span>
-        </p>
-
         <h1 className="font-display text-[1.75rem] font-bold leading-tight text-text sm:text-4xl">{title}</h1>
         <dl className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-sm text-text-secondary">
           <div className="flex gap-1.5">

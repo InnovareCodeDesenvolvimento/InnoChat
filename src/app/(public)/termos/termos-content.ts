@@ -185,7 +185,8 @@ export const TERMOS_SECTIONS: LegalSection[] = [
     blocks: [
       {
         list: [
-          "A Empresa pode cancelar a assinatura a qualquer momento pelo Painel. O cancelamento vale ao fim do período já pago, sem reembolso desse período.",
+          "A Empresa pode cancelar a assinatura a qualquer momento pelo Painel. O cancelamento vale ao fim do período já pago, sem reembolso desse período. Até essa data, a Empresa pode desfazer o cancelamento pelo Painel.",
+          "Se a assinatura estiver no Período de teste, o cancelamento vale ao fim do teste. Se estiver atrasada ou suspensa, o cancelamento é imediato.",
           "A Innovare Code pode encerrar o contrato por violação destes Termos (seção 6) ou, se decidir descontinuar o InnoChat, com aviso de pelo menos 30 dias.",
           "Com a assinatura cancelada, os números de WhatsApp são desconectados e o Painel mostra apenas a tela de Assinatura, para reativação.",
           "**Os dados são guardados por 90 dias após o cancelamento.** Depois disso, os Dados de Clientes Finais são **anonimizados**: nome, telefone, identificadores de WhatsApp e anotações são apagados, e só permanece o histórico de agendamentos sem identificação de ninguém. Recomendamos exportar os dados dos clientes (CSV) antes de cancelar.",

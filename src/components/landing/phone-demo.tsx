@@ -28,11 +28,12 @@ type Mode = "idle" | "playing" | "done";
 const PHONE_WIDTH = 300;
 const PHONE_HEIGHT = 560;
 
-const TYPING_MS = 1000;
-const CLIENT_GAP_MS = 750;
+// Ritmo de conversa real, mas curto: a confirmação precisa aparecer antes de a pessoa rolar a página.
+const TYPING_MS = 700;
+const CLIENT_GAP_MS = 500;
 
 function readingPause(text: string): number {
-  return Math.min(3200, 650 + text.length * 7);
+  return Math.min(2200, 450 + text.length * 5);
 }
 
 export function PhoneDemo({ messages, company }: { messages: DemoMessage[]; company: string }) {

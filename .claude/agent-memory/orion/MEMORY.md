@@ -8,3 +8,4 @@
 - [Revisão login Google](google_login_review_2026-09-30.md) — sem CRÍTICO; JWT sem revogação no pre-hijacking, host de x-forwarded em links, convite não-atômico
 - [Revisão bot v2 O-1](botv2_review_2026-09-30.md) — sem CRÍTICO; ReDoS normalizeText, migration de textos vs imagem antiga, snapshot n8n sem redação
 - [Revisão atendimento humano](atendimento_humano_review_2026-09-30.md) — sem CRÍTICO; envio sem idempotência, avisos sem teto, rate limit em memória
+- [Revisão cancelamento](cancelamento_review_2026-10-01.md) — sem CRÍTICO; Pix de fatura VOID segue pagável, status persistido vs efetivo, QR em tenant CANCELED
