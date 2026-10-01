@@ -383,7 +383,7 @@ describe("encerrar atendimento", () => {
     const first = await closeAttendanceAction({ tenantSlug: w.tenant.slug, contactId: contact.id });
     expect(first).toEqual({ ok: true, data: { closed: true, clientNotified: true } });
     expect(evo.sent).toHaveLength(1);
-    expect(evo.sent[0].text).toContain("Atendimento encerrado pela equipe da *Studio close*");
+    expect(evo.sent[0].text).toContain("A equipe da *Studio close* encerrou o atendimento");
     expect(evo.sent[0].text).toContain("Júnior");
     expect(evo.sent[0].text).not.toMatch(/\{\w+\}/);
     const h = await prisma.handoffRequest.findUniqueOrThrow({ where: { id: handoff.id } });
@@ -448,7 +448,7 @@ describe("aviso ao cliente nas mudanças da equipe", () => {
     const created = await book(w, contact.id);
     expect(created.clientNotification).toBe("SENT");
     expect(evo.sent).toHaveLength(1);
-    expect(evo.sent[0].text).toContain("agendado pela equipe da *Studio notify*");
+    expect(evo.sent[0].text).toContain("A equipe da *Studio notify* marcou seu horário");
     expect(evo.sent[0].text).toContain("Corte");
     expect(evo.sent[0].text).toContain("Ana");
     expect(evo.sent[0].text).toContain("12:00");
@@ -458,12 +458,12 @@ describe("aviso ao cliente nas mudanças da equipe", () => {
     const moved = new Date(new Date(startsAt()).getTime() + 2 * HOUR).toISOString();
     const rescheduled = await rescheduleAppointmentAction(w.tenant.slug, created.appointment.id, { startsAt: moved });
     expect(rescheduled).toMatchObject({ ok: true, data: { id: created.appointment.id, clientNotification: "SENT" } });
-    expect(evo.sent[1].text).toContain("remarcado pela equipe");
+    expect(evo.sent[1].text).toContain("remarcou seu horário");
     expect(evo.sent[1].text).toContain("14:00");
 
     const canceled = await cancelAppointmentAction(w.tenant.slug, created.appointment.id);
     expect(canceled).toMatchObject({ ok: true, data: { status: "CANCELED", clientNotification: "SENT" } });
-    expect(evo.sent[2].text).toContain("cancelado");
+    expect(evo.sent[2].text).toContain("cancelou");
 
     // Cancelar de novo é idempotente e NÃO reavisa.
     const again = await cancelAppointmentAction(w.tenant.slug, created.appointment.id);

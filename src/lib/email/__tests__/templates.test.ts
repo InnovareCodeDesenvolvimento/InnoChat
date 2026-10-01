@@ -96,7 +96,7 @@ describe("templates de e-mail", () => {
 
   it("recibo mostra valor, data do pagamento e até quando a assinatura está ativa", () => {
     const { subject, html, text } = all().find((a) => a.name === "payment")!.mail;
-    expect(subject).toBe("Pagamento confirmado — Studio Bela");
+    expect(subject).toBe("Pagamento confirmado (Studio Bela)");
     for (const out of [html, text]) {
       expect(out).toContain("R$ 99,90");
       expect(out).toContain("29/09/2026");
@@ -181,7 +181,7 @@ describe("subscriptionCancelEmail", () => {
 
   it("imediato: sem lembrete de exportar, com chamada para reativar", () => {
     const mail = subscriptionCancelEmail({ ...base, immediate: true });
-    expect(mail.subject).toBe("Assinatura cancelada — Salão da Ana");
+    expect(mail.subject).toBe("Assinatura cancelada (Salão da Ana)");
     expect(mail.text).not.toContain("CSV");
     expect(mail.text).toContain("reative");
   });

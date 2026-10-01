@@ -58,8 +58,8 @@ scenario("CA-34", "fromMe da equipe durante o pedido marca answeredAt e estende 
     const hs = await handoffs(await c.contactId());
     check(hs && hs[0] && hs[0].answeredAt, "HandoffRequest.answeredAt marcado", hs ? "B-2" : "C-1");
     const row = await c.sessionRow();
-    const expect = Date.now() + tenant.humanPauseMin * 60_000;
-    check(row.humanUntil && Math.abs(new Date(row.humanUntil).getTime() - expect) < 3 * 60_000, `humanUntil ≈ agora + humanPauseMin (${tenant.humanPauseMin} min) (=${row.humanUntil})`, "B-2");
+    const expect = Date.now() + tenant.handoffResumeMinutes * 60_000;
+    check(row.humanUntil && Math.abs(new Date(row.humanUntil).getTime() - expect) < 3 * 60_000, `humanUntil ≈ agora + handoffResumeMinutes (${tenant.handoffResumeMinutes} min) (=${row.humanUntil})`, "B-2");
     const ct = await c.contactRow();
     check(!ct.botPausedUntil, `Contact.botPausedUntil NÃO é gravado durante o pedido (=${ct.botPausedUntil})`, "B-2");
     const r2 = await say(c, "menu");
@@ -146,8 +146,9 @@ scenario("CA-36", "Grade 30: depois de uma Escova (45 min) às 09:00 o próximo 
     await setTenant("grade", { slotGranularityMin: 30 });
   }
   const so = S("solo");
-  const day = addDaysISO(todayOf("solo"), 2);
-  const ss = await allSlots("solo", so.services.Corte, so.pros.ze, day);
+  // Primeiro dia (a partir de +2) em que o profissional tem expediente: sábado/domingo podem estar fechados.
+  let ss = [];
+  for (let d = 2; d <= 9 && ss.length === 0; d++) ss = await allSlots("solo", so.services.Corte, so.pros.ze, addDaysISO(todayOf("solo"), d));
   check(ss.length > 0 && ss.every((x) => /:(00|15|30|45)$/.test(x.label)) && ss.some((x) => /:(15|45)$/.test(x.label)), `tenant com grade 15 (solo): horários em :00/:15/:30/:45 (${ss.map((x) => x.label).slice(0, 8).join(",")})`);
 });
 
@@ -238,11 +239,11 @@ scenario("CA-39", 'Nenhuma mensagem tem 2 linhas em branco seguidas, ", !" ou "O
     await sub(`pushName "${push}"`, async () => {
       const c = conv("dupla", { pushName: push });
       const r = await say(c, "oi");
-      check(!/Olá, ?[!.]/.test(r.text) && !/, !/.test(r.text) && !/\n\s*\n\s*\n/.test(r.text) && /Olá/.test(r.text), `pushName "${push}": saudação limpa | ${brief(r.text)}`);
+      check(!/(Olá|Oi), ?[!.]/.test(r.text) && !/, !/.test(r.text) && !/\n\s*\n\s*\n/.test(r.text) && /Oi/.test(r.text), `pushName "${push}": saudação limpa | ${brief(r.text)}`);
     });
   }
   const msgs = (await sweep()).concat(allRunMessages(state));
-  const bad = [...new Set(msgs)].filter((m) => /\n[ \t]*\n[ \t]*\n/.test(m) || /, !/.test(m) || /Olá, ?[!.]/.test(m));
+  const bad = [...new Set(msgs)].filter((m) => /\n[ \t]*\n[ \t]*\n/.test(m) || /, !/.test(m) || /(Olá|Oi), ?[!.]/.test(m));
   check(bad.length === 0, `nas ${new Set(msgs).size} mensagens da rodada: sem linhas em branco duplas nem pontuação órfã (${bad.length}; ex.: «${firstLine(bad[0])}»)`);
 });
 

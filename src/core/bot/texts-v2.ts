@@ -123,46 +123,46 @@ export const BOT_TEXT_VARIABLES_V2 = [
 /** Literal da spec §5.3 (mensagens) e da tabela de rótulos. REMINDER e os rótulos v1 não mudam. */
 export const DEFAULT_BOT_TEXTS_V2: Record<BotTextKeyV2, string> = {
   // ── Navegação ─────────────────────────────────────────────
-  GREETING: "Olá, {nome}! 👋\nBoas-vindas à *{empresa}*.",
-  MENU_PROMPT: "Como posso ajudar você hoje?",
-  MENU_HINT: "_Responda com o número ou o nome da opção._",
+  GREETING: "Oi, {nome}! 👋\nAqui é a *{empresa}*.",
+  MENU_PROMPT: "Como posso te ajudar?",
+  MENU_HINT: "_É só responder com o número ou o nome da opção._",
   FOOTER_HINT: "_Digite *0* para o menu ou *voltar* para a etapa anterior._",
   CONTINUE_PROMPT: "Continuando de onde paramos:",
   HELP:
-    "*Como funciona este atendimento*\n\n" +
+    "*Como usar o atendimento*\n\n" +
     "• Responda com o *número* da opção ou com o nome dela\n" +
-    "• *voltar* — etapa anterior\n" +
-    "• *menu* — menu principal\n" +
-    "• *atendente* — falar com um atendente\n" +
-    "• *sair* — encerrar\n\n" +
-    "Você também pode digitar datas (_amanhã_, _sexta_, _15/10_) e horários (_15h_, _15:30_).",
+    "• *voltar*: etapa anterior\n" +
+    "• *menu*: menu principal\n" +
+    "• *atendente*: falar com uma pessoa da equipe\n" +
+    "• *sair*: encerrar\n\n" +
+    "Pode digitar datas (_amanhã_, _sexta_, _15/10_) e horários (_15h_, _15:30_).",
 
   // ── Agendamento ──────────────────────────────────────────
-  CHOOSE_SERVICE: "*Qual serviço você deseja agendar?*",
-  NO_SERVICES: "No momento não há serviços disponíveis para agendar por aqui. Quer falar com um atendente?",
-  CHOOSE_PROFESSIONAL: "*Com quem você prefere ser atendido(a)?*\n_{servico}_",
+  CHOOSE_SERVICE: "*Qual serviço você quer marcar?*",
+  NO_SERVICES: "Não tem nenhum serviço pra marcar por aqui agora. Quer falar com um atendente?",
+  CHOOSE_PROFESSIONAL: "*Com quem você prefere marcar?*\n_{servico}_",
   CHOOSE_DAY:
     "*Para qual dia?*\n_{servico} · {profissional}_\n\n" +
-    "Escolha uma opção ou digite a data (ex.: _amanhã_, _sexta_, _15/10_).",
+    "Escolha abaixo ou digite a data (ex.: _amanhã_, _sexta_, _15/10_).",
   NEXT_AVAILABLE: "*Próximos horários livres*\n_{servico} · {profissional}_",
   CHOOSE_TIME:
     "*Horários livres em {data}*\n_{servico} · {profissional}_\n\n" +
-    "Escolha uma opção ou digite o horário (ex.: _15h_, _15:30_, _tarde_).",
-  NO_SLOTS_DAY: "Não temos horários livres em *{data}*.\nO próximo dia com vaga é *{proximo}*. Veja as datas disponíveis:",
-  DATE_OUT_OF_RANGE: "Consigo agendar de hoje até *{data}*. Escolha uma data dentro desse período:",
-  TIME_NOT_AVAILABLE: "Às *{hora}* não temos vaga em {data}. Os horários mais próximos são:",
+    "Escolha abaixo ou digite o horário (ex.: _15h_, _15:30_, _tarde_).",
+  NO_SLOTS_DAY: "Não tem horário livre em *{data}*.\nO próximo dia com vaga é *{proximo}*. Estas são as datas disponíveis:",
+  DATE_OUT_OF_RANGE: "Só consigo marcar de hoje até *{data}*. Escolha uma data nesse período:",
+  TIME_NOT_AVAILABLE: "Às *{hora}* não tem vaga em {data}. Os mais próximos são:",
   NO_AVAILABILITY:
-    "No momento não há horários livres para *{servico}* nos próximos dias. 😕\n" +
+    "Não tem horário livre para *{servico}* nos próximos dias. 😕\n" +
     "Quer falar com um atendente ou escolher outro serviço?",
   ITEM_UNAVAILABLE: "Essa opção não está mais disponível. Vamos escolher de novo:",
   APPOINTMENT_LIMIT:
-    "Você já tem *{limite}* agendamentos marcados, o máximo por aqui.\n" +
-    "Para marcar outro, remarque ou cancele um deles, ou fale com um atendente:",
-  ASK_NAME: "Para finalizar, *qual é o seu nome?*\n_Digite como prefere ser chamado(a)._",
-  NAME_INVALID: "Não consegui registrar esse nome. Digite apenas o seu nome, por favor.",
+    "Você já tem *{limite}* agendamentos marcados, que é o máximo por aqui.\n" +
+    "Para marcar outro, remarque ou cancele um deles. Se preferir, fale com um atendente:",
+  ASK_NAME: "Pra finalizar, *qual é o seu nome?*\n_Escreva como você gosta de ser chamado(a)._",
+  NAME_INVALID: "Não consegui anotar esse nome. Pode escrever só o seu nome?",
   NAME_TOO_LONG: "Esse nome ficou um pouco longo. Pode abreviar? _(até 60 letras)_",
   CONFIRM_SUMMARY:
-    "*Confira os dados do agendamento*\n\n" +
+    "*Confira o seu agendamento*\n\n" +
     "*Serviço:* {servico}\n" +
     "*Profissional:* {profissional}\n" +
     "*Data:* {data_longa}\n" +
@@ -171,7 +171,7 @@ export const DEFAULT_BOT_TEXTS_V2: Record<BotTextKeyV2, string> = {
     "*Nome:* {nome}\n\n" +
     "Está tudo certo?",
   CONFIRM_RESCHEDULE:
-    "*Confira a remarcação*\n\n" +
+    "*Sua remarcação*\n\n" +
     "*Serviço:* {servico} com {profissional}\n" +
     "*De:* ~{anterior}~\n" +
     "*Para:* {data_longa} às {hora}\n\n" +
@@ -181,57 +181,57 @@ export const DEFAULT_BOT_TEXTS_V2: Record<BotTextKeyV2, string> = {
     "✅ *Agendamento confirmado!*\n\n" +
     "*{servico}* com {profissional}\n" +
     "{data_longa} às *{hora}*\n\n" +
-    "_Precisa remarcar ou cancelar? Mande *menu* e escolha Meus agendamentos (até {prazo} antes do horário)._",
-  SLOT_TAKEN: "Poxa, o horário das *{hora}* acabou de ser reservado por outra pessoa. 😕\nHorários livres em *{data}*:",
+    "_Precisou mudar algo? Mande *menu* e escolha Meus agendamentos. Dá pra remarcar ou cancelar até {prazo} antes do horário._",
+  SLOT_TAKEN: "Poxa, alguém acabou de pegar o horário das *{hora}*. 😕\nHorários livres em *{data}*:",
   POST_ACTION_MENU: "Posso ajudar em algo mais?",
 
   // ── Meus agendamentos ───────────────────────────────────
   MY_APPOINTMENTS: "*Seus próximos agendamentos*\nEscolha um para ver as opções:",
-  NO_APPOINTMENTS: "Você não tem agendamentos futuros por aqui.",
-  APPOINTMENT_DETAIL: "*{servico}* com {profissional}\n{data_longa} às *{hora}*\n\nO que você deseja fazer?",
+  NO_APPOINTMENTS: "Você não tem nenhum agendamento marcado por aqui.",
+  APPOINTMENT_DETAIL: "*{servico}* com {profissional}\n{data_longa} às *{hora}*\n\nO que você quer fazer?",
   APPOINTMENT_LOCKED:
     "*{servico}* com {profissional}\n{data_longa} às *{hora}*\n\n" +
-    "Alterações pelo WhatsApp são aceitas até *{prazo}* antes do horário. Para este agendamento, fale com um atendente.",
-  CONFIRM_CANCEL: "Tem certeza de que deseja *cancelar* {servico} com {profissional} em *{data}* às *{hora}*?",
-  CANCELED: "Pronto: o agendamento de *{servico}* em {data} às {hora} foi *cancelado*.",
-  CANCEL_KEPT: "Tudo certo: seu agendamento continua marcado.",
+    "Por aqui dá pra mudar até *{prazo}* antes do horário. Pra esse agendamento, fale com um atendente.",
+  CONFIRM_CANCEL: "Quer mesmo *cancelar* {servico} com {profissional} em *{data}* às *{hora}*?",
+  CANCELED: "Pronto, o agendamento de *{servico}* em {data} às {hora} foi *cancelado*.",
+  CANCEL_KEPT: "Tudo certo, seu agendamento continua marcado.",
   RESCHEDULED: "✅ *Agendamento remarcado!*\n\n*{servico}* com {profissional}\n{data_longa} às *{hora}*",
   TOO_LATE:
-    "Este agendamento não pode mais ser alterado por aqui: mudanças são aceitas até *{prazo}* antes do horário.\n" +
-    "Um atendente pode ajudar você.",
+    "Esse agendamento não dá mais pra mudar por aqui: só até *{prazo}* antes do horário.\n" +
+    "Um atendente pode te ajudar.",
 
   // ── Atendente e controle da conversa ───────────────────
   HUMAN_HANDOFF:
-    "Certo! Já avisei a nossa equipe e um atendente vai continuar esta conversa por aqui.\n\n" +
-    "_Se ninguém responder até {retorno}, eu volto a atender. Para voltar ao menu agora, digite *menu*._",
+    "Certo! Já avisei a equipe, e um atendente vai continuar a conversa por aqui.\n\n" +
+    "_Se ninguém responder até {retorno}, eu volto a atender. Pra voltar ao menu agora, digite *menu*._",
   HUMAN_HANDOFF_OFF_HOURS:
-    "Certo! Deixei sua mensagem com a nossa equipe.\n" +
-    "Estamos fora do horário de atendimento agora; retornamos *{proximo}*.\n\n" +
-    "_Enquanto isso, se quiser agendar por aqui, digite *menu*._",
-  BOT_RESUMED: "Certo, o atendimento automático está de volta.",
-  INVALID_OPTION: "Não entendi sua resposta. Escolha uma das opções abaixo respondendo com o *número*:",
+    "Certo! Deixei seu recado com a equipe.\n" +
+    "Agora estamos fora do horário de atendimento. Voltamos *{proximo}*.\n\n" +
+    "_Se quiser marcar um horário enquanto isso, digite *menu*._",
+  BOT_RESUMED: "Certo, voltei a atender por aqui.",
+  INVALID_OPTION: "Não entendi. Responda com o *número* de uma das opções:",
   INVALID_BACK_TO_MENU:
-    "Acho que não estou conseguindo entender. Vamos recomeçar pelo menu; se preferir, escolha *Falar com atendente*.",
-  AMBIGUOUS_OPTION: "Encontrei mais de uma opção parecida. Qual delas você quis dizer?",
-  ONLY_TEXT: "Por aqui eu entendo apenas mensagens de texto. Responda digitando uma das opções:",
-  SESSION_EXPIRED: "Como faz um tempinho desde a nossa última conversa, recomecei o atendimento.",
-  RESUME_OFFER: "Que bom ter você de volta! Você estava agendando *{servico}*.\nQuer continuar de onde parou?",
-  THANKS_REPLY: "Por nada, {nome}! Quando precisar, é só mandar uma mensagem. 👋",
-  GOODBYE: "Atendimento encerrado. Obrigado pelo contato, {nome}! 👋\n_Quando precisar, é só mandar uma mensagem._",
-  TECH_ERROR: "Tive um problema técnico para concluir isso agora. Tente de novo em instantes ou digite *atendente*.",
+    "Acho que não estou te entendendo. Vamos recomeçar pelo menu? Se preferir, escolha *Falar com atendente*.",
+  AMBIGUOUS_OPTION: "Tem mais de uma opção parecida. Qual delas você quis dizer?",
+  ONLY_TEXT: "Por aqui eu só entendo mensagem escrita. Digite uma das opções:",
+  SESSION_EXPIRED: "Faz um tempinho que a gente não conversa, então recomecei o atendimento.",
+  RESUME_OFFER: "Oi de novo! Você estava marcando *{servico}*.\nQuer continuar de onde parou?",
+  THANKS_REPLY: "Por nada, {nome}! Qualquer coisa, é só chamar. 👋",
+  GOODBYE: "Atendimento encerrado. Obrigado pelo contato, {nome}! 👋\n_Quando precisar, é só chamar._",
+  TECH_ERROR: "Deu um problema aqui e não consegui concluir. Tente de novo daqui a pouco ou digite *atendente*.",
   // Enviado pelo tick de lembretes, fora do fluxo. Não muda em relação à v1.
   REMINDER:
-    "Olá, {nome}! Lembrete: você tem {servico} com {profissional} {quando} às {hora}.\nPara remarcar ou cancelar, responda *menu*.",
+    "Oi, {nome}! Passando pra lembrar: você tem {servico} com {profissional} {quando} às {hora}.\nSe precisar remarcar ou cancelar, responda *menu*.",
 
   // ── Atendimento humano (equipe age pelo painel) ────────
   STAFF_BOOKED:
-    "Olá, {nome}! ✅ Seu horário foi agendado pela equipe da *{empresa}*: *{servico}* com {profissional}, {quando} às *{hora}*. Para remarcar ou cancelar, responda *menu*.",
+    "Oi, {nome}! ✅ A equipe da *{empresa}* marcou seu horário: *{servico}* com {profissional}, {quando} às *{hora}*. Se precisar remarcar ou cancelar, responda *menu*.",
   STAFF_RESCHEDULED:
-    "Olá, {nome}! 🔄 Seu horário foi remarcado pela equipe da *{empresa}*: *{servico}* com {profissional}, {quando} às *{hora}*. Para remarcar ou cancelar, responda *menu*.",
+    "Oi, {nome}! 🔄 A equipe da *{empresa}* remarcou seu horário: *{servico}* com {profissional}, {quando} às *{hora}*. Se precisar mudar ou cancelar, responda *menu*.",
   STAFF_CANCELED:
-    "Olá, {nome}. Seu agendamento de *{servico}* com {profissional}, {quando} às {hora}, foi *cancelado* pela equipe da *{empresa}*. Para marcar um novo horário, responda *menu*.",
+    "Oi, {nome}. A equipe da *{empresa}* *cancelou* seu agendamento de *{servico}* com {profissional}, {quando} às {hora}. Pra marcar outro horário, responda *menu*.",
   HANDOFF_CLOSED:
-    "Atendimento encerrado pela equipe da *{empresa}*. Obrigado pelo contato, {nome}! 👋\n_Para agendar ou ver seus horários, é só responder *menu*._",
+    "A equipe da *{empresa}* encerrou o atendimento. Obrigado pelo contato, {nome}! 👋\n_Pra marcar ou ver seus horários, é só responder *menu*._",
 
   // ── Rótulos de opção (sem variáveis) ───────────────────
   LABEL_MENU_BOOK: "Agendar horário",

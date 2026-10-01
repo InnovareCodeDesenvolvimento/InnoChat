@@ -75,7 +75,7 @@ export const DEFAULT_BOT_TEXTS: Record<BotTextKeyLiteral, string> = {
   SESSION_EXPIRED: "Faz um tempo que não conversamos, então recomecei o menu por aqui. ",
   GOODBYE: "Até logo! 👋",
   REMINDER:
-    "Olá, {nome}! Lembrete: você tem {servico} com {profissional} {quando} às {hora}.\nPara remarcar ou cancelar, responda *menu*.",
+    "Oi, {nome}! Passando pra lembrar: você tem {servico} com {profissional} {quando} às {hora}.\nSe precisar remarcar ou cancelar, responda *menu*.",
   LABEL_CONFIRM: "Confirmar",
   LABEL_OTHER_TIME: "Escolher outro horário",
   LABEL_CANCEL_YES: "Sim, cancelar",

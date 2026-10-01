@@ -8,7 +8,7 @@ import {
 } from "./v2-kit.mjs";
 
 const todayOf = (k) => localISO(new Date(), TZ[k]);
-const HANDOFF_TXT = /avisei a nossa equipe|Deixei sua mensagem/;
+const HANDOFF_TXT = /Já avisei a equipe|Deixei seu recado/;
 const contig = (list) => list.every((o, i) => o.n === i + 1);
 
 // ================================================================ comandos e entrada
@@ -676,7 +676,7 @@ scenario("CA-26", "Handoff dentro do horário → HUMAN_HANDOFF com {retorno}; f
     await start(c2);
     const r2 = await say(c2, "atendente");
     check(T.HUMAN_HANDOFF_OFF_HOURS.test(r2.text), `fora do horário → HUMAN_HANDOFF_OFF_HOURS | ${brief(r2.text)}`, "W-1");
-    check(/retornamos \*amanhã às 09:00\*/.test(r2.text), `{proximo} = "amanhã às 09:00" | ${brief(r2.text)}`, "B-2");
+    check(/Voltamos \*amanhã às 09:00\*/.test(r2.text), `{proximo} = "amanhã às 09:00" | ${brief(r2.text)}`, "B-2");
     const hs2 = await handoffs(await c2.contactId());
     check(hs2 && hs2.length === 1 && hs2[0].offHours === true, `HandoffRequest com offHours=true (${hs2 && J(hs2.map((h) => h.offHours))})`, "B-2");
   } finally {

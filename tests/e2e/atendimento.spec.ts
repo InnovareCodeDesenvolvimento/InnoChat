@@ -471,7 +471,7 @@ test.describe("aviso ao cliente (agenda)", () => {
     await expect(page.getByText("Cliente avisado no WhatsApp", { exact: true })).toBeVisible();
     const calls = sentTo(phone);
     expect(calls).toHaveLength(1);
-    expect((calls[0].body as { text: string }).text).toMatch(/agendado pela equipe[\s\S]*Corte feminino[\s\S]*Ana[\s\S]*09:30/);
+    expect((calls[0].body as { text: string }).text).toMatch(/marcou seu horário[\s\S]*Corte feminino[\s\S]*Ana[\s\S]*09:30/);
     expect((calls[0].body as { text: string }).text).not.toMatch(/\{[a-z_]+\}/); // nenhuma variável sem preencher
   });
 

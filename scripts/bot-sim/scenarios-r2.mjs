@@ -286,7 +286,7 @@ export default function register({ scenario, check, conv, toTime, book, hasOpt, 
     for (const pn of ["", ".", "🌸✨", "~"]) {
       const c = conv("bela", { pushName: pn });
       const r = await c.say("oi");
-      check(!/Olá, [.~]!|Olá, !/.test(r.msgs[0]), `pushName ${JSON.stringify(pn)} => ${r.msgs[0].split("\n")[0]}`);
+      check(!/(Olá|Oi), [.~]!|(Olá|Oi), !/.test(r.msgs[0]), `pushName ${JSON.stringify(pn)} => ${r.msgs[0].split("\n")[0]}`);
     }
   });
 

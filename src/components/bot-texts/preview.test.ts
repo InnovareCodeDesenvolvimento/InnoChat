@@ -21,7 +21,7 @@ describe("bot-texts/preview", () => {
 
   it("saudação vem com o menu logo abaixo", () => {
     const out = renderPreviewV2("GREETING", texts);
-    expect(out).toContain("Olá, Maria!");
+    expect(out).toContain("Oi, Maria!");
     expect(out).toContain("1️⃣ Agendar horário");
   });
 

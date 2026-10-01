@@ -302,7 +302,7 @@ describe("histórico do agendamento (regressão: agendamento criado pelo bot)", 
     if (!r.ok) throw new Error("timeline falhou");
     const who = w.user.email.split("@")[0];
     expect(r.data.items.map((i) => i.label)).toEqual([
-      `Cliente faltou — marcado por ${who}`,
+      `Cliente faltou (marcado por ${who})`,
       `Atendimento reaberto por ${who}`,
       `Atendimento concluído por ${who}`,
     ]);

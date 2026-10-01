@@ -68,7 +68,7 @@ describe("recibo de pagamento", () => {
     expect(result).toEqual({ alreadyProcessed: false });
     expect(sent).toHaveLength(1);
     expect(sent[0]!.to).toBe(email);
-    expect(sent[0]!.subject).toMatch(/^Pagamento confirmado — /);
+    expect(sent[0]!.subject).toMatch(/^Pagamento confirmado [(]/);
     expect(sent[0]!.text).toContain("129,90");
     expect(sent[0]!.text).toContain("04/10/2026");
     expect(sent[0]!.text).toContain("05/11/2026");

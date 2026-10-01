@@ -360,7 +360,7 @@ scenario("API-10", "Ciclo do atendente na API: pedido, HUMAN_MODE, \"menu\" do c
     const cc = await p.contact.findFirst({ where: { id: c.id } });
     const hs = await handoffs(c.id);
     check(hs && hs[0] && hs[0].answeredAt, "answeredAt marcado", hs ? "B-2" : "C-1");
-    check(row.humanUntil && Math.abs(row.humanUntil.getTime() - (Date.now() + tenant.humanPauseMin * 60_000)) < 3 * 60_000, `humanUntil ≈ agora + humanPauseMin (${tenant.humanPauseMin})`);
+    check(row.humanUntil && Math.abs(row.humanUntil.getTime() - (Date.now() + tenant.handoffResumeMinutes * 60_000)) < 3 * 60_000, `humanUntil ≈ agora + handoffResumeMinutes (${tenant.handoffResumeMinutes})`);
     check(!cc.botPausedUntil, "Contact.botPausedUntil não é gravado");
     const m = await claim(tenantKey, ch, "menu");
     check(m.action === "process" && m.session && m.session.resumedFromHuman === "CLIENT_MENU", `"menu" ainda vale depois da resposta da equipe (${m.action})`);
@@ -471,6 +471,6 @@ scenario("API-13", "Textos portados aparecem no claim v2 (MENU_PROMPT) e o claim
   if (v1.session) await release("menuport", v1.session);
   const other = new Chat(world, S("dupla").token, newPhone(), { pushName: "Maria Souza" });
   const dv = await claim("dupla", other, "oi");
-  check(dv.texts && dv.texts.MENU_PROMPT === "Como posso ajudar você hoje?", `empresa sem edição recebe o padrão v2 (${J(dv.texts && dv.texts.MENU_PROMPT)})`, "B-3");
+  check(dv.texts && dv.texts.MENU_PROMPT === "Como posso te ajudar?", `empresa sem edição recebe o padrão v2 (${J(dv.texts && dv.texts.MENU_PROMPT)})`, "B-3");
   if (dv.session) await release("dupla", dv.session);
 });

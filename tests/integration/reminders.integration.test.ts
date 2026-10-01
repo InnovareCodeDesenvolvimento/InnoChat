@@ -209,7 +209,7 @@ describe("lembrete de véspera — seleção e envio", () => {
     await runReminderTick(NOW, { evolution: client, ...FAST });
 
     const [only] = sentBy(sent, w);
-    expect(only!.text).toBe("Olá, Maria! Lembrete: você tem Massagem com Ana amanhã às 10:00.\nPara remarcar ou cancelar, responda *menu*.");
+    expect(only!.text).toBe("Oi, Maria! Passando pra lembrar: você tem Massagem com Ana amanhã às 10:00.\nSe precisar remarcar ou cancelar, responda *menu*.");
     expect(DEFAULT_BOT_TEXTS.REMINDER).toContain("{quando}");
 
     const messages = await prisma.chatMessage.findMany({ where: { tenantId: w.tenant.id } });

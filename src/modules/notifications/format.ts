@@ -101,7 +101,7 @@ export function timelineLabel(action: TimelineAction, authorType: EventAuthorTyp
     case "COMPLETED":
       return `Atendimento concluído${by}`;
     case "NO_SHOW":
-      return by ? `Cliente faltou — marcado${by}` : "Cliente faltou";
+      return by ? `Cliente faltou (marcado${by})` : "Cliente faltou";
     case "REOPENED":
       return `Atendimento reaberto${by}`;
   }

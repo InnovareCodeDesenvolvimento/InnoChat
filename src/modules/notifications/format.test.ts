@@ -35,7 +35,7 @@ describe("notifications/format", () => {
 
   it("rótulos de encerramento e reabertura (com e sem o nome do membro)", () => {
     expect(timelineLabel("COMPLETED", "USER", "Ana")).toBe("Atendimento concluído por Ana");
-    expect(timelineLabel("NO_SHOW", "USER", "Ana")).toBe("Cliente faltou — marcado por Ana");
+    expect(timelineLabel("NO_SHOW", "USER", "Ana")).toBe("Cliente faltou (marcado por Ana)");
     expect(timelineLabel("REOPENED", "USER", "Ana")).toBe("Atendimento reaberto por Ana");
     expect(timelineLabel("COMPLETED", "SYSTEM")).toBe("Atendimento concluído");
     expect(timelineLabel("NO_SHOW", "USER", null)).toBe("Cliente faltou");
