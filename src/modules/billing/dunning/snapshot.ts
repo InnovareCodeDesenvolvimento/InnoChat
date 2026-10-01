@@ -1,5 +1,6 @@
 import { subDays } from "date-fns";
 import { getPrisma } from "@/lib/db/prisma";
+import { logger } from "@/lib/logger";
 import type { Prisma } from "@/lib/db/types";
 import { safeTimezone, usesTrialRules, type DunningInput } from "@/core/billing";
 import { manualSuspensionPeriodEnds } from "./events";
@@ -72,7 +73,8 @@ async function toSubjects(rows: LoadedSubscription[], now: Date): Promise<Dunnin
           createdAt: r.createdAt,
         },
         openInvoice: invoice,
-        manualSuspension: manual.get(r.id)?.has(r.currentPeriodEnd.toISOString()) ?? false,
+        // Coluna é o marcador robusto; o evento MANUAL_SUSPEND do mesmo ciclo cobre quem o backfill não alcançou.
+        manualSuspension: r.manualSuspendedAt !== null || (manual.get(r.id)?.has(r.currentPeriodEnd.toISOString()) ?? false),
         whatsappConnected: connected.has(r.tenantId),
       },
     } satisfies DunningSubject;
@@ -82,6 +84,8 @@ async function toSubjects(rows: LoadedSubscription[], now: Date): Promise<Dunnin
 /** Todas as assinaturas que a régua acompanha: as vivas e as canceladas há pouco. */
 export async function loadDunningSubjects(now: Date, take = 2000): Promise<DunningSubject[]> {
   const rows = await loadRaw({ OR: [{ status: { not: "CANCELED" } }, { status: "CANCELED", canceledAt: { gte: subDays(now, RECENT_CANCEL_DAYS) } }] }, take);
+  // Bateu no teto: o resto da base ficaria sem régua em silêncio. O aviso aparece no log para alguém subir o teto.
+  if (rows.length >= take) logger.warn("billing.dunning.snapshot_capped", { take });
   return toSubjects(rows, now);
 }
 

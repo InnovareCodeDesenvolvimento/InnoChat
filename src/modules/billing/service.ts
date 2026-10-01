@@ -19,6 +19,9 @@ import { getMercadoPagoGateway, getMercadoPagoGatewayForEnvironment, MercadoPago
 
 const PIX_EXPIRATION_DAYS = 3;
 
+/** Valor de `Invoice.paidByPaymentId` quando quem baixou foi o admin (sem pagamento no MP). */
+const MANUAL_PAYMENT_MARK = "manual";
+
 export async function billingUrlFor(tenantSlug: string): Promise<string> {
   return `${await getPublicBaseUrl()}/${tenantSlug}/assinatura`;
 }
@@ -312,7 +315,7 @@ export async function regeneratePixForInvoice(invoiceId: string, payerEmail: str
     throw new DomainError(mapped.code, mapped.message, { kind });
   }
 
-  return getPrisma().invoice.update({
+  const updated = await getPrisma().invoice.update({
     where: { id: invoiceId },
     data: {
       mpPaymentId: pix.paymentId,
@@ -322,6 +325,14 @@ export async function regeneratePixForInvoice(invoiceId: string, payerEmail: str
       mpEnvironment: await pixEnvironmentFor(mp),
     },
   });
+
+  // O Pix anterior ainda pode estar pagável no app do cliente (o aviso antigo foi enviado por e-mail/WhatsApp):
+  // cancela no MP para a mesma fatura nunca ter dois QR vivos (pagar os dois = cobrança em dobro). Falha só é
+  // logada; se o antigo ainda for pago, `applyInvoicePayment` marca `duplicatePaymentAt` e o sino do admin avisa.
+  if (invoice.mpPaymentId && invoice.mpPaymentId !== pix.paymentId && (!invoice.pixExpiresAt || invoice.pixExpiresAt > new Date())) {
+    await cancelPixPayments([{ invoiceId: invoice.id, mpPaymentId: invoice.mpPaymentId, mpEnvironment: invoice.mpEnvironment }], gateway);
+  }
+  return updated;
 }
 
 /**
@@ -403,10 +414,16 @@ export async function cancelPixPayments(pix: VoidedPix[], injected?: MercadoPago
  * não faz nada (retorna sem erro) — é o que garante que o mesmo evento do webhook, reentregue
  * pelo Mercado Pago, nunca dá baixa duas vezes nem soma dois meses.
  */
-export async function applyInvoicePayment(invoiceId: string, paidAt: Date): Promise<{ alreadyProcessed: boolean; voided?: boolean }> {
+export async function applyInvoicePayment(
+  invoiceId: string,
+  paidAt: Date,
+  /** Id do pagamento no MP que está baixando a fatura. Ausente = baixa manual do admin (`"manual"`). */
+  paymentId?: string,
+): Promise<{ alreadyProcessed: boolean; voided?: boolean; duplicate?: boolean }> {
   const prisma = getPrisma();
+  const paidBy = paymentId ?? MANUAL_PAYMENT_MARK;
 
-  const outcome = await prisma.$transaction(async (tx): Promise<{ alreadyProcessed: boolean; voided?: boolean; receipt?: PaymentReceipt }> => {
+  const outcome = await prisma.$transaction(async (tx): Promise<{ alreadyProcessed: boolean; voided?: boolean; duplicate?: boolean; receipt?: PaymentReceipt; staleCancel?: VoidedPix[] }> => {
     const invoice = await tx.invoice.findUnique({ where: { id: invoiceId } });
     if (!invoice) {
       throw new DomainError("NOT_FOUND", "Fatura não encontrada.");
@@ -426,10 +443,20 @@ export async function applyInvoicePayment(invoiceId: string, paidAt: Date): Prom
     }
     const claimed = await tx.invoice.updateMany({
       where: { id: invoice.id, status: { notIn: ["PAID", "VOID"] } },
-      data: { status: "PAID", paidAt },
+      data: { status: "PAID", paidAt, paidByPaymentId: paidBy },
     });
     if (claimed.count === 0) {
       // Já `PAID` — ou anulada por uma corrida entre a leitura acima e a baixa.
+      // Se foi OUTRO pagamento que a baixou (Pix antigo/regerado pago depois, ou Pix pago depois da baixa manual),
+      // o cliente pagou duas vezes: marca (uma vez) para o sino do admin decidir o estorno (manual). O mesmo
+      // pagamento reentregue (webhook + conciliação) tem o mesmo id e NÃO é duplicado.
+      if (paymentId) {
+        const current = await tx.invoice.findUnique({ where: { id: invoice.id }, select: { status: true, paidByPaymentId: true } });
+        if (current?.status === "PAID" && current.paidByPaymentId && current.paidByPaymentId !== paymentId) {
+          await tx.invoice.updateMany({ where: { id: invoice.id, duplicatePaymentAt: null }, data: { duplicatePaymentAt: paidAt } });
+          return { alreadyProcessed: true, duplicate: true };
+        }
+      }
       return { alreadyProcessed: true };
     }
 
@@ -454,6 +481,8 @@ export async function applyInvoicePayment(invoiceId: string, paidAt: Date): Prom
         status: "ACTIVE",
         currentPeriodEnd: nextPeriodEnd,
         trialEndsAt: null,
+        // Pagou: a suspensão manual (se havia) acabou.
+        manualSuspendedAt: null,
         // Reativação: zera o estado de cancelamento (data, agendamento, motivo) e a marca de suspensão.
         ...(wasCanceled ? { canceledAt: null, cancelAtPeriodEnd: false, cancelRequestedAt: null, cancelReason: null, suspendedEmailSentAt: null } : {}),
         // Primeiro pagamento: passa a valer o prazo de 60 dias em SUSPENDED (não o de teste).
@@ -466,8 +495,15 @@ export async function applyInvoicePayment(invoiceId: string, paidAt: Date): Prom
       },
     });
 
+    // Pix pendente da MESMA fatura que não foi o que pagou (regerado, ou baixa manual): cancela depois da transação.
+    const stale: VoidedPix[] =
+      invoice.mpPaymentId && invoice.mpPaymentId !== paymentId
+        ? [{ invoiceId: invoice.id, mpPaymentId: invoice.mpPaymentId, mpEnvironment: invoice.mpEnvironment }]
+        : [];
+
     return {
       alreadyProcessed: false,
+      staleCancel: stale,
       receipt: {
         tenantId: subscription.tenantId,
         subscriptionId: subscription.id,
@@ -484,6 +520,8 @@ export async function applyInvoicePayment(invoiceId: string, paidAt: Date): Prom
   // Histórico e aviso FORA da transação e só na primeira baixa (`receipt` só existe quando este chamador
   // ganhou o UPDATE condicional: webhook reentregue, conciliação e baixa manual concorrentes caem em
   // `alreadyProcessed` e nunca reenviam). Nenhum dos dois desfaz o pagamento.
+  if (outcome.staleCancel && outcome.staleCancel.length > 0) await cancelPixPayments(outcome.staleCancel);
+  if (outcome.duplicate) logger.warn("billing.payment.duplicate_on_paid_invoice", { invoiceId });
   if (outcome.receipt) {
     const receipt = outcome.receipt;
     await recordBillingEvent({
@@ -499,7 +537,8 @@ export async function applyInvoicePayment(invoiceId: string, paidAt: Date): Prom
     const { notifyPaymentConfirmed } = await import("./dunning/payment");
     await notifyPaymentConfirmed({ tenantId: receipt.tenantId, subscriptionId: receipt.subscriptionId, invoiceId: receipt.invoiceId, now: new Date() });
   }
-  return outcome.voided ? { alreadyProcessed: outcome.alreadyProcessed, voided: true } : { alreadyProcessed: outcome.alreadyProcessed };
+  if (outcome.voided) return { alreadyProcessed: outcome.alreadyProcessed, voided: true };
+  return outcome.duplicate ? { alreadyProcessed: outcome.alreadyProcessed, duplicate: true } : { alreadyProcessed: outcome.alreadyProcessed };
 }
 
 type PaymentReceipt = {

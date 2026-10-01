@@ -143,6 +143,10 @@ model Tenant {
   billingEmail            String?
   billingWhatsappE164     String?
   billingWhatsappOptOutAt DateTime?
+  // Posse do número de cobrança confirmada: o assinante respondeu SIM ao número da plataforma. Nulo =
+  // não confirmado (qualquer um pode digitar o número de outra pessoa no cadastro): o WhatsApp sai no
+  // máximo 1 vez por dia e com o convite para responder SIM ou SAIR. Volta a nulo quando o número muda.
+  billingWhatsappConfirmedAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -905,6 +909,11 @@ model Subscription {
   // Gravado uma vez, em `applyInvoicePayment`; nunca volta a nulo.
   firstPaidAt DateTime?
 
+  // Suspensão feita À MÃO pelo admin (fraude, pedido do dono): não é atraso, então a régua não cobra e o
+  // status efetivo continua SUSPENDED mesmo que a data de vencimento "artificial" caísse na carência.
+  // Gravada em `suspendCompanyManually`; volta a nulo no pagamento e na reativação manual.
+  manualSuspendedAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -978,6 +987,12 @@ model Invoice {
   // do admin (que decide o estorno). Nulo na imensa maioria das faturas.
   paidWhileVoidAt DateTime?
 
+  // Qual pagamento do MP baixou esta fatura ("manual" = baixa manual do admin). Serve para reconhecer um SEGUNDO
+  // pagamento (Pix antigo/regerado pago depois que a fatura já estava PAID): `duplicatePaymentAt` marca o
+  // instante e acende o aviso no sino do admin, que decide o estorno (manual, decisão do dono).
+  paidByPaymentId    String?
+  duplicatePaymentAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -995,6 +1010,7 @@ model Invoice {
   // Webhook do Mercado Pago (§6.10): acha a fatura pelo id do pagamento antes de reconsultar a API.
   @@index([mpPaymentId])
   @@index([paidWhileVoidAt])
+  @@index([duplicatePaymentAt])
   @@map("invoices")
 }
 

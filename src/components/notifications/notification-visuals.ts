@@ -55,6 +55,7 @@ export const ADMIN_KIND_ICON: Record<AdminNotificationKind, LucideIcon> = {
   TENANT_CANCELED: Building2,
   TENANT_CANCEL_SCHEDULED: CalendarClock,
   PAYMENT_ON_VOID_INVOICE: ShieldAlert,
+  PAYMENT_DUPLICATE: ShieldAlert,
   TRIAL_ENDING: Hourglass,
   WHATSAPP_DISCONNECTED: WifiOff,
   MP_WEBHOOK_REJECTED: ShieldAlert,

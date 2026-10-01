@@ -325,8 +325,9 @@ describe("destinatários do e-mail (D4)", () => {
   it("com e-mail de cobrança: etapas comuns só para ele; etapas críticas também para o dono; sem repetir", async () => {
     const s = await scenario("d4", { billingEmail: "financeiro@salao-d4.com.br", billingWhatsappE164: null });
     await tick(D1_NOON);
-    expect(h.sentEmails.filter((m) => m.to === "financeiro@salao-d4.com.br")).toHaveLength(2);
-    expect(mails(s.email)).toHaveLength(0);
+    // O e-mail do financeiro não tem confirmação de posse: 1 mensagem por dia. O 2o aviso do dia vai ao dono (verificado).
+    expect(h.sentEmails.filter((m) => m.to === "financeiro@salao-d4.com.br")).toHaveLength(1);
+    expect(mails(s.email)).toHaveLength(1);
 
     await tick(at("2026-10-28T15:00:00Z")); // vence hoje: crítico
     expect(h.sentEmails.filter((m) => m.to === "financeiro@salao-d4.com.br" && m.subject.includes("vence hoje"))).toHaveLength(1);

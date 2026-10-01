@@ -1,6 +1,8 @@
+import { subHours } from "date-fns";
 import { getPrisma } from "@/lib/db/prisma";
 import { STEP_POLICY, type DunningStep } from "@/core/billing";
 import { findOwnerContact } from "../service";
+import { maskEmail } from "./outbox";
 
 /**
  * Para quem vai o e-mail da régua (decisão D4, docs/regua-de-cobranca.md §2.5): `Tenant.billingEmail`
@@ -13,6 +15,8 @@ export type NoticeRecipients = {
   ownerFirstName: string | null;
   whatsappE164: string | null;
   whatsappOptedOut: boolean;
+  /** O assinante respondeu SIM ao número da plataforma (`Tenant.billingWhatsappConfirmedAt`). */
+  whatsappConfirmed: boolean;
 };
 
 function clean(email: string | null | undefined): string | null {
@@ -20,13 +24,27 @@ function clean(email: string | null | undefined): string | null {
   return value ? value : null;
 }
 
-export async function resolveNoticeRecipients(tenantId: string, step: DunningStep): Promise<NoticeRecipients> {
+/** Contato de cobrança ainda NÃO confirmado recebe no máximo 1 mensagem por este intervalo. */
+const UNCONFIRMED_CONTACT_INTERVAL_HOURS = 24;
+
+export async function resolveNoticeRecipients(tenantId: string, step: DunningStep, now: Date = new Date()): Promise<NoticeRecipients> {
   const [tenant, owner] = await Promise.all([
-    getPrisma().tenant.findUnique({ where: { id: tenantId }, select: { billingEmail: true, billingWhatsappE164: true, billingWhatsappOptOutAt: true } }),
+    getPrisma().tenant.findUnique({
+      where: { id: tenantId },
+      select: { billingEmail: true, billingWhatsappE164: true, billingWhatsappOptOutAt: true, billingWhatsappConfirmedAt: true },
+    }),
     findOwnerContact(tenantId),
   ]);
-  const billing = clean(tenant?.billingEmail);
+  let billing = clean(tenant?.billingEmail);
   const ownerEmail = clean(owner?.email);
+  // O e-mail do financeiro é digitado por quem cadastrou e não tem confirmação de posse: sem ela, só 1 mensagem por
+  // dia (nunca vira canal de spam para um endereço de terceiro). Passando disso, o aviso vai ao OWNER, que é verificado.
+  if (billing && billing.toLowerCase() !== ownerEmail?.toLowerCase()) {
+    const recent = await getPrisma().billingNotice.count({
+      where: { tenantId, channel: "EMAIL", status: "SENT", sentAt: { gt: subHours(now, UNCONFIRMED_CONTACT_INTERVAL_HOURS) }, recipientMasked: { contains: maskEmail(billing) } },
+    });
+    if (recent > 0) billing = null;
+  }
   const policy = STEP_POLICY[step];
   const both = policy.critical || step === "PAYMENT_CONFIRMED";
   const wanted = billing ? (both ? [billing, ownerEmail] : [billing]) : [ownerEmail];
@@ -45,5 +63,6 @@ export async function resolveNoticeRecipients(tenantId: string, step: DunningSte
     ownerFirstName: owner?.firstName ?? null,
     whatsappE164: tenant?.billingWhatsappE164 ?? null,
     whatsappOptedOut: tenant?.billingWhatsappOptOutAt != null,
+    whatsappConfirmed: tenant?.billingWhatsappConfirmedAt != null,
   };
 }

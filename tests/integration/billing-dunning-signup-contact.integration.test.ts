@@ -161,7 +161,7 @@ describe("contato de cobrança: getBillingContactAction / updateBillingContactAc
     const w = await world("read");
     session.ctx = w.asStaff;
     const empty = await getBillingContactAction(w.slug);
-    expect(empty).toEqual({ ok: true, data: { billingEmail: null, billingWhatsappE164: null, billingWhatsappDisplay: null, optedOut: false, ownerEmail: w.email } });
+    expect(empty).toEqual({ ok: true, data: { billingEmail: null, billingWhatsappE164: null, billingWhatsappDisplay: null, optedOut: false, whatsappConfirmed: true, ownerEmail: w.email } });
 
     await prisma.tenant.update({ where: { id: w.tenant.id }, data: { billingEmail: "fin@x.com.br", billingWhatsappE164: "5584999998888" } });
     session.ctx = w.asOwner;
@@ -228,8 +228,8 @@ describe("contato de cobrança: getBillingContactAction / updateBillingContactAc
     const sub = await h.makePayingSubscription(fixtures, w.tenant.id, "e2e", { currentPeriodEnd: periodEnd });
     await h.makeOpenInvoice(sub.id, { periodStart: periodEnd, dueAt: periodEnd, createdAt: at("2026-10-23T13:00:00Z") });
     await runBillingTick(at("2026-10-27T15:00:00Z"), gateway, { dispatch: h.tickDispatch });
-    expect(h.sentEmails.filter((m) => m.to === "financeiro@salao-e2e.com.br")).toHaveLength(2);
-    expect(mails(w.email)).toHaveLength(0);
+    expect(h.sentEmails.filter((m) => m.to === "financeiro@salao-e2e.com.br")).toHaveLength(1); // 1 por dia (sem confirmação de posse)
+    expect(mails(w.email)).toHaveLength(1); // o 2o aviso do dia cai no dono
     expect(h.whatsapp.calls).toBe(0);
     expect((await h.noticesOf(sub.id)).filter((r) => r.channel === "WHATSAPP").every((r) => r.skippedReason === "OPTED_OUT")).toBe(true);
   });

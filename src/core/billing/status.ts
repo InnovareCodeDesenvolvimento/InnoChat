@@ -116,6 +116,12 @@ export function effectiveStatus(subscription: SubscriptionSnapshot, now: Date): 
     return "CANCELED";
   }
 
+  // Suspensão manual do admin nunca vira PAST_DUE pela carência (ex.: suspensão antiga, gravada com 1 dia de
+  // folga, que a carência de 3 dias "reabriria"): fica SUSPENDED até o cancelamento automático.
+  if (subscription.manualSuspendedAt) {
+    return now < cancelsAt ? "SUSPENDED" : "CANCELED";
+  }
+
   if (now < graceEndsAt) {
     return "PAST_DUE";
   }

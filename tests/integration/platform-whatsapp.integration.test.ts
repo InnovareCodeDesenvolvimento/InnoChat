@@ -670,3 +670,63 @@ describe("sino e Saúde", () => {
     expect(healthOff.platformWhatsapp.state).toBe("DISABLED");
   });
 });
+
+describe("revisão do Órion: confirmação de posse, hash no autoreply, retenção e orçamento da manutenção", () => {
+  const msg = (jid: string, text: string) => ({
+    event: "messages.upsert",
+    data: { key: { remoteJid: jid, fromMe: false, id: `m-${randomUUID()}` }, pushName: "Assinante", message: { conversation: text }, messageTimestamp: Math.floor(Date.now() / 1000) },
+  });
+
+  it("\"SIM\" do dono do número grava billingWhatsappConfirmedAt e responde o agradecimento; outro número não confirma ninguém", async () => {
+    const a = await connectNumber("Cobrança", PHONE_A);
+    const { tenant } = await makeTenant({ billingWhatsappE164: SUBSCRIBER });
+    const token = tokenOf(a.instanceName);
+    expect((await prisma.tenant.findUniqueOrThrow({ where: { id: tenant.id } })).billingWhatsappConfirmedAt).toBeNull();
+
+    await handlePlatformWhatsappWebhook(token, msg("5584991110077@s.whatsapp.net", "Sim")); // não é o número da empresa
+    expect((await prisma.tenant.findUniqueOrThrow({ where: { id: tenant.id } })).billingWhatsappConfirmedAt).toBeNull();
+
+    await handlePlatformWhatsappWebhook(token, msg(`${SUBSCRIBER}@s.whatsapp.net`, "  sim! "));
+    expect((await prisma.tenant.findUniqueOrThrow({ where: { id: tenant.id } })).billingWhatsappConfirmedAt).not.toBeNull();
+    expect(sent.at(-1)!.text).toContain("número confirmado");
+  });
+
+  it("a chave do autoreply guarda o HASH do número (nunca o telefone em claro) e a trava de 24 h continua valendo", async () => {
+    const a = await connectNumber("Cobrança", PHONE_A);
+    await makeTenant({ billingWhatsappE164: SUBSCRIBER });
+    const token = tokenOf(a.instanceName);
+    await handlePlatformWhatsappWebhook(token, msg(`${SUBSCRIBER}@s.whatsapp.net`, "oi"));
+    await handlePlatformWhatsappWebhook(token, msg(`${SUBSCRIBER}@s.whatsapp.net`, "oi de novo"));
+    expect(sent).toHaveLength(1); // a segunda não gerou outra resposta automática
+    const rows = await prisma.providerEvent.findMany({ where: { provider: "platform-whatsapp-autoreply" } });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.providerEventId).not.toContain(SUBSCRIBER);
+    expect(rows[0]!.providerEventId).toMatch(/^[0-9a-f]{32}:/);
+  });
+
+  it("a manutenção expurga respostas e autorrespostas com mais de 45 dias e preserva as recentes e os outros provedores", async () => {
+    const old = new Date(Date.now() - 46 * 86_400_000);
+    const recent = new Date(Date.now() - 10 * 86_400_000);
+    const mk = (provider: string, id: string, createdAt: Date) => prisma.providerEvent.create({ data: { provider, providerEventId: id, payload: {}, processedAt: createdAt, createdAt } });
+    await mk("platform-whatsapp-reply", `old-r-${randomUUID()}`, old);
+    await mk("platform-whatsapp-autoreply", `old-a-${randomUUID()}`, old);
+    const keepRecent = await mk("platform-whatsapp-reply", `new-r-${randomUUID()}`, recent);
+    const keepOther = await mk("platform-whatsapp-cleanup", `old-c-${randomUUID()}`, old);
+
+    const summary = await connections.runPlatformWhatsappMaintenance({ evolution: fakeEvolution });
+    expect(summary.purgedEvents).toBe(2);
+    expect(await prisma.providerEvent.findUnique({ where: { id: keepRecent.id } })).not.toBeNull();
+    expect(await prisma.providerEvent.findUnique({ where: { id: keepOther.id } })).not.toBeNull();
+  });
+
+  it("orçamento de tempo esgotado: a manutenção não chama a Evolution e deixa a limpeza para a próxima rodada", async () => {
+    await prisma.providerEvent.create({ data: { provider: connections.CLEANUP_PROVIDER, providerEventId: `it-cleanup-${randomUUID()}`, payload: { instanceName: "it-pwa-inexistente" } } });
+    const stateCalls = vi.mocked(fakeEvolution.connectionState).mock.calls.length;
+    const logoutCalls = vi.mocked(fakeEvolution.logout).mock.calls.length;
+    const summary = await connections.runPlatformWhatsappMaintenance({ evolution: fakeEvolution, budgetMs: -1 });
+    expect(summary.cleanupsPending).toBeGreaterThanOrEqual(1);
+    expect(summary.stateChecked).toBe(false);
+    expect(vi.mocked(fakeEvolution.connectionState).mock.calls.length).toBe(stateCalls);
+    expect(vi.mocked(fakeEvolution.logout).mock.calls.length).toBe(logoutCalls);
+  });
+});

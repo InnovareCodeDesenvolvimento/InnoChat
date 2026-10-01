@@ -111,6 +111,8 @@ export type TenantOpts = {
   billingEmail?: string | null;
   billingWhatsappE164?: string | null;
   optOut?: boolean;
+  /** Número de cobrança SEM o "SIM" de posse (padrão: confirmado, para os testes da régua não esbarrarem no limite de 1 por dia). */
+  unconfirmedPhone?: boolean;
   ownerName?: string | null;
   document?: string | null;
 };
@@ -126,6 +128,7 @@ export async function makeTenant(f: Fixtures, label: string, opts: TenantOpts = 
       billingEmail: opts.billingEmail ?? null,
       billingWhatsappE164: opts.billingWhatsappE164 === undefined ? "5584999990001" : opts.billingWhatsappE164,
       billingWhatsappOptOutAt: opts.optOut ? new Date("2026-01-01T00:00:00Z") : null,
+      billingWhatsappConfirmedAt: opts.unconfirmedPhone ? null : new Date("2026-01-01T00:00:00Z"),
       document: opts.document === undefined ? null : opts.document,
     },
   });

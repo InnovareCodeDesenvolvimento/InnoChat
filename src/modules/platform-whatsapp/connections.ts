@@ -17,6 +17,9 @@ import {
   LABEL_MAX,
   maskPhone,
   phoneDigitVariants,
+  PLATFORM_AUTOREPLY_PROVIDER,
+  PLATFORM_REPLY_PROVIDER,
+  PLATFORM_REPLY_RETENTION_DAYS,
   QR_ABANDON_MS,
   roundCapFor,
   WARMUP_MS,
@@ -41,9 +44,14 @@ import { invalidatePlatformSenderCache } from "./sender-guard";
 export const CLEANUP_PROVIDER = "platform-whatsapp-cleanup";
 export const ENABLED_MARKER_PROVIDER = "platform-whatsapp-enabled";
 const CLEANUP_BATCH = 20;
+/** A manutenção roda ANTES da régua no mesmo pedido do tick: não pode comer o tempo dela se a Evolution travar. */
+const MAINTENANCE_BUDGET_MS = 90_000;
+const STATE_CHECK_TIMEOUT_MS = 15_000;
+const PURGE_BATCH = 500;
+const PURGE_MAX_BATCHES = 10;
 const HISTORY_LIMIT = 20;
 
-export type PlatformWhatsappDeps = { evolution?: EvolutionClient; now?: Date };
+export type PlatformWhatsappDeps = { evolution?: EvolutionClient; now?: Date; /** Orçamento de tempo da manutenção (padrão 90 s). */ budgetMs?: number };
 
 export type PlatformWhatsappState = {
   enabled: boolean;
@@ -557,7 +565,38 @@ export type PlatformWhatsappMaintenanceSummary = {
   cleanupsPending: number;
   stateChecked: boolean;
   stateChanged: boolean;
+  /** Respostas/autorrespostas de assinantes apagadas pela retenção. */
+  purgedEvents: number;
 };
+
+/** Apaga `platform-whatsapp-reply`/`-autoreply` mais velhos que a retenção (dado pessoal; em lotes). */
+export async function purgeExpiredReplyEvents(now: Date): Promise<number> {
+  const prisma = getPrisma();
+  const cutoff = new Date(now.getTime() - PLATFORM_REPLY_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+  let purged = 0;
+  for (let i = 0; i < PURGE_MAX_BATCHES; i += 1) {
+    const batch = await prisma.providerEvent.findMany({
+      where: { provider: { in: [PLATFORM_REPLY_PROVIDER, PLATFORM_AUTOREPLY_PROVIDER] }, createdAt: { lt: cutoff } },
+      select: { id: true },
+      take: PURGE_BATCH,
+    });
+    if (batch.length === 0) break;
+    const res = await prisma.providerEvent.deleteMany({ where: { id: { in: batch.map((b) => b.id) } } });
+    purged += res.count;
+    if (batch.length < PURGE_BATCH) break;
+  }
+  return purged;
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error("TIMEOUT")), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
 
 /**
  * Roda a cada rodada do tick: (1) encerra QR abandonado; (2) repete logout/exclusão de instâncias
@@ -566,8 +605,18 @@ export type PlatformWhatsappMaintenanceSummary = {
  */
 export async function runPlatformWhatsappMaintenance(deps?: PlatformWhatsappDeps): Promise<PlatformWhatsappMaintenanceSummary> {
   const now = deps?.now ?? new Date();
-  const summary: PlatformWhatsappMaintenanceSummary = { abandonedQr: 0, cleanupsDone: 0, cleanupsPending: 0, stateChecked: false, stateChanged: false };
+  const summary: PlatformWhatsappMaintenanceSummary = { abandonedQr: 0, cleanupsDone: 0, cleanupsPending: 0, stateChecked: false, stateChanged: false, purgedEvents: 0 };
   const prisma = getPrisma();
+  const startedAtMs = Date.now();
+  const budgetMs = deps?.budgetMs ?? MAINTENANCE_BUDGET_MS;
+  const isOver = () => Date.now() - startedAtMs > budgetMs;
+
+  // Retenção primeiro: só banco, rápida, e isolada (falha aqui não impede o resto da manutenção).
+  try {
+    summary.purgedEvents = await purgeExpiredReplyEvents(now);
+  } catch (error) {
+    logger.warn("platform_whatsapp.reply_purge_failed", { errorMessage: errMsg(error) });
+  }
 
   try {
     summary.abandonedQr = await expireAbandonedPending(now);
@@ -578,6 +627,10 @@ export async function runPlatformWhatsappMaintenance(deps?: PlatformWhatsappDeps
       select: { id: true, payload: true },
     });
     for (const marker of pendingMarkers) {
+      if (isOver()) {
+        summary.cleanupsPending += 1; // o resto fica para a próxima rodada
+        continue;
+      }
       const instanceName = (marker.payload as { instanceName?: unknown } | null)?.instanceName;
       if (typeof instanceName !== "string") {
         await prisma.providerEvent.update({ where: { id: marker.id }, data: { processedAt: now } });
@@ -588,10 +641,10 @@ export async function runPlatformWhatsappMaintenance(deps?: PlatformWhatsappDeps
     }
 
     const active = await prisma.platformWhatsappConnection.findFirst({ where: { role: "ACTIVE" } });
-    if (active) {
+    if (active && !isOver()) {
       const evolution = await resolveEvolution(deps).catch(() => null);
       if (evolution) {
-        const mapped = mapEvolutionState(await evolution.connectionState(active.instanceName));
+        const mapped = mapEvolutionState(await withTimeout(evolution.connectionState(active.instanceName), STATE_CHECK_TIMEOUT_MS));
         summary.stateChecked = true;
         if (mapped === "DISCONNECTED" && active.status === "CONNECTED") {
           summary.stateChanged = await markActiveDisconnected(active.id, now);

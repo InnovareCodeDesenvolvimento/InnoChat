@@ -19,6 +19,15 @@ export const ROUND_WINDOW_MS = 60 * 60 * 1000;
 export const AUTOREPLY_INTERVAL_MS = 24 * 60 * 60 * 1000;
 export const LABEL_MAX = 40;
 
+/** `ProviderEvent.provider` das respostas de assinantes (sino) e da resposta automática (trava de 24 h). */
+export const PLATFORM_REPLY_PROVIDER = "platform-whatsapp-reply";
+export const PLATFORM_AUTOREPLY_PROVIDER = "platform-whatsapp-autoreply";
+/**
+ * Retenção desses registros (guardam um trecho da mensagem do assinante e o número mascarado, dado pessoal). O sino
+ * só olha 30 dias; 45 dá folga e nada mais é necessário depois disso.
+ */
+export const PLATFORM_REPLY_RETENTION_DAYS = 45;
+
 export const NEW_NUMBER_NOTICE =
   "Este é o novo número de avisos do InnoChat. O anterior não envia mais mensagens.";
 
@@ -113,6 +122,28 @@ export function isOptOutText(text: string): boolean {
     .split(/\s+/)
     .join(" ");
   return normalized === "sair" || normalized === "parar" || normalized === "stop" || normalized === "cancelar avisos";
+}
+
+/** "SIM" (com pontuação/caixa/acento soltos) confirmando que o número é da empresa. */
+export function isConfirmText(text: string): boolean {
+  const normalized = text
+    .slice(0, 200)
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z\s]/g, " ")
+    .trim()
+    .split(/\s+/)
+    .join(" ");
+  return normalized === "sim" || normalized === "s" || normalized === "confirmo" || normalized === "confirmar";
+}
+
+export const CONFIRM_REPLY =
+  "Obrigado, número confirmado! Os avisos de cobrança do InnoChat vão continuar chegando por aqui. Para parar de recebê-los neste WhatsApp, responda SAIR.";
+
+/** Hash (não reversível) do número, para chaves de deduplicação sem guardar o telefone em claro. */
+export function hashPhoneForDedup(digits: string): string {
+  return createHash("sha256").update(`wa-dedup:${digitsOnly(digits)}`).digest("hex").slice(0, 32);
 }
 
 export function withNewNumberNotice(text: string): string {

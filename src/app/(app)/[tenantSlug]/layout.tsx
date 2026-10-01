@@ -66,7 +66,7 @@ export default async function TenantLayout({
   const [subscription, openInvoice, lastPaidInvoice] = await Promise.all([
     getPrisma().subscription.findUnique({
       where: { tenantId },
-      select: { status: true, trialEndsAt: true, currentPeriodEnd: true, cancelAtPeriodEnd: true, firstPaidAt: true },
+      select: { status: true, trialEndsAt: true, currentPeriodEnd: true, cancelAtPeriodEnd: true, firstPaidAt: true, manualSuspendedAt: true },
     }),
     getPrisma().invoice.findFirst({
       where: { status: "OPEN", subscription: { tenantId } },

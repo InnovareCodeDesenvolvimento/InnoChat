@@ -21,6 +21,7 @@ export type SkipReason =
   | "PERMANENT_REJECTION"
   | "BLOCKED_LOOP"
   | "MANUAL_SUSPENSION"
+  | "UNCONFIRMED_DAILY_LIMIT"
   | "LEGACY_SENT";
 
 /** "jo***@gmail.com": o suporte confere "foi para o endereço certo?" sem expor o dado. */
@@ -74,6 +75,18 @@ export async function expireStaleNotices(now: Date): Promise<number> {
   return result.count;
 }
 
+/**
+ * `SENDING` preso (o processo morreu no envio) que já gastou todas as tentativas: o claim não o pega mais, e sem isto ele
+ * ficaria `SENDING` para sempre, invisível. Vira `FAILED` terminal (`attempts >= maxAttempts` não é reivindicável).
+ */
+export async function failExhaustedStuckNotices(stuckBefore: Date, maxAttempts: number): Promise<number> {
+  const result = await getPrisma().billingNotice.updateMany({
+    where: { status: "SENDING", updatedAt: { lt: stuckBefore }, attempts: { gte: maxAttempts } },
+    data: { status: "FAILED", lastErrorCode: "STUCK_MAX_ATTEMPTS" },
+  });
+  return result.count;
+}
+
 export async function markNoticeSent(
   id: string,
   now: Date,
@@ -109,8 +122,16 @@ export async function markNoticeSentSafely(...args: Parameters<typeof markNotice
   }
   try {
     await markNoticeSent(id, now, { recipientMasked: data.recipientMasked, providerMessageId: data.providerMessageId });
+    return;
   } catch (error) {
     logger.error("billing.notice.mark_sent_retry_failed", { noticeId: id, errorName: error instanceof Error ? error.name : "unknown" });
+  }
+  // 3a tentativa, a mais enxuta possivel: so o status e o instante (sem nenhum campo extra que possa recusar a
+  // gravacao). Se nem isso gravar, o aviso fica SENDING e o claim o recupera no maximo `NOTICE_MAX_ATTEMPTS` vezes.
+  try {
+    await getPrisma().billingNotice.updateMany({ where: { id, status: "SENDING" }, data: { status: "SENT", sentAt: now } });
+  } catch (error) {
+    logger.error("billing.notice.mark_sent_minimal_failed", { noticeId: id, errorName: error instanceof Error ? error.name : "unknown" });
   }
 }
 

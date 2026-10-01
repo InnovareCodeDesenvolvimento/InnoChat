@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   buildPlatformInstanceName,
   formatPhoneDisplay,
+  hashPhoneForDedup,
   hashWebhookToken,
+  isConfirmText,
   isOptOutText,
   isQrAbandoned,
   maskPhone,
@@ -65,5 +67,20 @@ describe("autoreplyText", () => {
     expect(autoreplyText("(84) 3113-2584")).toContain("Para falar com a gente, chame no (84) 3113-2584.");
     expect(autoreplyText(null)).toContain("pelo painel");
     expect(autoreplyText("(84) 3113-2584")).toContain("responda SAIR");
+  });
+});
+
+describe("isConfirmText e hashPhoneForDedup", () => {
+  it("reconhece o SIM com caixa, acento e pontuação soltos, e nada além disso", () => {
+    for (const text of ["sim", " SIM! ", "Sim.", "s", "confirmo", "Confirmar"]) expect(isConfirmText(text)).toBe(true);
+    for (const text of ["", "simm", "sim, mas quero cancelar", "não", "sair"]) expect(isConfirmText(text)).toBe(false);
+  });
+
+  it("o hash do número é estável, sem o telefone em claro e igual para o mesmo número com máscara", () => {
+    const a = hashPhoneForDedup("558499998888");
+    expect(a).toBe(hashPhoneForDedup("+55 (84) 9999-8888"));
+    expect(a).toMatch(/^[0-9a-f]{32}$/);
+    expect(a).not.toContain("558499998888");
+    expect(hashPhoneForDedup("558499998889")).not.toBe(a);
   });
 });

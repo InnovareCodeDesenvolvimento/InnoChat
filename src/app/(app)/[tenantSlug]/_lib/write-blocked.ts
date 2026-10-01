@@ -11,10 +11,20 @@ import { effectiveStatus } from "@/core/billing";
 export async function isTenantWriteBlocked(tenantId: string): Promise<boolean> {
   const subscription = await getPrisma().subscription.findUnique({
     where: { tenantId },
-    select: { status: true, trialEndsAt: true, currentPeriodEnd: true, cancelAtPeriodEnd: true },
+    select: {
+      status: true,
+      trialEndsAt: true,
+      currentPeriodEnd: true,
+      cancelAtPeriodEnd: true,
+      // Sem estes dois o status efetivo errava: `firstPaidAt` ausente = "pagante" (carência de 3 dias mesmo para teste)
+      // e sem fuso o vencimento caía no padrão. `manualSuspendedAt` mantém a suspensão manual SUSPENDED.
+      firstPaidAt: true,
+      manualSuspendedAt: true,
+      tenant: { select: { timezone: true } },
+    },
   });
   if (!subscription) return false;
-  const status = effectiveStatus(subscription, new Date());
+  const status = effectiveStatus({ ...subscription, timezone: subscription.tenant.timezone }, new Date());
   return status === "SUSPENDED" || status === "CANCELED";
 }
 

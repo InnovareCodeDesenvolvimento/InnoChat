@@ -123,7 +123,9 @@ export async function suspendCompanyManually(tenantId: string, adminId?: string)
   });
   await prisma.subscription.update({
     where: { tenantId },
-    data: { status: "SUSPENDED", currentPeriodEnd: pastDueAt, trialEndsAt: null },
+    // `manualSuspendedAt` é o marcador ROBUSTO da suspensão manual (status efetivo e régua o respeitam); o evento
+    // MANUAL_SUSPEND continua como histórico/auditoria.
+    data: { status: "SUSPENDED", currentPeriodEnd: pastDueAt, trialEndsAt: null, manualSuspendedAt: now },
   });
 }
 
@@ -137,7 +139,7 @@ export async function reactivateCompanyManually(tenantId: string, adminId?: stri
   await prisma.$transaction([
     prisma.subscription.update({
       where: { tenantId },
-      data: { status: "ACTIVE", currentPeriodEnd: addMonths(now, 1), trialEndsAt: null, canceledAt: null },
+      data: { status: "ACTIVE", currentPeriodEnd: addMonths(now, 1), trialEndsAt: null, canceledAt: null, manualSuspendedAt: null },
     }),
     // Reativação manual = o admin liberou sem cobrar: a fatura do teste (ainda OPEN, se a conta
     // estava só suspensa) é anulada — senão ficaria em "Em teste" para sempre e travaria a

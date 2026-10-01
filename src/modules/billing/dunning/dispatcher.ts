@@ -1,4 +1,4 @@
-import { addMinutes, subMinutes } from "date-fns";
+import { addMinutes, subHours, subMinutes } from "date-fns";
 import { claimDueBillingNotices, type ClaimedBillingNotice } from "@/lib/db/billing-notice-queries";
 import { getPrisma } from "@/lib/db/prisma";
 import { describeDbError } from "@/lib/db/prisma-errors";
@@ -23,6 +23,7 @@ import { regeneratePixForInvoice, sendBillingMail } from "../service";
 import { buildNoticeCopyContext } from "./context";
 import {
   expireStaleNotices,
+  failExhaustedStuckNotices,
   markNoticeFailed,
   markNoticeSentSafely,
   markNoticeSkipped,
@@ -77,6 +78,9 @@ const EMAIL_BATCH_LIMIT = 200;
 const WHATSAPP_BATCH_LIMIT = 30;
 const WHATSAPP_PAIR_DELAY_MS = 1500;
 const WHATSAPP_RETRY_WAIT_MINUTES = 30;
+/** Número não confirmado: no máximo 1 mensagem neste intervalo (horas). */
+const UNCONFIRMED_INTERVAL_HOURS = 24;
+const CONFIRM_OWNERSHIP_FOOTER = "Este número é mesmo da empresa? Responda SIM para confirmar. Se não for, responda SAIR.";
 
 type Outcome = "SENT" | "SKIPPED" | "FAILED" | "DEFERRED";
 
@@ -96,7 +100,10 @@ export async function dispatchDueNotices(now: Date, options: DispatchOptions = {
   const deps = options.deps ?? {};
   const stuckBefore = subMinutes(now, SENDING_STUCK_MINUTES);
 
-  if (!options.onlyIds) summary.expired = await expireStaleNotices(now);
+  if (!options.onlyIds) {
+    summary.expired = await expireStaleNotices(now);
+    await failExhaustedStuckNotices(stuckBefore, NOTICE_MAX_ATTEMPTS);
+  }
 
   // E-mail primeiro (canal base), depois WhatsApp (ritmo lento de propósito).
   const emailBatch = await claimDueBillingNotices({ now, limit: EMAIL_BATCH_LIMIT, stuckBefore, maxAttempts: NOTICE_MAX_ATTEMPTS, onlyIds: options.onlyIds, channel: "EMAIL" });
@@ -201,7 +208,7 @@ async function processNotice(notice: ClaimedBillingNotice, now: Date, summary: D
   }
 
   // 2. Destinatário e preferência.
-  const recipients = await resolveNoticeRecipients(subject.tenantId, step);
+  const recipients = await resolveNoticeRecipients(subject.tenantId, step, now);
   if (channel === "EMAIL" && recipients.emails.length === 0) {
     await markNoticeSkipped(notice.id, "NO_RECIPIENT");
     return skip(summary);
@@ -214,6 +221,26 @@ async function processNotice(notice: ClaimedBillingNotice, now: Date, summary: D
     if (!recipients.whatsappE164) {
       await markNoticeSkipped(notice.id, "NO_RECIPIENT");
       return skip(summary);
+    }
+    // Número que ninguém confirmou (qualquer um digita o número de outra pessoa no cadastro): no máximo 1 mensagem
+    // por dia, e cada uma convida a responder SIM (confirma) ou SAIR (desliga). Só espera; o prazo do aviso manda.
+    if (!recipients.whatsappConfirmed) {
+      const last = await getPrisma().billingNotice.findFirst({
+        // `gt`: exatamente 24 h depois já pode (o adiamento marca justamente sentAt + 24 h; com `gte` esperaria para sempre).
+        where: { tenantId: subject.tenantId, channel: "WHATSAPP", status: "SENT", sentAt: { gt: subHours(now, UNCONFIRMED_INTERVAL_HOURS) } },
+        orderBy: { sentAt: "desc" },
+        select: { sentAt: true },
+      });
+      if (last?.sentAt) {
+        const retryAt = addMinutes(last.sentAt, UNCONFIRMED_INTERVAL_HOURS * 60);
+        if (retryAt.getTime() >= notice.expiresAt.getTime()) {
+          await markNoticeSkipped(notice.id, "UNCONFIRMED_DAILY_LIMIT");
+          return skip(summary);
+        }
+        await releaseNotice(notice.id, retryAt);
+        summary.deferred += 1;
+        return "DEFERRED";
+      }
     }
   }
 
@@ -237,7 +264,7 @@ async function processNotice(notice: ClaimedBillingNotice, now: Date, summary: D
   }
 
   if (channel === "EMAIL") return sendEmail(notice, step, copy, recipients.emails, now, summary);
-  return sendWhatsapp(notice, step, subject, copy, recipients.whatsappE164 as string, now, summary, deps);
+  return sendWhatsapp(notice, step, subject, copy, recipients.whatsappE164 as string, now, summary, deps, recipients.whatsappConfirmed);
 }
 
 /**
@@ -303,8 +330,12 @@ async function sendWhatsapp(
   now: Date,
   summary: DispatchSummary,
   deps: DispatchDeps,
+  confirmed: boolean,
 ): Promise<Outcome> {
   const messages = buildWhatsappMessages(step, copy.data);
+  if (!confirmed && messages.length > 0) messages[0] = `${messages[0]}
+
+${CONFIRM_OWNERSHIP_FOOTER}`;
   if (messages.length === 0) {
     await markNoticeSkipped(notice.id, "STATUS_CHANGED");
     return skip(summary);

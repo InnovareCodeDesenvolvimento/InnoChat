@@ -21,6 +21,8 @@ export type BillingContactView = {
   /** Para exibir: "(84) 99999-8888". */
   billingWhatsappDisplay: string | null;
   optedOut: boolean;
+  /** O assinante respondeu SIM ao número da plataforma (posse do número confirmada). */
+  whatsappConfirmed: boolean;
   /** E-mail do OWNER mais antigo (para quem não preencheu e-mail de cobrança saber para onde vai). */
   ownerEmail: string | null;
 };
@@ -30,7 +32,7 @@ const EMAIL_MAX_LENGTH = 255;
 
 export async function getBillingContact(tenantId: string): Promise<BillingContactView> {
   const [tenant, ownerEmail] = await Promise.all([
-    getPrisma().tenant.findUnique({ where: { id: tenantId }, select: { billingEmail: true, billingWhatsappE164: true, billingWhatsappOptOutAt: true } }),
+    getPrisma().tenant.findUnique({ where: { id: tenantId }, select: { billingEmail: true, billingWhatsappE164: true, billingWhatsappOptOutAt: true, billingWhatsappConfirmedAt: true } }),
     findOwnerEmail(tenantId),
   ]);
   if (!tenant) throw new DomainError("NOT_FOUND", "Empresa não encontrada.");
@@ -39,6 +41,7 @@ export async function getBillingContact(tenantId: string): Promise<BillingContac
     billingWhatsappE164: tenant.billingWhatsappE164,
     billingWhatsappDisplay: tenant.billingWhatsappE164 ? formatBrPhoneDisplay(tenant.billingWhatsappE164) : null,
     optedOut: tenant.billingWhatsappOptOutAt !== null,
+    whatsappConfirmed: tenant.billingWhatsappConfirmedAt !== null,
     ownerEmail,
   };
 }
@@ -53,7 +56,12 @@ export type BillingContactUpdate = {
 };
 
 export async function updateBillingContact(tenantId: string, input: BillingContactUpdate, now: Date = new Date()): Promise<BillingContactView> {
-  const data: { billingEmail?: string | null; billingWhatsappE164?: string | null; billingWhatsappOptOutAt?: Date | null } = {};
+  const data: {
+    billingEmail?: string | null;
+    billingWhatsappE164?: string | null;
+    billingWhatsappOptOutAt?: Date | null;
+    billingWhatsappConfirmedAt?: Date | null;
+  } = {};
 
   if (input.billingEmail !== undefined) {
     const trimmed = input.billingEmail?.trim() ?? "";
@@ -76,6 +84,10 @@ export async function updateBillingContact(tenantId: string, input: BillingConta
       if (!e164) throw new DomainError("INVALID_PHONE", "Informe o WhatsApp com DDD, por exemplo (84) 99999-8888.");
       data.billingWhatsappE164 = e164;
     }
+    // Número novo = posse a confirmar de novo (o "SIM" valia para o número anterior). Mesmo número = mantém.
+    const currentPhone = await getPrisma().tenant.findUnique({ where: { id: tenantId }, select: { billingWhatsappE164: true } });
+    if (!currentPhone) throw new DomainError("NOT_FOUND", "Empresa não encontrada.");
+    if (currentPhone.billingWhatsappE164 !== (data.billingWhatsappE164 ?? null)) data.billingWhatsappConfirmedAt = null;
   }
 
   if (input.optOut !== undefined) {

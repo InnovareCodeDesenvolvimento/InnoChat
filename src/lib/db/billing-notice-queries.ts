@@ -46,7 +46,10 @@ export async function claimDueBillingNotices(args: {
 
   return getPrisma().$queryRaw<ClaimedBillingNotice[]>(Prisma.sql`
     UPDATE "billing_notices" AS n
-       SET "status" = 'SENDING', "updatedAt" = ${now}::timestamp
+       SET "status" = 'SENDING', "updatedAt" = ${now}::timestamp,
+           -- Recuperar um SENDING preso conta como tentativa (o envio pode ter saido antes de o processo morrer):
+           -- sem isso um aviso preso era reenviado para sempre, a cada recuperacao.
+           "attempts" = CASE WHEN n."status" = 'SENDING' THEN n."attempts" + 1 ELSE n."attempts" END
       FROM (
         SELECT "id" FROM "billing_notices"
          WHERE (
@@ -55,7 +58,7 @@ export async function claimDueBillingNotices(args: {
                   AND "notBefore" <= ${now}::timestamp
                   AND "expiresAt" > ${now}::timestamp
                   AND "attempts" < ${args.maxAttempts})
-             OR ("status" = 'SENDING' AND "updatedAt" < ${stuckBefore}::timestamp)
+             OR ("status" = 'SENDING' AND "updatedAt" < ${stuckBefore}::timestamp AND "attempts" < ${args.maxAttempts})
                )
            ${only}
            ${channel}

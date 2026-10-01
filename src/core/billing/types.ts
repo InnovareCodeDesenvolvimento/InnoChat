@@ -22,4 +22,10 @@ export type SubscriptionSnapshot = {
    * Ausente = `America/Sao_Paulo`, o único fuso suportado na v1.
    */
   timezone?: string | null;
+  /**
+   * O admin suspendeu à mão (`Subscription.manualSuspendedAt`). Não é atraso: enquanto preenchida, o status
+   * efetivo é `SUSPENDED` (até o cancelamento automático) e nunca `PAST_DUE`/`ACTIVE`, mesmo que o vencimento
+   * gravado caia na carência. Ausente/nula = suspensão (se houver) é por atraso.
+   */
+  manualSuspendedAt?: Date | null;
 };

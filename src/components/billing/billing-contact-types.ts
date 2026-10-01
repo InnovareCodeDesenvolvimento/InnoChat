@@ -19,6 +19,8 @@ export type BillingContactData = {
   /** Só dígitos com DDI (`Tenant.billingWhatsappE164`), ou null. */
   billingWhatsappE164: string | null;
   optedOut: boolean;
+  /** O assinante respondeu SIM ao número da plataforma (posse confirmada). `false` = "aguardando confirmação". */
+  whatsappConfirmed?: boolean;
   ownerEmail: string | null;
 };
 

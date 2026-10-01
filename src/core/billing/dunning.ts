@@ -138,6 +138,8 @@ export function buildSteps(input: DunningInput, now: Date): DueStep[] {
   // Cancelamento agendado pelo dono: ele sabe que vai embora, nenhuma cobrança.
   if (sub.cancelAtPeriodEnd) return b.steps;
 
+  // Suspensão manual do admin não é atraso: nunca vira PAST_DUE pela carência e nenhuma etapa de cobrança sai.
+  if (input.manualSuspension) return b.steps;
   const status = effectiveStatus({ ...sub, timezone: tz }, now);
   const boundaries = subscriptionBoundaries({ ...sub, timezone: tz });
   const neverPaid = sub.firstPaidAt === null;

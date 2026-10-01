@@ -8,11 +8,16 @@ import { parseConnectionEvent } from "@/core/whatsapp/connection-event";
 import {
   AUTOREPLY_INTERVAL_MS,
   autoreplyText,
+  CONFIRM_REPLY,
   digitsOnly,
+  hashPhoneForDedup,
   hashWebhookToken,
+  isConfirmText,
   isOptOutText,
   maskPhone,
   OPT_OUT_CONFIRMATION,
+  PLATFORM_AUTOREPLY_PROVIDER,
+  PLATFORM_REPLY_PROVIDER,
   phoneDigitVariants,
 } from "@/core/platform-whatsapp/rules";
 import { getEvolutionClient, type EvolutionClient } from "@/modules/whatsapp/evolution-client";
@@ -26,8 +31,8 @@ import { isPlatformSender } from "./sender-guard";
  * Qualquer outro evento, reconhecido ou não, devolve 200: nunca 5xx para payload estranho.
  */
 
-export const REPLY_PROVIDER = "platform-whatsapp-reply";
-const AUTOREPLY_PROVIDER = "platform-whatsapp-autoreply";
+export const REPLY_PROVIDER = PLATFORM_REPLY_PROVIDER;
+const AUTOREPLY_PROVIDER = PLATFORM_AUTOREPLY_PROVIDER;
 const PREVIEW_MAX = 200;
 
 export type PlatformWebhookOutcome = { status: 200 | 401 | 410; body: Record<string, unknown> };
@@ -102,6 +107,7 @@ async function handleInboundMessage(connectionId: string, payload: Record<string
   const variants = phoneDigitVariants(senderDigits);
   const text = normalized.content.type === "text" ? normalized.content.text : normalized.content.label;
   const optOut = normalized.content.type === "text" && isOptOutText(text);
+  const confirm = !optOut && normalized.content.type === "text" && isConfirmText(text);
 
   const tenant = await prisma.tenant.findFirst({
     where: { billingWhatsappE164: { in: variants } },
@@ -144,8 +150,19 @@ async function handleInboundMessage(connectionId: string, payload: Record<string
     logger.info("platform_whatsapp.opt_out", { tenantId: tenant.id, tenantsUpdated: res.count });
   }
 
+  // "SIM" do dono do número: confirma a posse (o WhatsApp deixa de ser limitado a 1 por dia).
+  let confirmed = false;
+  if (confirm && tenant) {
+    const res = await prisma.tenant.updateMany({
+      where: { billingWhatsappE164: { in: variants }, billingWhatsappConfirmedAt: null },
+      data: { billingWhatsappConfirmedAt: now },
+    });
+    confirmed = true;
+    logger.info("platform_whatsapp.contact_confirmed", { tenantId: tenant.id, tenantsUpdated: res.count });
+  }
+
   if (botNumber) return;
-  if (!optOut && (await autoreplySentRecently(senderDigits, now))) return;
+  if (!optOut && !confirmed && (await autoreplySentRecently(senderDigits, now))) return;
 
   let evolution: EvolutionClient;
   try {
@@ -157,9 +174,13 @@ async function handleInboundMessage(connectionId: string, payload: Record<string
   if (!connection || connection.role === "RETIRED") return;
   try {
     await prisma.providerEvent.create({
-      data: { provider: AUTOREPLY_PROVIDER, providerEventId: `${senderDigits}:${now.getTime()}-${randomBytes(2).toString("hex")}`, payload: {}, processedAt: now },
+      data: { provider: AUTOREPLY_PROVIDER, providerEventId: `${hashPhoneForDedup(senderDigits)}:${now.getTime()}-${randomBytes(2).toString("hex")}`, payload: {}, processedAt: now },
     });
-    await evolution.sendText(connection.instanceName, senderDigits, optOut && tenant ? OPT_OUT_CONFIRMATION : autoreplyText((await getPublicSalesWhatsapp())?.display ?? null));
+    await evolution.sendText(
+      connection.instanceName,
+      senderDigits,
+      optOut && tenant ? OPT_OUT_CONFIRMATION : confirmed ? CONFIRM_REPLY : autoreplyText((await getPublicSalesWhatsapp())?.display ?? null),
+    );
   } catch (error) {
     logger.warn("platform_whatsapp.autoreply_failed", { connectionId, errorMessage: error instanceof Error ? error.message : String(error) });
   }
@@ -168,7 +189,7 @@ async function handleInboundMessage(connectionId: string, payload: Record<string
 /** Trava 2: a mensagem automática sai no máximo 1 vez por contato a cada 24 h. */
 async function autoreplySentRecently(senderDigits: string, now: Date): Promise<boolean> {
   const recent = await getPrisma().providerEvent.findFirst({
-    where: { provider: AUTOREPLY_PROVIDER, providerEventId: { startsWith: `${senderDigits}:` }, createdAt: { gte: new Date(now.getTime() - AUTOREPLY_INTERVAL_MS) } },
+    where: { provider: AUTOREPLY_PROVIDER, providerEventId: { startsWith: `${hashPhoneForDedup(senderDigits)}:` }, createdAt: { gte: new Date(now.getTime() - AUTOREPLY_INTERVAL_MS) } },
     select: { id: true },
   });
   return recent !== null;

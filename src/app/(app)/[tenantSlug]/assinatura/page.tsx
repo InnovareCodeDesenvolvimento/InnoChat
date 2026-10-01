@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { CreditCard } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { navIconFor } from "@/components/shell/nav-items";
@@ -33,11 +33,22 @@ export default async function AssinaturaPage({
       billingEmail: true,
       billingWhatsappE164: true,
       billingWhatsappOptOutAt: true,
+      billingWhatsappConfirmedAt: true,
     },
   });
   if (!tenant) {
     notFound();
   }
+
+  // O layout já barra quem não é da empresa, mas a página também confere (defesa em profundidade: o `slug` da URL
+  // é dado externo e esta página lê a fatura, o Pix e o contato de cobrança). Sem vínculo = 404, como no layout.
+  const session = await auth();
+  if (!session?.user?.id) redirect("/login");
+  const membership = await getPrisma().membership.findFirst({
+    where: { userId: session.user.id, tenantId: tenant.id },
+    select: { role: true },
+  });
+  if (!membership) notFound();
 
   const subscription = await getPrisma().subscription.findUnique({
     where: { tenantId: tenant.id },
@@ -56,7 +67,7 @@ export default async function AssinaturaPage({
   const now = new Date();
   const status = effectiveStatus(subscription, now);
 
-  const [openInvoice, pendingPlan, session, invoiceRows, ownerMembership] = await Promise.all([
+  const [openInvoice, pendingPlan, invoiceRows, ownerMembership] = await Promise.all([
     getPrisma().invoice.findFirst({
       where: { subscriptionId: subscription.id, status: "OPEN" },
       orderBy: { periodStart: "desc" },
@@ -64,7 +75,6 @@ export default async function AssinaturaPage({
     subscription.pendingPlanId
       ? getPrisma().plan.findUnique({ where: { id: subscription.pendingPlanId }, select: { name: true } })
       : Promise.resolve(null),
-    auth(),
     // Histórico: pagas e a em aberto (VOID/EXPIRED não interessam à empresa), com o `tenantId`
     // explícito pela relação: o Prisma aqui é o cru, sem o filtro automático do `forTenant`.
     getPrisma().invoice.findMany({
@@ -89,13 +99,6 @@ export default async function AssinaturaPage({
   }));
   const lastPaidAt = invoiceRows.find((row) => row.status === "PAID")?.paidAt ?? null;
   const banner = resolveBillingBanner({ subscription: { ...subscription, timezone: tenant.timezone }, openInvoice, lastPaidAt }, now);
-
-  const membership = session?.user?.id
-    ? await getPrisma().membership.findFirst({
-        where: { userId: session.user.id, tenant: { slug: tenantSlug } },
-        select: { role: true },
-      })
-    : null;
 
   const plansResult = await listActivePlansAction(tenantSlug);
   const plans: PlanListItem[] = plansResult.ok ? plansResult.data : [];
@@ -137,7 +140,7 @@ export default async function AssinaturaPage({
       tenantSlug={tenantSlug}
       snapshot={snapshot}
       plans={plans}
-      isOwner={membership?.role === "OWNER"}
+      isOwner={membership.role === "OWNER"}
       hasDocument={!!tenant.document}
       focusPix={focusPix}
       renewedUntil={banner?.kind === "RENEWED" ? banner.until : null}
@@ -146,8 +149,9 @@ export default async function AssinaturaPage({
         billingEmail: tenant.billingEmail,
         billingWhatsappE164: tenant.billingWhatsappE164,
         optedOut: tenant.billingWhatsappOptOutAt !== null,
+        whatsappConfirmed: tenant.billingWhatsappConfirmedAt !== null,
         // O e-mail do dono só vai para quem pode editar (serve ao texto "sem e-mail aqui, vai para...").
-        ownerEmail: membership?.role === "OWNER" ? (ownerMembership?.user.email ?? null) : null,
+        ownerEmail: membership.role === "OWNER" ? (ownerMembership?.user.email ?? null) : null,
       }}
       saveContact={updateBillingContactAction}
     />

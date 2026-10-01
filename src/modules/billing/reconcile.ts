@@ -145,7 +145,7 @@ export async function reconcileInvoicePayment(invoiceId: string, options: Reconc
     return { status: "error", code: "AMOUNT_MISMATCH" };
   }
 
-  const applied = await applyInvoicePayment(invoice.id, payment.dateApproved ?? now);
+  const applied = await applyInvoicePayment(invoice.id, payment.dateApproved ?? now, payment.id);
   if (applied.voided) {
     logger.warn("billing.reconcile.payment_for_void_invoice", { invoiceId: invoice.id, source: options.source });
     return { status: "voided_invoice_paid" };

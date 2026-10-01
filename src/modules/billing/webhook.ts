@@ -201,7 +201,7 @@ export async function handleMercadoPagoWebhook(params: {
     return { status: "ignored" };
   }
 
-  const applied = await applyInvoicePayment(payment.externalReference, payment.dateApproved ?? new Date());
+  const applied = await applyInvoicePayment(payment.externalReference, payment.dateApproved ?? new Date(), payment.id);
 
   if (applied.voided) {
     // Pagamento aprovado para fatura ANULADA (teste não convertido já cancelado): não reativa

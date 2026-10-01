@@ -41,6 +41,8 @@ export function BillingContactCard({
   const [receiveWhatsapp, setReceiveWhatsapp] = useState(!initial.optedOut);
   const [emailError, setEmailError] = useState<string | null>(null);
   const [phoneError, setPhoneError] = useState<string | null>(null);
+  // Número salvo, avisos ligados e ainda sem o "SIM": o primeiro aviso pede a confirmação.
+  const awaitingConfirmation = !!initial.billingWhatsappE164 && !initial.optedOut && initial.whatsappConfirmed === false;
 
   const dirty =
     email.trim() !== (initial.billingEmail ?? "") ||
@@ -117,7 +119,12 @@ export function BillingContactCard({
               )}
             </Field>
 
-            <Field label="WhatsApp de cobrança" error={phoneError} hint="Com DDD. É nele que chegam os avisos de fatura.">
+            <Field label="WhatsApp de cobrança" error={phoneError} hint={
+                awaitingConfirmation && phone.trim() === initialPhoneDisplay
+                  ? "Aguardando confirmação: responda SIM à primeira mensagem que chegar para confirmar que o número é seu."
+                  : "Com DDD. É nele que chegam os avisos de fatura."
+              }
+            >
               {(fieldProps) => (
                 <Input
                   {...fieldProps}
@@ -175,7 +182,7 @@ export function BillingContactCard({
                   <dd className="text-sm text-text">
                     {initial.billingWhatsappE164 ? formatPhoneDisplay(initial.billingWhatsappE164) : "Não informado"}
                     {initial.billingWhatsappE164 ? (
-                      <span className="text-text-secondary">{initial.optedOut ? " (avisos desligados)" : " (avisos ligados)"}</span>
+                      <span className="text-text-secondary">{initial.optedOut ? " (avisos desligados)" : awaitingConfirmation ? " (aguardando confirmação)" : " (avisos ligados)"}</span>
                     ) : null}
                   </dd>
                 </div>

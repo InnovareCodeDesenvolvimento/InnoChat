@@ -119,6 +119,15 @@ describe("planNotices: régua de quem paga (D-5 até o cancelamento), fuso Ameri
     expect(planNotices(input, at("2026-11-08T12:00:00Z"))).toEqual([]);
   });
 
+  it("suspensão manual já revertida a ACTIVE/PAST_DUE (carência) também não cobra nada, nem fatura nem atraso", () => {
+    for (const status of ["ACTIVE", "PAST_DUE"] as const) {
+      const input = paying({ status }, { manualSuspension: true });
+      // 29/10 e 30/10 estariam na carência (GRACE_D1/GRACE_D2) de um atraso comum
+      expect(planNotices(input, at("2026-10-29T15:00:00Z"))).toEqual([]);
+      expect(planNotices(input, at("2026-10-27T15:00:00Z"))).toEqual([]);
+    }
+  });
+
   it("cancelamento agendado pelo dono: nenhuma cobrança", () => {
     const input = paying({ cancelAtPeriodEnd: true });
     expect(planNotices(input, at("2026-10-27T12:00:00Z"))).toEqual([]);

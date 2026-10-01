@@ -27,7 +27,7 @@ const TRIAL_WARN_MS = DAY_MS;
 // Mesma regra da tela Saúde (`health-service.ts`): billing 2h, maintenance 26h.
 const BILLING_TICK_STALE_MS = 2 * 60 * 60 * 1000;
 const MAINTENANCE_TICK_STALE_MS = 26 * 60 * 60 * 1000;
-const KEY_PATTERN = /^(signup|pay|susp|cancel|cancelreq|pvoid|trial|wa|mpwh|tick|pwa):[A-Za-z0-9_:.-]{1,100}$/;
+const KEY_PATTERN = /^(signup|pay|susp|cancel|cancelreq|pvoid|pdup|trial|wa|mpwh|tick|pwa):[A-Za-z0-9_:.-]{1,100}$/;
 
 type Item = Omit<AdminNotification, "read">;
 
@@ -56,7 +56,7 @@ async function loadItems(now: Date, from: Date): Promise<Item[]> {
   const graceMs = (GRACE_DAYS_PAYING + 2) * DAY_MS;
   const tenantSel = { select: { id: true, name: true, slug: true } } as const;
 
-  const [signups, payments, suspended, canceled, cancelRequests, voidPayments, trials, instances, settings] = await Promise.all([
+  const [signups, payments, suspended, canceled, cancelRequests, voidPayments, duplicatePayments, trials, instances, settings] = await Promise.all([
     prisma.tenant.findMany({
       where: { createdAt: { gte: from } },
       orderBy: { createdAt: "desc" },
@@ -72,7 +72,7 @@ async function loadItems(now: Date, from: Date): Promise<Item[]> {
     prisma.subscription.findMany({
       where: { status: "SUSPENDED", currentPeriodEnd: { gte: new Date(from.getTime() - graceMs) } },
       take: SOURCE_CAP,
-      select: { id: true, status: true, trialEndsAt: true, firstPaidAt: true, cancelAtPeriodEnd: true, currentPeriodEnd: true, tenant: tenantSel },
+      select: { id: true, status: true, trialEndsAt: true, firstPaidAt: true, cancelAtPeriodEnd: true, currentPeriodEnd: true, manualSuspendedAt: true, tenant: tenantSel },
     }),
     prisma.subscription.findMany({
       where: { status: "CANCELED", canceledAt: { gte: from } },
@@ -93,6 +93,13 @@ async function loadItems(now: Date, from: Date): Promise<Item[]> {
       orderBy: { paidWhileVoidAt: "desc" },
       take: SOURCE_CAP,
       select: { id: true, paidWhileVoidAt: true, amountCents: true, subscription: { select: { tenant: tenantSel } } },
+    }),
+    // Segundo pagamento numa fatura já PAGA (Pix antigo/regerado pago depois): estorno manual no MP.
+    prisma.invoice.findMany({
+      where: { duplicatePaymentAt: { gte: from } },
+      orderBy: { duplicatePaymentAt: "desc" },
+      take: SOURCE_CAP,
+      select: { id: true, duplicatePaymentAt: true, amountCents: true, subscription: { select: { tenant: tenantSel } } },
     }),
     prisma.subscription.findMany({
       where: { status: "TRIALING", trialEndsAt: { gt: now, lte: trialLimit } },
@@ -202,6 +209,21 @@ async function loadItems(now: Date, from: Date): Promise<Item[]> {
       body: `${tenant.name} pagou ${brl(v.amountCents)} numa fatura anulada (fatura ${v.id}). A assinatura não foi reativada: ou faça o estorno no Mercado Pago, ou reative a empresa.`,
       href: "/admin/cobranca",
       createdAt: v.paidWhileVoidAt.toISOString(),
+      tenant,
+    });
+  }
+
+  for (const d of duplicatePayments) {
+    if (!d.duplicatePaymentAt) continue;
+    const tenant = d.subscription.tenant;
+    items.push({
+      id: `pdup:${d.id}`,
+      kind: "PAYMENT_DUPLICATE",
+      severity: "danger",
+      title: "Pagamento em duplicidade",
+      body: `${tenant.name} pagou ${brl(d.amountCents)} de novo numa fatura que já estava paga (fatura ${d.id}). Faça o estorno do segundo pagamento no Mercado Pago.`,
+      href: "/admin/cobranca",
+      createdAt: d.duplicatePaymentAt.toISOString(),
       tenant,
     });
   }
