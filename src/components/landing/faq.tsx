@@ -28,8 +28,8 @@ const FAQS: Faq[] = [
     question: "Existe contrato ou fidelidade?",
     answer: (
       <>
-        Não. Não há fidelidade nem multa: a cobrança é mensal, por Pix, e nenhum cartão fica salvo. Você pode
-        cancelar quando quiser pela tela Assinatura do painel, e o cancelamento vale ao fim do período já pago.
+        Não. Não tem fidelidade nem multa. A cobrança é mensal, por Pix, e nenhum cartão fica salvo. Você cancela
+        quando quiser pela tela Assinatura do painel, e o cancelamento vale ao fim do período já pago.
         Os detalhes estão nos{" "}
         <Link href="/termos" className="font-semibold text-primary underline underline-offset-4">
           Termos de uso
@@ -50,7 +50,7 @@ const FAQS: Faq[] = [
   {
     question: "O bot substitui a minha equipe?",
     answer:
-      "Não. O bot cuida do trabalho repetitivo (agendar, remarcar, cancelar e lembrar). Quando o cliente pede \"Falar com atendente\", o bot pausa, a equipe é avisada e responde pelo painel, na tela Atendimento.",
+      "Não. O bot faz o trabalho repetitivo: agendar, remarcar, cancelar e lembrar. Quando o cliente pede \"Falar com atendente\", o bot pausa, a equipe é avisada e responde pelo painel, na tela Atendimento.",
   },
   {
     question: "Os dados da minha empresa e dos meus clientes ficam seguros?",
@@ -91,7 +91,7 @@ export function Faq() {
   return (
     <section id="faq" aria-labelledby="faq-titulo" className="scroll-mt-20 bg-surface py-20 sm:py-28">
       <div className="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
-        <SectionHeading id="faq-titulo" eyebrow="Perguntas frequentes" title="Tire suas dúvidas antes de começar" />
+        <SectionHeading id="faq-titulo" title="Dúvidas antes de começar" />
 
         <div className="mt-12 space-y-3">
           {FAQS.map((faq) => (

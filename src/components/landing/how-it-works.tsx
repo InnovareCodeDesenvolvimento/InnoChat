@@ -10,7 +10,7 @@ const STEPS = [
   {
     icon: CalendarClock,
     title: "Cadastre serviços e horários",
-    description: "Informe serviços, profissionais e expedientes. Feriados e bloqueios entram na agenda para o bot não oferecer o que você não atende.",
+    description: "Cadastre os serviços, os profissionais e o expediente de cada um. Feriados e bloqueios entram na agenda, e o bot não oferece o que você não atende.",
   },
   {
     icon: Sparkles,
@@ -25,9 +25,8 @@ export function HowItWorks() {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <SectionHeading
           id="passos-titulo"
-          eyebrow="Como funciona"
-          title="Pronto para atender em 3 passos"
-          description="Sem instalar nada no computador e sem treinar a equipe por semanas."
+          title="Funcionando em 3 passos"
+          description="Não precisa instalar nada no computador nem passar semanas treinando a equipe."
         />
 
         <ol className="relative mt-16 grid gap-10 lg:grid-cols-3 lg:gap-8">

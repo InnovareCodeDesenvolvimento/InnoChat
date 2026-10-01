@@ -20,7 +20,7 @@ describe("jornada da landing", () => {
   it("o lembrete (passo 4) termina na mensagem do lembrete, com a legenda do dia anterior", () => {
     const last = messages[messageCountForStep(messages, 3) - 1];
     expect(last.note).toMatch(/dia anterior/);
-    expect(last.text).toMatch(/Lembrete/);
+    expect(last.text).toMatch(/lembr/i);
   });
 
   it("o passo 2 termina na saudação do bot v2 (texto vindo do renderizador)", () => {

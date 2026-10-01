@@ -19,13 +19,13 @@ type Feature = { icon: LucideIcon; title: string; description: string };
 const HIGHLIGHTS: (Feature & { bullets: string[] })[] = [
   {
     icon: BellRing,
-    title: "Menos faltas, com lembrete automático",
-    description: "O InnoChat avisa o cliente no WhatsApp antes do horário, para o atendimento não virar uma cadeira vazia.",
+    title: "Lembrete automático contra faltas",
+    description: "O InnoChat avisa o cliente no WhatsApp antes do horário, pra ele não esquecer e você não ficar com buraco na agenda.",
     bullets: ["Você escolhe a antecedência, de 2 a 48 horas", "Enviado só entre 8h e 21h, nunca de madrugada", "O cliente remarca ou cancela respondendo no próprio WhatsApp"],
   },
   {
     icon: Headset,
-    title: "Sua equipe entra só quando importa",
+    title: "A equipe só entra quando o cliente pede",
     description: "O cliente escolhe \"Falar com atendente\": o bot pausa, avisa a equipe e ela responde pelo painel.",
     bullets: ["Tela Atendimento no estilo WhatsApp Web", "Fila de quem está aguardando, com aviso no painel", "Ao encerrar, a conversa volta para o bot"],
   },
@@ -41,7 +41,7 @@ const FEATURES: Feature[] = [
   {
     icon: CalendarCheck,
     title: "Agenda organizada por profissional",
-    description: "Profissionais, serviços, expedientes, bloqueios e feriados. O bot só oferece horário que existe.",
+    description: "Cada profissional tem os próprios serviços, expediente, bloqueios e feriados. O bot só oferece horário que existe.",
   },
   {
     icon: BarChart3,
@@ -51,27 +51,27 @@ const FEATURES: Feature[] = [
   {
     icon: MessageSquareText,
     title: "Fale do jeito da sua marca",
-    description: "Ajuste saudação, mensagens e rótulos para falar do jeito da sua marca.",
+    description: "Você edita a saudação, as mensagens e os nomes que o cliente vê.",
   },
   {
     icon: Palette,
     title: "Painel com a cara da sua empresa",
-    description: "Três temas prontos: escolha o visual do painel da sua empresa.",
+    description: "São três temas prontos. Você escolhe o que combina com o seu negócio.",
   },
   {
     icon: UsersRound,
     title: "Cada pessoa com o acesso certo",
-    description: "Papéis de dono e de equipe, cada um com o acesso que precisa.",
+    description: "Dono e equipe têm papéis diferentes, cada um com o seu acesso.",
   },
   {
     icon: ShieldCheck,
     title: "Seus dados só com você",
-    description: "Cada empresa enxerga apenas os próprios dados, conforme a LGPD. Veja os Termos e a Privacidade.",
+    description: "Cada empresa vê só os próprios dados, de acordo com a LGPD. Detalhes nos Termos e na Privacidade.",
   },
   {
     icon: LogIn,
-    title: "Entre com um clique",
-    description: "Entre e crie a conta com um clique, sem decorar mais uma senha.",
+    title: "Entre com o Google",
+    description: "Crie a conta e entre com a sua conta Google, sem mais uma senha pra decorar.",
   },
   {
     icon: QrCode,
@@ -86,9 +86,8 @@ export function Features() {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <SectionHeading
           id="recursos-titulo"
-          eyebrow="Recursos"
-          title="Recursos pensados pelo resultado que entregam"
-          description="Do primeiro &ldquo;oi&rdquo; do cliente até o lembrete do dia anterior, o InnoChat cuida do caminho inteiro."
+          title="O que o InnoChat faz no seu dia a dia"
+          description="Do primeiro &ldquo;oi&rdquo; do cliente ao lembrete do dia anterior, tudo acontece no WhatsApp."
         />
 
         <div className="mt-14 grid gap-6 lg:grid-cols-3">

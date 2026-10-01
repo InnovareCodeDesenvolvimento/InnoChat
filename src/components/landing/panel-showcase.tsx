@@ -37,9 +37,8 @@ export function PanelShowcase() {
         <SectionHeading
           id="painel-titulo"
           tone="dark"
-          eyebrow="O painel"
-          title="Sua equipe no controle, sem complicação"
-          description="Agenda, indicadores e a tela de Atendimento, onde a equipe responde quem pediu um humano, no estilo do WhatsApp Web."
+          title="Tudo o que a equipe precisa, no painel"
+          description="Agenda, indicadores e a tela de Atendimento, no estilo do WhatsApp Web, onde a equipe responde quem pediu para falar com uma pessoa."
         />
 
         <div className="mx-auto mt-14 max-w-5xl">
@@ -95,8 +94,8 @@ export function PanelShowcase() {
                 Funciona também no celular
               </h3>
               <p className="mt-3 text-base leading-relaxed text-sidebar-text">
-                O painel se adapta a qualquer tela. Quem está no balcão ou na
-                rua olha a agenda, responde um cliente e vê quem pediu
+                O painel abre bem no celular. No balcão ou na rua, dá pra olhar
+                a agenda, responder um cliente e ver quem pediu
                 atendimento.
               </p>
             </div>

@@ -422,9 +422,9 @@ export function DayStory() {
         </p>
         <div className="space-y-2 border-l-2 border-primary/30 pl-5 text-sm leading-relaxed text-text-secondary sm:text-base">
           <p>
-            Nomes e mensagens são fictícios e servem de exemplo. O que o InnoChat faz aqui é real: o bot agenda, remarca
-            e cancela 24 horas por dia, o lembrete sai antes do horário, na antecedência que você escolher, e, quando
-            alguém pede uma pessoa, a sua equipe responde pelo painel.
+            Os nomes e as mensagens são inventados. O resto é real: o bot agenda, remarca e cancela 24 horas por dia,
+            o lembrete sai antes do horário (na antecedência que você escolher) e, quando alguém pede uma pessoa, a
+            sua equipe responde pelo painel.
           </p>
           <p>Vale para salão, clínica, consultório, pet shop, odontologia, fisioterapia e qualquer negócio de horário marcado.</p>
         </div>

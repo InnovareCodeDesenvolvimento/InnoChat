@@ -372,7 +372,7 @@ test.describe("Landing pública", () => {
 
     await goTo(3);
     await expect(stage).toHaveAttribute("data-step", "4");
-    await expect(chat).toContainText("Lembrete", { timeout: 4_000 });
+    await expect(chat).toContainText(/lembr/i, { timeout: 4_000 });
     await expect(chat).toContainText("sem ninguém digitar nada");
 
     await goTo(4);

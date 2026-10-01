@@ -22,7 +22,7 @@ export function Segments() {
           id="segmentos-titulo"
           eyebrow="Para quem é"
           title="Feito para quem vive de horário marcado"
-          description="Se o seu cliente precisa de um horário na agenda, o InnoChat resolve esse caminho pelo WhatsApp."
+          description="Se o seu cliente precisa marcar horário, ele pode fazer isso pelo WhatsApp."
         />
 
         <ul className="mt-14 grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-5">

@@ -11,7 +11,7 @@ const INCLUDED = [
   "Lembretes automáticos antes do horário",
   "Atendimento humano pelo painel",
   "Aviso ao cliente quando a equipe altera a agenda",
-  "Indicadores, equipe com papéis e textos editáveis",
+  "Indicadores, papéis para a equipe e textos editáveis",
 ];
 
 /** Plano em destaque: o do meio quando há 3 ou mais (nunca um valor fixo do código). */
@@ -32,7 +32,6 @@ export function Pricing({ plans }: { plans: LandingPlan[] | null }) {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <SectionHeading
           id="planos-titulo"
-          eyebrow="Planos"
           title="Comece grátis e escolha o plano depois"
           description={`Teste por ${TRIAL_DAYS} dias sem cartão de crédito. Todos os planos têm todos os recursos; o que muda é o tamanho da equipe e a quantidade de números de WhatsApp.`}
         />

@@ -21,9 +21,8 @@ export function Journey() {
         <SectionHeading
           id="jornada-titulo"
           tone="dark"
-          eyebrow="A jornada"
           title="Da primeira mensagem à cliente na porta"
-          description="Veja, passo a passo, o que acontece depois que o InnoChat está ligado ao WhatsApp da empresa. Exemplo com dados fictícios e os textos reais do bot."
+          description="Veja o que acontece depois que o InnoChat é ligado ao WhatsApp da empresa. Os dados são fictícios; os textos são os mesmos que o bot usa de verdade."
         />
         <JourneyStory messages={messages} company="Studio Bella" />
       </div>

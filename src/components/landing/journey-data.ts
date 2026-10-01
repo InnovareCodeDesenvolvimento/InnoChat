@@ -20,7 +20,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
   {
     id: "mensagem",
     title: "Chega a mensagem",
-    text: "A Camila escreve “oi” para o WhatsApp da empresa, de dia, de noite ou no fim de semana.",
+    text: "A Camila escreve “oi” para o WhatsApp da empresa. Pode ser de noite ou num domingo.",
     lastMessageId: "m1",
   },
   {

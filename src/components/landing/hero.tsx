@@ -7,7 +7,7 @@ import { buildDemoScript } from "./demo-script";
 import { HeroNetwork } from "./hero-network";
 import { HeroStage } from "./hero-stage";
 
-const POINTS = ["Agenda, remarca e cancela", "Lembra o cliente antes do horário", "Passa para a sua equipe quando precisa"];
+const POINTS = ["Agenda, remarca e cancela", "Lembra o cliente antes do horário", "Chama a sua equipe quando o cliente pede"];
 
 /**
  * Hero: headline de benefício, dois CTAs, microcopy do teste e a demonstração do celular. O
@@ -46,8 +46,8 @@ export function Hero() {
           </h1>
 
           <p className="mx-auto mt-6 max-w-xl text-lg leading-relaxed text-sidebar-text lg:mx-0">
-            Pare de largar o cliente para responder WhatsApp. O InnoChat atende, marca, remarca e cancela horários pelo
-            WhatsApp da sua empresa e ainda lembra cada cliente antes do atendimento.
+            Chega de largar o cliente pra responder WhatsApp. O InnoChat marca, remarca e cancela horários no WhatsApp
+            da sua empresa e avisa cada cliente antes do atendimento.
           </p>
 
           <div className="mt-8 flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:items-center lg:justify-start">

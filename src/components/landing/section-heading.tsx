@@ -9,7 +9,7 @@ export function SectionHeading({
   align = "center",
   id,
 }: {
-  eyebrow: string;
+  eyebrow?: string;
   title: string;
   description?: string;
   tone?: "light" | "dark";
@@ -19,18 +19,21 @@ export function SectionHeading({
   const dark = tone === "dark";
   return (
     <div className={cn("max-w-2xl", align === "center" && "mx-auto text-center")}>
-      <p
-        className={cn(
-          "text-xs font-bold uppercase tracking-[0.18em]",
-          dark ? "text-accent" : "text-primary",
-        )}
-      >
-        {eyebrow}
-      </p>
+      {eyebrow ? (
+        <p
+          className={cn(
+            "text-xs font-bold uppercase tracking-[0.18em]",
+            dark ? "text-accent" : "text-primary",
+          )}
+        >
+          {eyebrow}
+        </p>
+      ) : null}
       <h2
         id={id}
         className={cn(
-          "mt-3 text-balance font-display text-3xl font-extrabold leading-tight tracking-tight sm:text-4xl",
+          eyebrow && "mt-3",
+          "text-balance font-display text-3xl font-extrabold leading-tight tracking-tight sm:text-4xl",
           dark ? "text-sidebar-active-text" : "text-text",
         )}
       >
