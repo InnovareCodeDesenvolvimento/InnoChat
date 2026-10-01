@@ -1,10 +1,10 @@
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowRight, BellRing, CalendarCheck, Check } from "lucide-react";
+import { ArrowRight, Check } from "lucide-react";
 import { TRIAL_DAYS } from "@/core/billing";
 import { Button } from "@/components/ui/button";
 import { buildDemoScript } from "./demo-script";
-import { PhoneDemo } from "./phone-demo";
+import { HeroStage } from "./hero-stage";
 
 const POINTS = ["Agenda, remarca e cancela", "Lembra o cliente antes do horário", "Passa para a sua equipe quando precisa"];
 
@@ -86,35 +86,7 @@ export function Hero() {
           </ul>
         </div>
 
-        <div className="relative">
-          <div className="landing-float relative">
-            <PhoneDemo messages={messages} company="Studio Bella" />
-          </div>
-          <div
-            aria-hidden="true"
-            className="absolute left-[calc(50%-162px)] top-24 hidden -translate-x-full items-center gap-2.5 rounded-hero bg-surface px-3.5 py-2.5 text-text shadow-2xl ring-1 ring-border xl:flex"
-          >
-            <span className="flex h-8 w-8 items-center justify-center rounded-card bg-success-bg text-success">
-              <CalendarCheck className="h-4 w-4" />
-            </span>
-            <span className="text-xs font-semibold leading-tight">
-              Horário confirmado
-              <span className="block font-normal text-text-secondary">sem ninguém digitar</span>
-            </span>
-          </div>
-          <div
-            aria-hidden="true"
-            className="absolute left-[calc(50%+162px)] bottom-28 hidden items-center gap-2.5 rounded-hero bg-surface px-3.5 py-2.5 text-text shadow-2xl ring-1 ring-border 2xl:flex"
-          >
-            <span className="flex h-8 w-8 items-center justify-center rounded-card bg-warning-bg text-warning">
-              <BellRing className="h-4 w-4" />
-            </span>
-            <span className="text-xs font-semibold leading-tight">
-              Lembrete enviado
-              <span className="block font-normal text-text-secondary">antes do horário</span>
-            </span>
-          </div>
-        </div>
+        <HeroStage messages={messages} company="Studio Bella" />
       </div>
     </section>
   );

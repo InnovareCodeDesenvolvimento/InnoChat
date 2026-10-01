@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { CheckCheck, ChevronLeft, Phone, RotateCcw, Video } from "lucide-react";
 import { cn } from "@/components/lib/cn";
 import {
@@ -22,7 +22,8 @@ import type { DemoMessage } from "./demo-script";
  * tela (IntersectionObserver), mostra "digitando..." no cabeçalho antes de cada resposta do bot e, no fim,
  * oferece "Rever".
  */
-type Mode = "idle" | "playing" | "done";
+export type DemoMode = "idle" | "playing" | "done";
+type Mode = DemoMode;
 
 /** Aparelho maior que o do painel (260x520): o texto do bot é longo e precisa ficar legível. */
 const PHONE_WIDTH = 300;
@@ -36,7 +37,16 @@ function readingPause(text: string): number {
   return Math.min(2200, 450 + text.length * 5);
 }
 
-export function PhoneDemo({ messages, company }: { messages: DemoMessage[]; company: string }) {
+export function PhoneDemo({
+  messages,
+  company,
+  companion,
+}: {
+  messages: DemoMessage[];
+  company: string;
+  /** Conteúdo ao lado do aparelho (o Inno), que reage ao estado da demo. Posicionado pelo chamador. */
+  companion?: (state: { mode: DemoMode; typing: boolean }) => ReactNode;
+}) {
   const [mode, setMode] = useState<Mode>("idle");
   const [shown, setShown] = useState(0);
   const [typing, setTyping] = useState(false);
@@ -125,7 +135,7 @@ export function PhoneDemo({ messages, company }: { messages: DemoMessage[]; comp
         data-testid="phone-demo"
         role="group"
         aria-label={`Exemplo de conversa de WhatsApp com o bot da ${company}`}
-        className="demo mx-auto w-fit"
+        className="demo relative mx-auto w-fit"
       >
         <PhoneFrame width={PHONE_WIDTH} height={PHONE_HEIGHT}>
           <div className="flex h-full flex-col bg-[var(--wa-bg)]">
@@ -223,6 +233,7 @@ export function PhoneDemo({ messages, company }: { messages: DemoMessage[]; comp
             <HomeIndicator />
           </div>
         </PhoneFrame>
+        {companion ? companion({ mode, typing }) : null}
       </div>
 
       <div className="mt-3 flex min-h-11 items-center justify-center gap-3">

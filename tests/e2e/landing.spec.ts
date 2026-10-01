@@ -93,6 +93,27 @@ test.describe("Landing pública", () => {
       .toBeGreaterThan(0);
   });
 
+  test("o Inno ao lado do celular reage à demo: balão 'digitando' e depois 'Agendado!', sem cobrir a conversa", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/");
+    await page.evaluate(() => document.querySelector('[data-testid="phone-demo"]')?.scrollIntoView({ block: "center" }));
+    const inno = page.getByTestId("inno");
+    await expect(inno).toBeVisible();
+    await expect(inno).toHaveAttribute("aria-hidden", "true");
+    await expect(inno.getByRole("img")).toHaveCount(0);
+    await expect(inno).toHaveAttribute("data-face", "typing", { timeout: 8_000 });
+    await expect(page.getByTestId("inno-bubble")).toHaveAttribute("data-face", "typing");
+    await expect(inno).toHaveAttribute("data-face", "done", { timeout: 60_000 });
+    await expect(page.getByTestId("inno-bubble")).toContainText("Agendado!");
+    // O Inno fica ao lado do aparelho, nunca por cima da tela do celular.
+    const gap = await page.evaluate(() => {
+      const phone = document.querySelector('[data-testid="phone-demo"] [role="region"]')!.getBoundingClientRect();
+      const img = document.querySelector('[data-testid="inno"] img')!.getBoundingClientRect();
+      return img.left - phone.right;
+    });
+    expect(gap).toBeGreaterThanOrEqual(0);
+  });
+
   test("'Você conhece esse dia': o interruptor alterna por teclado e muda o conteúdo", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/");

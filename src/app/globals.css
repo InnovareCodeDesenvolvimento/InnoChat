@@ -640,6 +640,31 @@ html:has(.landing-root) {
     display: none;
   }
 }
+/* O Inno ao lado do celular: brilho azul que acende quando ele "digita" e respiração leve. */
+.inno-img {
+  filter: drop-shadow(0 16px 20px rgb(2 8 30 / 0.55)) drop-shadow(0 0 12px rgb(59 130 246 / 0.22));
+  transition: filter 400ms ease;
+  transform-origin: 50% 100%;
+}
+.inno-companion[data-face="typing"] .inno-img {
+  filter: drop-shadow(0 16px 20px rgb(2 8 30 / 0.55)) drop-shadow(0 0 22px rgb(96 165 250 / 0.6));
+}
+@media (prefers-reduced-motion: no-preference) {
+  .inno-img {
+    animation: inno-breathe 4.2s ease-in-out infinite;
+  }
+  .inno-dot {
+    animation: inno-dot 1s ease-in-out infinite;
+  }
+}
+@keyframes inno-breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.018) translateY(-2px); }
+}
+@keyframes inno-dot {
+  0%, 100% { opacity: 0.35; transform: translateY(0); }
+  50% { opacity: 1; transform: translateY(-2px); }
+}
 @keyframes demo-msg-in {
   from { opacity: 0; transform: translateY(8px) scale(0.98); }
   to { opacity: 1; transform: translateY(0) scale(1); }
