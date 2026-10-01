@@ -194,6 +194,39 @@ export function paymentConfirmedEmail(params: { tenantName: string; amountReais:
  * Confirmação de cancelamento pelo painel (OWNER). `immediate` = suspensa/atrasada: o acesso já
  * terminou; senão, `endsAtBr` é a data em que termina (fim do período já pago).
  */
+function automaticCancelEmail(
+  params: { tenantName: string; retentionDays: number; billingUrl: string; ctx?: EmailContext },
+  auto: { unpaidDays: number; trialNotConverted: boolean; retentionUntilBr: string },
+): Built {
+  const why = auto.trialNotConverted
+    ? `porque o teste terminou e a assinatura não foi paga em ${auto.unpaidDays} dias`
+    : `porque a fatura ficou ${auto.unpaidDays} dias sem pagamento`;
+  const lead = `A conta de "${params.tenantName}" foi encerrada ${why}. O bot parou de responder e os números de WhatsApp foram desconectados.`;
+  const keep = `Seus dados ficam guardados por ${params.retentionDays} dias, até ${auto.retentionUntilBr}. Agenda, serviços e clientes continuam como estavam. Depois dessa data, os dados dos seus clientes são anonimizados.`;
+  const csv = "Quer guardar a lista de clientes? Reative a assinatura e exporte o CSV pela tela Clientes.";
+  const undo = "Para voltar, reative a assinatura na tela Assinatura e pague o Pix. Depois é só reconectar o número de WhatsApp lendo o QR code.";
+  return build({
+    subject: `Sua conta no InnoChat foi encerrada (${params.tenantName})`,
+    preheader: `Seus dados ficam guardados até ${auto.retentionUntilBr}. Dá pra reativar a qualquer momento.`,
+    rows: [
+      heading("Conta encerrada"),
+      paragraph(lead),
+      factsCard([
+        { label: "Empresa", value: params.tenantName },
+        { label: "Dados guardados até", value: auto.retentionUntilBr, strong: true },
+      ]),
+      paragraph(keep),
+      paragraph(csv),
+      note(undo),
+      button(params.billingUrl, "Reativar minha assinatura"),
+      fallbackLink(params.billingUrl),
+    ].join("\n"),
+    text: `${lead}\n\n${keep}\n\n${csv}\n\n${undo}\n${params.billingUrl}`,
+    footerReason: BILLING_REASON(params.tenantName),
+    ctx: params.ctx,
+  });
+}
+
 export function subscriptionCancelEmail(params: {
   tenantName: string;
   immediate: boolean;
@@ -201,8 +234,15 @@ export function subscriptionCancelEmail(params: {
   retentionDays: number;
   clientsUrl: string;
   billingUrl: string;
+  /**
+   * Cancelamento AUTOMÁTICO (fatura sem pagamento por 60 dias, ou 7 no teste): troca o texto de
+   * "você cancelou" por "a conta foi encerrada porque...", com prazo de guarda dos dados e o caminho
+   * para reativar. Só faz sentido com `immediate: true`.
+   */
+  automatic?: { unpaidDays: number; trialNotConverted: boolean; retentionUntilBr: string };
   ctx?: EmailContext;
 }): Built {
+  if (params.automatic) return automaticCancelEmail(params, params.automatic);
   const lead = params.immediate
     ? `A assinatura de "${params.tenantName}" foi cancelada e o acesso ao painel foi encerrado. Os números de WhatsApp foram desconectados.`
     : `Recebemos o pedido de cancelamento da assinatura de "${params.tenantName}". Você continua usando tudo normalmente até ${params.endsAtBr}. Depois disso, os números de WhatsApp são desconectados e o painel mostra só a tela de Assinatura. Não haverá nova cobrança.`;

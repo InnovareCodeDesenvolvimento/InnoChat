@@ -8,7 +8,8 @@ export type PlatformNotificationKind =
   | "TRIAL_ENDING"
   | "WHATSAPP_DISCONNECTED"
   | "MP_WEBHOOK_REJECTED"
-  | "TICK_LATE";
+  | "TICK_LATE"
+  | "BILLING_EMAIL_FAILING";
 
 export type PlatformNotificationSeverity = "info" | "success" | "warning" | "danger";
 

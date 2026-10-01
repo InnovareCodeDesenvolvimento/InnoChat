@@ -4,7 +4,7 @@ import { getPrisma } from "@/lib/db/prisma";
 import { forTenant } from "@/lib/db/tenant-client";
 import { DomainError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
-import { sendMail, loadEmailContext, invoiceGeneratedEmail, paymentConfirmedEmail, subscriptionSuspendedEmail } from "@/lib/email";
+import { sendMail, SmtpNotConfiguredError, loadEmailContext, invoiceGeneratedEmail, paymentConfirmedEmail, subscriptionSuspendedEmail, type SendMailInput } from "@/lib/email";
 import { getPublicBaseUrl } from "@/lib/public-url";
 import { CANCEL_AFTER_SUSPENDED_TRIAL_DAYS, computeTrialEndsAt, effectiveStatus, validateCpfCnpj, type SubscriptionStatus } from "@/core/billing";
 import { formatCentsBRL, formatDateBR } from "./format";
@@ -592,6 +592,29 @@ export async function listActivePlans() {
 // E-mails de cobrança (usados pelo signup e pelo tick)
 // ---------------------------------------------------------------------------
 
+/**
+ * Envia um e-mail de cobrança e diz SE ele saiu. `true` só quando `sendMail` devolve `sent: true`.
+ * `{ sent: false }` (falha de SMTP), `SmtpNotConfiguredError` e qualquer outro erro viram `false`
+ * (nunca lançam). Quem chama só pode gravar marca de "já enviado" quando o retorno for `true`:
+ * senão a próxima rodada do tick tenta de novo. O log leva só o motivo, nunca destinatário, assunto
+ * com dado pessoal ou corpo (o assunto/erro de transporte já são logados por `sendMail`).
+ */
+export async function sendBillingMail(input: SendMailInput, logEvent: string): Promise<boolean> {
+  try {
+    const result = await sendMail(input);
+    if (result.sent) return true;
+    logger.warn(logEvent, { reason: "SEND_FAILED" });
+    return false;
+  } catch (error) {
+    logger.warn(logEvent, {
+      reason: error instanceof SmtpNotConfiguredError ? "SMTP_NOT_CONFIGURED" : "UNEXPECTED_ERROR",
+      errorName: error instanceof Error ? error.name : "unknown",
+    });
+    return false;
+  }
+}
+
+/** Devolve `true` se o e-mail saiu (ver `sendBillingMail`). */
 export async function sendInvoiceGeneratedEmail(params: {
   toEmail: string;
   tenantName: string;
@@ -600,7 +623,7 @@ export async function sendInvoiceGeneratedEmail(params: {
   dueAt: Date;
   pixCopyPaste: string | null;
   timezone: string;
-}) {
+}): Promise<boolean> {
   const { subject, html, text } = invoiceGeneratedEmail({
     tenantName: params.tenantName,
     amountReais: formatCentsBRL(params.amountCents),
@@ -609,9 +632,7 @@ export async function sendInvoiceGeneratedEmail(params: {
     billingUrl: await billingUrlFor(params.tenantSlug),
     ctx: await loadEmailContext(),
   });
-  await sendMail({ to: params.toEmail, subject, html, text }).catch((error) => {
-    logger.error("billing.email.invoice_generated.failed", { errorMessage: error instanceof Error ? error.message : String(error) });
-  });
+  return sendBillingMail({ to: params.toEmail, subject, html, text }, "billing.email.invoice_generated.not_sent");
 }
 
 export async function sendSubscriptionSuspendedEmail(params: {
@@ -620,7 +641,7 @@ export async function sendSubscriptionSuspendedEmail(params: {
   tenantSlug: string;
   /** `true` para quem nunca pagou: e-mail de "seu teste terminou", não de atraso. */
   trialNotConverted?: boolean;
-}) {
+}): Promise<boolean> {
   const { subject, html, text } = subscriptionSuspendedEmail({
     tenantName: params.tenantName,
     billingUrl: await billingUrlFor(params.tenantSlug),
@@ -628,9 +649,7 @@ export async function sendSubscriptionSuspendedEmail(params: {
     cancelInDays: params.trialNotConverted ? CANCEL_AFTER_SUSPENDED_TRIAL_DAYS : undefined,
     ctx: await loadEmailContext(),
   });
-  await sendMail({ to: params.toEmail, subject, html, text }).catch((error) => {
-    logger.error("billing.email.suspended.failed", { errorMessage: error instanceof Error ? error.message : String(error) });
-  });
+  return sendBillingMail({ to: params.toEmail, subject, html, text }, "billing.email.suspended.not_sent");
 }
 
 /** E-mail de quem recebe cobrança: o OWNER mais antigo da empresa (não há campo de e-mail de cobrança dedicado na v1). */
@@ -650,7 +669,7 @@ export function newTrialEndsAt(signupAt: Date): Date {
 }
 
 export function generateInvoiceDescription(tenantName: string): string {
-  return `Assinatura InnoChat — ${tenantName}`;
+  return `Assinatura InnoChat (${tenantName})`;
 }
 
 /** Chave curta para operações que precisam de aleatoriedade (ex.: idempotência local). */

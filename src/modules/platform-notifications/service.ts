@@ -109,6 +109,7 @@ async function loadItems(now: Date, from: Date): Promise<Item[]> {
         lastMpWebhookRejectedAt: true,
         lastMpWebhookRejection: true,
         lastBillingTickAt: true,
+        lastBillingTickResult: true,
         lastMaintenanceTickAt: true,
       },
     }),
@@ -276,7 +277,31 @@ async function loadItems(now: Date, from: Date): Promise<Item[]> {
     });
   }
 
+  // E-mails de cobrança que não saíram na última rodada do tick (SMTP fora do ar ou sem
+  // configuração): o tick não marca como enviado e tenta de novo, mas o dono da plataforma precisa
+  // saber. DERIVADO de `lastBillingTickResult.emailsFailed` (sem tabela); some quando uma rodada
+  // seguinte envia tudo. Id estável por dia (um aviso por dia, não um por rodada horária).
+  const emailsFailed = readEmailsFailed(settings?.lastBillingTickResult);
+  if (emailsFailed > 0 && settings?.lastBillingTickAt && settings.lastBillingTickAt >= from) {
+    items.push({
+      id: `tick:email:${settings.lastBillingTickAt.toISOString().slice(0, 10)}`,
+      kind: "BILLING_EMAIL_FAILING",
+      severity: "danger",
+      title: "E-mails de cobrança não saíram",
+      body: `${emailsFailed} e-mail(s) de cobrança não foram enviados na última rodada. Confira o SMTP em Configurações. O sistema tenta de novo a cada hora e nenhum aviso é dado como enviado antes de sair.`,
+      href: "/admin/saude",
+      createdAt: settings.lastBillingTickAt.toISOString(),
+    });
+  }
+
   return items;
+}
+
+/** `emailsFailed` do resultado gravado do billing/tick (JSON livre: lê com cuidado). */
+function readEmailsFailed(result: unknown): number {
+  if (!result || typeof result !== "object") return 0;
+  const value = (result as Record<string, unknown>).emailsFailed;
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
 // ---------------------------------------------------------------------------------------------

@@ -5,7 +5,13 @@ import { DomainError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
 import { sendMail, loadEmailContext, subscriptionCancelEmail } from "@/lib/email";
 import { getPublicBaseUrl } from "@/lib/public-url";
-import { accessEndsAt, CANCELED_RETENTION_DAYS, effectiveStatus } from "@/core/billing";
+import {
+  accessEndsAt,
+  CANCEL_AFTER_SUSPENDED_DAYS,
+  CANCEL_AFTER_SUSPENDED_TRIAL_DAYS,
+  CANCELED_RETENTION_DAYS,
+  effectiveStatus,
+} from "@/core/billing";
 import { disconnectAllWhatsappInstances } from "@/modules/whatsapp/service";
 import type { EvolutionClient } from "@/modules/whatsapp/evolution-client";
 import { formatDateBR } from "./format";
@@ -13,11 +19,13 @@ import {
   cancelPixPayments,
   findBillingRecipientEmail,
   generateInvoiceDescription,
+  sendBillingMail,
   createInvoiceForPeriodTracked,
   tryAttachPix,
   voidOpenInvoices,
 } from "./service";
 import type { MercadoPagoGateway } from "./mercadopago";
+import { claimOnceEmail, markOnceEmailSent } from "./email-outbox";
 
 /**
  * Cancelamento da assinatura pelo OWNER (Termos §9). Regras (decisão registrada em
@@ -126,6 +134,10 @@ export async function persistCanceledTransition(
   });
   if (claim.count === 0) return { claimed: false, invoicesVoided: 0 };
 
+  // Cancelamento AUTOMÁTICO (sem pedido do dono): ele não sabe que perdeu a conta. O agendado já
+  // avisou no pedido (`requestCancellation`), então não repete aqui.
+  if (!subscription.cancelAtPeriodEnd) await announceAutoCancel(subscription.id);
+
   try {
     const effects = await applyCancellationEffects(subscription.id, subscription.tenantId, deps);
     return { claimed: true, invoicesVoided: effects.invoicesVoided };
@@ -133,6 +145,60 @@ export async function persistCanceledTransition(
     logger.warn("billing.cancel.effects_failed", { tenantId: subscription.tenantId, errorMessage: error instanceof Error ? error.message : String(error) });
     return { claimed: true, invoicesVoided: 0 };
   }
+}
+
+/**
+ * E-mail do cancelamento automático (R4 da régua). Envio ÚNICO: `claimOnceEmail` cria a marca
+ * (chave = assinatura + instante do cancelamento) e só quem a cria envia; se o envio falha, a marca
+ * fica pendente e o tick reenvia (`retryPendingAutoCancelEmails`). Nunca desfaz o cancelamento.
+ */
+async function announceAutoCancel(subscriptionId: string): Promise<void> {
+  try {
+    const subscription = await getPrisma().subscription.findUnique({ where: { id: subscriptionId }, select: { canceledAt: true } });
+    if (!subscription?.canceledAt) return;
+    const key = autoCancelKey(subscriptionId, subscription.canceledAt);
+    if (!(await claimOnceEmail("auto_cancel", key))) return;
+    if (await deliverAutoCancelEmail(subscriptionId)) await markOnceEmailSent("auto_cancel", key);
+  } catch (error) {
+    logger.error("billing.cancel.auto_email_failed", { subscriptionId, errorMessage: error instanceof Error ? error.message : String(error) });
+  }
+}
+
+export function autoCancelKey(subscriptionId: string, canceledAt: Date): string {
+  return `${subscriptionId}:${canceledAt.getTime()}`;
+}
+
+/** Monta e envia o e-mail de conta encerrada. `true` = saiu (ou não há mais o que enviar). */
+export async function deliverAutoCancelEmail(subscriptionId: string): Promise<boolean> {
+  const subscription = await getPrisma().subscription.findUnique({
+    where: { id: subscriptionId },
+    select: { status: true, canceledAt: true, firstPaidAt: true, tenantId: true, tenant: { select: { name: true, slug: true, timezone: true } } },
+  });
+  // Reativou entre o cancelamento e o reenvio: o aviso perdeu o sentido.
+  if (!subscription || subscription.status !== "CANCELED" || !subscription.canceledAt) return true;
+
+  const to = await findBillingRecipientEmail(subscription.tenantId);
+  if (!to) {
+    logger.warn("billing.cancel.auto_email_no_recipient", { tenantId: subscription.tenantId });
+    return true; // sem destinatário não adianta insistir
+  }
+  const base = await getPublicBaseUrl();
+  const trialNotConverted = subscription.firstPaidAt === null;
+  const { subject, html, text } = subscriptionCancelEmail({
+    tenantName: subscription.tenant.name,
+    immediate: true,
+    endsAtBr: formatDateBR(subscription.canceledAt, subscription.tenant.timezone),
+    retentionDays: CANCELED_RETENTION_DAYS,
+    clientsUrl: `${base}/${subscription.tenant.slug}/clientes`,
+    billingUrl: `${base}/${subscription.tenant.slug}/assinatura`,
+    automatic: {
+      unpaidDays: trialNotConverted ? CANCEL_AFTER_SUSPENDED_TRIAL_DAYS : CANCEL_AFTER_SUSPENDED_DAYS,
+      trialNotConverted,
+      retentionUntilBr: formatDateBR(addDays(subscription.canceledAt, CANCELED_RETENTION_DAYS), subscription.tenant.timezone),
+    },
+    ctx: await loadEmailContext(),
+  });
+  return sendBillingMail({ to, subject, html, text }, "billing.cancel.auto_email_not_sent");
 }
 
 async function sendCancelEmail(tenantId: string, params: { immediate: boolean; endsAt: Date }) {

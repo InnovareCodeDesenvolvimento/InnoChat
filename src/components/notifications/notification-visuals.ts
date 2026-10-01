@@ -48,6 +48,7 @@ export const ADMIN_KIND_ICON: Record<AdminNotificationKind, LucideIcon> = {
   WHATSAPP_DISCONNECTED: WifiOff,
   MP_WEBHOOK_REJECTED: ShieldAlert,
   TICK_LATE: Timer,
+  BILLING_EMAIL_FAILING: ShieldAlert,
 };
 
 /**

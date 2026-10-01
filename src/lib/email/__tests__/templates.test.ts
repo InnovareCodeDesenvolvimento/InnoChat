@@ -190,4 +190,19 @@ describe("subscriptionCancelEmail", () => {
     const mail = subscriptionCancelEmail({ ...base, tenantName: "<script>x</script>", immediate: false });
     expect(mail.html).not.toContain("<script>x</script>");
   });
+  it("cancelamento automático: explica o motivo, os 90 dias de dados, a reativação e o CSV, sem travessão", () => {
+    const paid = subscriptionCancelEmail({ ...base, immediate: true, automatic: { unpaidDays: 60, trialNotConverted: false, retentionUntilBr: "18/01/2027" } });
+    expect(paid.subject).toBe("Sua conta no InnoChat foi encerrada (Salão da Ana)");
+    for (const body of [paid.text, paid.html]) {
+      expect(body).toContain("60 dias sem pagamento");
+      expect(body).toContain("18/01/2027");
+      expect(body).toContain("90 dias");
+      expect(body).toContain("CSV");
+    }
+    expect(paid.text).toContain(base.billingUrl);
+    expect(paid.text).not.toContain("—");
+    const trial = subscriptionCancelEmail({ ...base, immediate: true, automatic: { unpaidDays: 7, trialNotConverted: true, retentionUntilBr: "18/01/2027" } });
+    expect(trial.text).toContain("o teste terminou");
+    expect(trial.text).toContain("7 dias");
+  });
 });
