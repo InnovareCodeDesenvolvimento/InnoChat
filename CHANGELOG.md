@@ -7,6 +7,11 @@ Versão semântica (`MAJOR.MINOR.PATCH`), lida do `version` do `package.json` e 
 
 Toda publicação em produção sobe a versão e ganha uma entrada aqui.
 
+## v1.2.1 — 2026-10-01
+
+### Melhorias
+- Landing: a seção das dores virou **"Você conhece esse dia."**. É uma linha do tempo de um dia real (08:40, 10:15, 12:30, 16:00, 23:47), com a chave **Sem InnoChat ⇄ Com InnoChat** e a escolha do tipo de negócio (qualquer negócio, salão, barbearia, clínica de estética, consultório, pet shop). Tem animações, e quem prefere menos movimento vê tudo parado.
+
 ## v1.2.0 — 2026-10-01
 
 ### Novidades
