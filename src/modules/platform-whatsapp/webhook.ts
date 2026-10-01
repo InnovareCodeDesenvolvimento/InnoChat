@@ -157,7 +157,8 @@ async function handleInboundMessage(connectionId: string, payload: Record<string
       where: { billingWhatsappE164: { in: variants }, billingWhatsappConfirmedAt: null },
       data: { billingWhatsappConfirmedAt: now },
     });
-    confirmed = true;
+    // Só a PRIMEIRA confirmação responde; "SIM" repetido cai na trava de 24 h da resposta automática.
+    confirmed = res.count > 0;
     logger.info("platform_whatsapp.contact_confirmed", { tenantId: tenant.id, tenantsUpdated: res.count });
   }
 

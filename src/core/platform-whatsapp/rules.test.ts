@@ -72,8 +72,8 @@ describe("autoreplyText", () => {
 
 describe("isConfirmText e hashPhoneForDedup", () => {
   it("reconhece o SIM com caixa, acento e pontuação soltos, e nada além disso", () => {
-    for (const text of ["sim", " SIM! ", "Sim.", "s", "confirmo", "Confirmar"]) expect(isConfirmText(text)).toBe(true);
-    for (const text of ["", "simm", "sim, mas quero cancelar", "não", "sair"]) expect(isConfirmText(text)).toBe(false);
+    for (const text of ["sim", " SIM! ", "Sim.", "confirmo", "Confirmo!"]) expect(isConfirmText(text)).toBe(true);
+    for (const text of ["", "s", "confirmar", "simm", "sim, mas quero cancelar", "não", "sair"]) expect(isConfirmText(text)).toBe(false);
   });
 
   it("o hash do número é estável, sem o telefone em claro e igual para o mesmo número com máscara", () => {

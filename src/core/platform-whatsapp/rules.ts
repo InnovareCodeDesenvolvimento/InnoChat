@@ -135,7 +135,8 @@ export function isConfirmText(text: string): boolean {
     .trim()
     .split(/\s+/)
     .join(" ");
-  return normalized === "sim" || normalized === "s" || normalized === "confirmo" || normalized === "confirmar";
+  // Só "sim" e "confirmo": "s" ou "confirmar" soltos aparecem em respostas comuns e confirmariam a posse sem querer.
+  return normalized === "sim" || normalized === "confirmo";
 }
 
 export const CONFIRM_REPLY =
