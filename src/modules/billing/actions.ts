@@ -7,6 +7,7 @@ import { DomainError } from "@/lib/errors";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { reconcileInvoicePayment, type ReconcileOutcome } from "./reconcile";
 import { getPrisma } from "@/lib/db/prisma";
+import { CANCEL_REASON_MAX_LENGTH, requestCancellation, startReactivation, undoCancellation, type CancelResult } from "./cancellation";
 import { changePlan, findBillingRecipientEmail, findOwnInvoiceOrThrow, listActivePlans, regeneratePixForInvoice, type ChangePlanResult } from "./service";
 
 /**
@@ -138,4 +139,46 @@ function toClientStatus(outcome: ReconcileOutcome): CheckMyInvoicePaymentResult[
     case "error":
       return "unavailable";
   }
+}
+
+// ---------------------------------------------------------------------------
+// Cancelamento pelo painel (Termos §9) — só OWNER; ver `cancellation.ts` e docs/contratos.md
+// ---------------------------------------------------------------------------
+
+const cancelSchema = z.object({ reason: z.string().max(CANCEL_REASON_MAX_LENGTH).optional() });
+
+const CANCEL_LIMIT = 5;
+const CANCEL_WINDOW_MS = 10 * 60 * 1000;
+
+/** Cancela (agenda, ou imediato se suspensa/atrasada). `reason` é texto livre opcional (até 500). Idempotente. */
+export async function cancelSubscriptionAction(tenantSlug: string, input: unknown): Promise<Result<CancelResult>> {
+  return runAction(async () => {
+    const { tenant } = await requireTenantMember(tenantSlug, ["OWNER"]);
+    const data = cancelSchema.parse(input ?? {});
+    const rateLimit = checkRateLimit(`cancel-subscription:${tenant.id}`, CANCEL_LIMIT, CANCEL_WINDOW_MS);
+    if (!rateLimit.allowed) {
+      throw new DomainError("RATE_LIMITED", "Muitas tentativas. Aguarde alguns minutos antes de tentar de novo.", { retryAfterMs: rateLimit.retryAfterMs });
+    }
+    return requestCancellation(tenant.id, { reason: data.reason });
+  });
+}
+
+/** Desfaz o cancelamento agendado, até a data em que o acesso termina. */
+export async function undoCancellationAction(tenantSlug: string): Promise<Result<{ undone: boolean }>> {
+  return runAction(async () => {
+    const { tenant } = await requireTenantMember(tenantSlug, ["OWNER"]);
+    return undoCancellation(tenant.id);
+  });
+}
+
+/** Reativa uma assinatura já cancelada: devolve a fatura (com Pix) a pagar; ao pagar, volta a `ACTIVE`. */
+export async function reactivateSubscriptionAction(tenantSlug: string): Promise<Result<{ invoiceId: string }>> {
+  return runAction(async () => {
+    const { tenant } = await requireTenantMember(tenantSlug, ["OWNER"]);
+    const rateLimit = checkRateLimit(`reactivate-subscription:${tenant.id}`, CANCEL_LIMIT, CANCEL_WINDOW_MS);
+    if (!rateLimit.allowed) {
+      throw new DomainError("RATE_LIMITED", "Muitas tentativas. Aguarde alguns minutos antes de tentar de novo.", { retryAfterMs: rateLimit.retryAfterMs });
+    }
+    return startReactivation(tenant.id);
+  });
 }

@@ -1951,3 +1951,62 @@ Schema (migration `a6dbff6`): `Tenant.notifyClientOnStaffChanges` (default `true
 
 ### Configurações (`src/modules/tenant`)
 - `getBotRulesAction` e `updateBotRulesAction` incluem `notifyClientOnStaffChanges: boolean`. Escrita só `OWNER`; no update o campo é opcional (omitido = não altera; não-booleano = `INVALID_PAYLOAD`).
+
+## Cancelamento pelo painel (2026-10-01, pedido do dono)
+
+Cumpre o §9 dos Termos (`docs/legal/termos-de-uso.md`, `termos-content.ts`). Código em
+`src/modules/billing/cancellation.ts` (regras), `actions.ts` (Server Actions), `tick.ts` (efetivação).
+Migration aditiva `20261002110000_cancelamento_pelo_painel`: `Subscription.cancelAtPeriodEnd` (bool,
+default false), `cancelRequestedAt` (data do pedido), `cancelReason` (texto livre, opcional, máx. 500).
+`canceledAt` continua sendo SÓ a data em que o cancelamento passou a valer (dela partem os 90 dias).
+
+### Decisões
+
+| Situação (status EFETIVO) | O que o cancelamento faz |
+|---|---|
+| `ACTIVE` (paga) | **Agenda** para o fim do período pago (`currentPeriodEnd`). Tudo funciona até lá; sem reembolso do período. |
+| `TRIALING` (teste) | **Agenda para o fim do teste** (`trialEndsAt`), consistente com "vale ao fim do período". Até lá o teste segue normal. |
+| `PAST_DUE` / `SUSPENDED` | **Imediato**: não há período pago a respeitar. `CANCELED` na hora, com os mesmos efeitos. |
+| já `CANCELED` | Idempotente: devolve o estado atual (`alreadyRequested: true`). |
+
+- **Faturas em aberto**: ao cancelar (agendado ou imediato), TODA fatura `OPEN` vira `VOID` e o tick não gera
+  fatura nova (`cancelAtPeriodEnd: false` no filtro de `generateUpcomingInvoices`). Não há cobrança depois do
+  cancelamento. Pix já emitido no Mercado Pago não é cancelado lá: se o cliente pagar mesmo assim, cai no
+  caminho já existente de "fatura VOID paga" (não reativa sozinho; o admin decide o estorno).
+- **Desfazer** (só até a data): zera o agendamento e reabre (`VOID` → `OPEN`) as faturas anuladas a partir do
+  pedido (`updatedAt >= cancelRequestedAt`) — necessário porque `@@unique(subscriptionId, periodStart)` impediria
+  a fatura do próximo ciclo de nascer. Depois da data: `INVALID_STATE`.
+- **Na data**: `effectiveStatus` já devolve `CANCELED` (sem carência/suspensão; calculado sob demanda, não depende
+  do tick). O tick persiste `CANCELED` com `canceledAt = fim do período` e executa os efeitos
+  (`applyCancellationEffects`): anula faturas abertas e **desconecta todos os números** (logout na Evolution +
+  `DISCONNECTED` local, sem alerta de queda). Vale para TODA origem de `CANCELED` (agendado, imediato e os 60/7
+  dias em `SUSPENDED`). Se a desconexão falhar na transição, uma varredura do tick refaz em cada rodada.
+- **Painel só com Assinatura** (`CanceledGate` + sidebar enxuta no `PanelShell`): qualquer outra rota mostra um
+  aviso com link. O servidor já barrava escrita (`assertTenantCanWrite`) e o bot (`isTenantBotAllowedFor`).
+- **Reativação pelo dono** (`reactivateSubscriptionAction`): cria (ou reaproveita) uma fatura do plano atual,
+  vencendo em 3 dias, com Pix. Ao pagar, `applyInvoicePayment` volta a `ACTIVE` contando o mês a partir do
+  pagamento e zera `canceledAt/cancelAtPeriodEnd/cancelRequestedAt/cancelReason`. Os números precisam ser
+  reconectados (QR) depois. Idempotente (`periodStart` = início do dia UTC + `@@unique`).
+- **Retenção**: 90 dias a partir de `canceledAt` (constante `CANCELED_RETENTION_DAYS`, usada também pelo
+  `maintenance/tick` na anonimização). Export CSV de clientes: `exportContactsCsvAction` (tela Clientes).
+- **Avisos**: e-mail ao dono (`subscriptionCancelEmail`: data de término, 90 dias, lembrete do CSV, como desfazer;
+  falha de SMTP só é logada) e itens no sino do admin: `TENANT_CANCEL_SCHEDULED` ("Empresa pediu cancelamento",
+  id `cancelreq:<subId>:<ms>`, some se desfeito, inclui o motivo) e o já existente `TENANT_CANCELED` (agora com o motivo).
+  O motivo nunca vai para log.
+
+### Server Actions (`src/modules/billing/actions.ts`; todas `requireTenantMember(slug, ["OWNER"])`)
+
+```ts
+cancelSubscriptionAction(tenantSlug, { reason?: string /* ≤500, trim; vazio = sem motivo */ })
+  → Result<{ mode: "SCHEDULED" | "IMMEDIATE"; endsAt: string /* ISO */; alreadyRequested: boolean }>
+undoCancellationAction(tenantSlug) → Result<{ undone: boolean }>   // false = não havia agendamento
+reactivateSubscriptionAction(tenantSlug) → Result<{ invoiceId: string }>
+```
+
+Erros: `FORBIDDEN` (STAFF), `NOT_FOUND` (outra empresa/sem assinatura), `INVALID_PAYLOAD` (motivo > 500),
+`INVALID_STATE` (desfazer depois da data; reativar sem estar cancelada; plano sem preço), `RATE_LIMITED`
+(5 por 10 min por empresa, cancelar/reativar).
+
+### Testes
+`tests/integration/billing-cancellation.integration.test.ts` (14), `tests/e2e/assinatura-cancelamento.spec.ts` (3),
+unit em `core/billing/__tests__/status.test.ts` e `lib/email/__tests__/templates.test.ts`.

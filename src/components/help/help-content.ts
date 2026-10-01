@@ -493,6 +493,32 @@ const HELP_ENTRIES = {
     examples: ["Você clica no botão de copiar, abre o app do banco, escolhe \"Pix Copia e Cola\" e cola o código."],
     warning: "Se aparecer que falta o CPF ou CNPJ, cadastre em Configurações > Dados para cobrança.",
   },
+  "assinatura.cancelar": {
+    title: "Cancelar assinatura",
+    purpose: "Encerra a sua assinatura quando você não quiser mais continuar. Só o dono da empresa pode cancelar.",
+    steps: [
+      "Clique em \"Cancelar assinatura\" e leia o aviso com a data em que o acesso termina.",
+      "Se quiser, conte o motivo (é opcional e ajuda a melhorar o InnoChat).",
+      "Confirme. Até a data, tudo continua funcionando e não há nova cobrança. Mudou de ideia? Clique em \"Desfazer cancelamento\".",
+    ],
+    examples: [
+      "Você pagou até 20/11 e cancelou em 05/11: o atendimento segue normal até 20/11 e você não paga mais nada. Se voltar atrás antes de 20/11, é só desfazer.",
+      "Se a assinatura já estiver suspensa por falta de pagamento, o cancelamento vale na hora.",
+    ],
+    tip: "Antes de cancelar, exporte a lista dos seus clientes (CSV) na tela Clientes.",
+    warning: "Depois que o acesso termina, os números de WhatsApp são desconectados e o painel mostra só a tela de Assinatura. Os dados ficam guardados por 90 dias; depois, os dados dos seus clientes são anonimizados.",
+  },
+  "assinatura.reativar": {
+    title: "Reativar assinatura",
+    purpose: "Volta a usar o InnoChat depois de ter cancelado, pagando uma nova mensalidade pelo Pix.",
+    steps: [
+      "Clique em \"Reativar assinatura\": aparece o Pix da mensalidade.",
+      "Pague pelo app do banco. A tela atualiza sozinha quando o pagamento chega.",
+      "Depois, conecte de novo o seu número em WhatsApp (leia o QR code outra vez).",
+    ],
+    examples: ["Você cancelou em outubro e quer voltar em dezembro: reative, pague o Pix e reconecte o WhatsApp. Seus cadastros continuam lá se isso for feito dentro de 90 dias."],
+    warning: "Passados 90 dias do cancelamento, os dados dos seus clientes são anonimizados e não dá para recuperar.",
+  },
   "assinatura.planos": {
     title: "Planos disponíveis",
     purpose: "Compare os planos e troque quando a empresa crescer ou quando quiser gastar menos.",

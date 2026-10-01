@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  accessEndsAt,
   CANCEL_AFTER_SUSPENDED_DAYS,
   CANCEL_AFTER_SUSPENDED_TRIAL_DAYS,
   computeNextPeriodEnd,
@@ -139,6 +140,40 @@ describe("effectiveStatus — CANCELED é terminal", () => {
     const future = new Date(Date.now() + 30 * DAY);
     const sub = { status: "CANCELED" as const, trialEndsAt: null, currentPeriodEnd: future };
     expect(effectiveStatus(sub, new Date())).toBe("CANCELED");
+  });
+});
+
+describe("effectiveStatus — cancelamento agendado (cancelAtPeriodEnd)", () => {
+  const periodEnd = new Date("2026-11-20T12:00:00.000Z");
+  const active = { status: "ACTIVE" as const, trialEndsAt: null, currentPeriodEnd: periodEnd, cancelAtPeriodEnd: true };
+
+  it("até o fim do período continua ACTIVE (acesso total)", () => {
+    expect(effectiveStatus(active, new Date(periodEnd.getTime() - 1))).toBe("ACTIVE");
+  });
+
+  it("no fim do período vai direto a CANCELED, sem carência nem suspensão", () => {
+    expect(effectiveStatus(active, periodEnd)).toBe("CANCELED");
+    expect(effectiveStatus(active, new Date(periodEnd.getTime() + 10 * DAY))).toBe("CANCELED");
+  });
+
+  it("em teste, a referência é o fim do teste", () => {
+    const trialEnd = new Date("2026-10-04T10:00:00.000Z");
+    const trial = { status: "TRIALING" as const, trialEndsAt: trialEnd, currentPeriodEnd: trialEnd, cancelAtPeriodEnd: true };
+    expect(effectiveStatus(trial, new Date(trialEnd.getTime() - 1))).toBe("TRIALING");
+    expect(effectiveStatus(trial, trialEnd)).toBe("CANCELED");
+  });
+
+  it("sem agendamento, o comportamento é o de sempre (carência de 1 dia)", () => {
+    expect(effectiveStatus({ ...active, cancelAtPeriodEnd: false }, periodEnd)).toBe("PAST_DUE");
+  });
+});
+
+describe("accessEndsAt", () => {
+  it("TRIALING usa trialEndsAt; os demais, currentPeriodEnd", () => {
+    const trialEnd = new Date("2026-10-04T10:00:00.000Z");
+    const periodEnd = new Date("2026-11-04T10:00:00.000Z");
+    expect(accessEndsAt({ status: "TRIALING", trialEndsAt: trialEnd, currentPeriodEnd: periodEnd })).toEqual(trialEnd);
+    expect(accessEndsAt({ status: "ACTIVE", trialEndsAt: null, currentPeriodEnd: periodEnd })).toEqual(periodEnd);
   });
 });
 

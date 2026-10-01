@@ -11,7 +11,7 @@ import { effectiveStatus } from "@/core/billing";
 export async function isTenantWriteBlocked(tenantId: string): Promise<boolean> {
   const subscription = await getPrisma().subscription.findUnique({
     where: { tenantId },
-    select: { status: true, trialEndsAt: true, currentPeriodEnd: true },
+    select: { status: true, trialEndsAt: true, currentPeriodEnd: true, cancelAtPeriodEnd: true },
   });
   if (!subscription) return false;
   const status = effectiveStatus(subscription, new Date());

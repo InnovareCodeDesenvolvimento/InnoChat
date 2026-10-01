@@ -10,6 +10,7 @@ import { NotificationBell } from "@/components/notifications/notification-bell";
 import { NotificationCenterProvider } from "@/components/notifications/notification-center-provider";
 import { WhatsappStatusChip, type WhatsappTopbarStatus } from "./whatsapp-status-chip";
 import { PageTransition } from "./page-transition";
+import { CanceledGate } from "./canceled-gate";
 import { OnboardingTourProvider, TourReplayButton } from "@/components/onboarding/onboarding-tour";
 import { InnovareCodeBadge } from "@/components/brand/innovarecode-badge";
 import { ResendVerificationButton } from "@/components/account/resend-verification-button";
@@ -115,6 +116,20 @@ function SubscriptionBanner({
     );
   }
 
+  if (status === "CANCELED") {
+    return (
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-danger/30 bg-danger-bg px-4 py-2 text-sm sm:px-6">
+        <span className="flex items-center gap-2 text-danger">
+          <Lock className="h-4 w-4 shrink-0" aria-hidden="true" />
+          Assinatura cancelada: o painel mostra só a tela de Assinatura e o bot está mudo.
+        </span>
+        <Link href={`/${tenantSlug}/assinatura`} className="font-medium text-danger hover:underline">
+          Reativar
+        </Link>
+      </div>
+    );
+  }
+
   return null;
 }
 
@@ -157,6 +172,8 @@ export function PanelShell({
   tourAutoStart = false,
   children,
 }: PanelShellProps) {
+  // Assinatura cancelada: o painel mostra só a tela de Assinatura (sidebar enxuta + `CanceledGate`).
+  const billingOnly = subscriptionStatus === "CANCELED";
   return (
     <OnboardingTourProvider tenantSlug={tenantSlug} autoStart={tourAutoStart}>
     <NotificationCenterProvider tenantSlug={tenantSlug}>
@@ -171,6 +188,7 @@ export function PanelShell({
             tenantSlug={tenantSlug}
             onboardingIncomplete={onboardingIncomplete}
             whatsappNeedsAttention={whatsappNeedsAttention}
+            billingOnly={billingOnly}
           />
         </div>
         <div className="mt-4 border-t border-white/10 pt-4">
@@ -187,6 +205,7 @@ export function PanelShell({
               tenantSlug={tenantSlug}
               onboardingIncomplete={onboardingIncomplete}
               whatsappNeedsAttention={whatsappNeedsAttention}
+              billingOnly={billingOnly}
               brand={<Brand tenantName={tenantName} />}
               footer={
                 <>
@@ -200,7 +219,7 @@ export function PanelShell({
           </div>
 
           <div className="flex shrink-0 items-center gap-3">
-            <CommandPalette variant="tenant" tenantSlug={tenantSlug} />
+            {billingOnly ? null : <CommandPalette variant="tenant" tenantSlug={tenantSlug} />}
             <WhatsappStatusChip status={whatsappStatus} />
             <NotificationBell timezone={timezone} />
           </div>
@@ -210,7 +229,11 @@ export function PanelShell({
         {!emailVerified ? <EmailVerificationBanner /> : null}
 
         <main className="flex-1 p-4 pb-16 sm:p-6 sm:pb-16">
-          <PageTransition>{children}</PageTransition>
+          <PageTransition>
+            <CanceledGate tenantSlug={tenantSlug} canceled={billingOnly}>
+              {children}
+            </CanceledGate>
+          </PageTransition>
         </main>
       </div>
       <InnovareCodeBadge />

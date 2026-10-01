@@ -16,6 +16,9 @@ export const CANCEL_AFTER_SUSPENDED_DAYS = 60;
  */
 export const CANCEL_AFTER_SUSPENDED_TRIAL_DAYS = 7;
 
+/** Dias que os dados ficam guardados depois do cancelamento; depois, os dados de clientes finais são anonimizados (Termos §9). */
+export const CANCELED_RETENTION_DAYS = 90;
+
 /** Trial (decisão do dono, 2026-09-29 — trocou de 1 para 3 dias; carência continua em 1 dia, ver `GRACE_DAYS`): 3 dias a partir do cadastro. */
 export const TRIAL_DAYS = 3;
 
@@ -30,7 +33,9 @@ export function computeTrialEndsAt(signupAt: Date): Date {
  *
  * Regras:
  * - `CANCELED` é terminal: uma vez cancelada (pelo dono da empresa ou por 60 dias em
- *   `SUSPENDED`), só volta por uma ação explícita do admin (fora desta função).
+ *   `SUSPENDED`), só volta por uma ação explícita (admin, ou o dono pagando a reativação — fora
+ *   desta função).
+ * - `cancelAtPeriodEnd` (cancelamento agendado): no vencimento de referência vai direto a `CANCELED`.
  * - Enquanto `status` persistido é `TRIALING`, o vencimento de referência é `trialEndsAt`.
  *   Nos demais casos (`ACTIVE`/`PAST_DUE`/`SUSPENDED`), é `currentPeriodEnd` — que só avança
  *   quando um pagamento é confirmado (`computeNextPeriodEnd`). Isso é o que permite ao
@@ -51,6 +56,12 @@ export function effectiveStatus(subscription: SubscriptionSnapshot, now: Date): 
 
   if (now < dueAt) {
     return isTrial ? "TRIALING" : "ACTIVE";
+  }
+
+  // Cancelamento agendado pelo dono: o acesso termina EXATAMENTE no fim do período já pago —
+  // sem carência nem suspensão. Calculado sob demanda, então não depende de o tick já ter rodado.
+  if (subscription.cancelAtPeriodEnd) {
+    return "CANCELED";
   }
 
   const graceEnd = addDays(dueAt, GRACE_DAYS);
@@ -87,4 +98,12 @@ export function computeNextPeriodEnd(params: {
 /** `true` quando falta `leadDays` dias ou menos para `dueAt` (ou já venceu). */
 export function isWithinLeadDays(dueAt: Date, now: Date, leadDays: number): boolean {
   return addDays(now, leadDays) >= dueAt;
+}
+
+/**
+ * Quando o acesso termina para uma assinatura com cancelamento agendado: o fim do teste
+ * (`TRIALING`) ou do período pago corrente (demais casos).
+ */
+export function accessEndsAt(subscription: Pick<SubscriptionSnapshot, "status" | "trialEndsAt" | "currentPeriodEnd">): Date {
+  return subscription.status === "TRIALING" ? (subscription.trialEndsAt ?? subscription.currentPeriodEnd) : subscription.currentPeriodEnd;
 }

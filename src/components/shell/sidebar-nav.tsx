@@ -193,17 +193,24 @@ export function TenantSidebarNav({
   tenantSlug,
   onboardingIncomplete,
   whatsappNeedsAttention,
+  billingOnly,
   onNavigate,
 }: {
   tenantSlug: string;
   onboardingIncomplete?: boolean;
   whatsappNeedsAttention?: boolean;
+  /** Assinatura cancelada: só o item Assinatura (Termos §9). */
+  billingOnly?: boolean;
   onNavigate?: () => void;
 }) {
+  const groups = tenantNavGroups(tenantSlug, { whatsappNeedsAttention });
+  const visibleGroups = billingOnly
+    ? groups.map((g) => ({ ...g, items: g.items.filter((item) => item.href.endsWith("/assinatura")) })).filter((g) => g.items.length > 0)
+    : groups;
   return (
     <GroupedNav
-      groups={tenantNavGroups(tenantSlug, { whatsappNeedsAttention })}
-      pinned={onboardingIncomplete ? tenantOnboardingItem(tenantSlug) : null}
+      groups={visibleGroups}
+      pinned={onboardingIncomplete && !billingOnly ? tenantOnboardingItem(tenantSlug) : null}
       onNavigate={onNavigate}
     />
   );

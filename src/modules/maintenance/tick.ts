@@ -1,5 +1,6 @@
 import { getPrisma } from "@/lib/db/prisma";
 import { logger } from "@/lib/logger";
+import { CANCELED_RETENTION_DAYS } from "@/core/billing";
 import { recordMaintenanceTickRun } from "@/modules/platform/health-service";
 
 /**
@@ -28,7 +29,7 @@ import { recordMaintenanceTickRun } from "@/modules/platform/health-service";
  */
 
 const INBOUND_EVENT_RETENTION_DAYS = 30;
-const CANCELED_ANONYMIZATION_DAYS = 90;
+const CANCELED_ANONYMIZATION_DAYS = CANCELED_RETENTION_DAYS;
 const ANONYMIZE_BATCH_LIMIT = 500;
 const ANON_WAJID_PREFIX = "anon:";
 const CHAT_MESSAGE_RETENTION_DAYS = 90;

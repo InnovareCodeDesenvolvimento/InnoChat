@@ -2,7 +2,7 @@ import { addDays, addMonths } from "date-fns";
 import { getPrisma } from "@/lib/db/prisma";
 import { logger } from "@/lib/logger";
 import { sendMail, loadEmailContext, invoiceDueReminderEmail } from "@/lib/email";
-import { effectiveStatus, validateCpfCnpj } from "@/core/billing";
+import { accessEndsAt, effectiveStatus, validateCpfCnpj } from "@/core/billing";
 import {
   billingUrlFor,
   pixEnvironmentFor,
@@ -15,6 +15,8 @@ import {
 import { formatCentsBRL, formatDateBR } from "./format";
 import { getMercadoPagoGateway, type MercadoPagoGateway } from "./mercadopago";
 import { reconcileInvoicePayment } from "./reconcile";
+import { applyCancellationEffects } from "./cancellation";
+import { disconnectAllWhatsappInstances } from "@/modules/whatsapp/service";
 import { recordBillingTickRun } from "@/modules/platform/health-service";
 import { runReminderTick } from "@/modules/reminders/tick";
 
@@ -143,6 +145,8 @@ async function generateUpcomingInvoices(
     where: {
       status: { in: ["ACTIVE", "PAST_DUE"] },
       currentPeriodEnd: { lte: leadWindow },
+      // Cancelamento agendado pelo dono: nenhuma fatura nova (Termos §9).
+      cancelAtPeriodEnd: false,
       // Teste ainda não convertido: a fatura do trial É a cobrança. Sem esta guarda, o PAST_DUE
       // pós-trial geraria uma 2ª fatura (mês seguinte) que voltaria a contar como "vencida".
       invoices: { none: { isTrialConversion: true, status: "OPEN" } },
@@ -323,10 +327,23 @@ async function reconcileStatuses(prisma: ReturnType<typeof getPrisma>, now: Date
         // 90 dias após `CANCELED` (docs/arquitetura.md §11/§12) nunca teria uma data de
         // referência para contar a partir de nenhuma empresa cancelada automaticamente (60
         // dias em `SUSPENDED`, ver `effectiveStatus`). Marca só na transição PARA `CANCELED`.
-        ...(next === "CANCELED" ? { canceledAt: now } : {}),
+        // Cancelamento agendado pelo dono: a data de cancelamento é o fim do período pago (não o
+        // instante em que o tick rodou) — é dela que partem os 90 dias de retenção.
+        ...(next === "CANCELED" ? { canceledAt: subscription.cancelAtPeriodEnd ? accessEndsAt(subscription) : now } : {}),
       },
     });
     summary.statusChanges += 1;
+
+    // Efeitos do cancelamento (qualquer origem: agendado pelo dono ou 60 dias em SUSPENDED):
+    // anula faturas em aberto e desconecta os números. Falha isolada — a varredura abaixo repete.
+    if (next === "CANCELED") {
+      try {
+        const effects = await applyCancellationEffects(subscription.id, subscription.tenantId);
+        summary.invoicesVoided += effects.invoicesVoided;
+      } catch (error) {
+        logger.warn("billing.tick.cancel_effects_failed", { tenantId: subscription.tenantId, errorMessage: error instanceof Error ? error.message : String(error) });
+      }
+    }
 
     if (next === "SUSPENDED" && !subscription.suspendedEmailSentAt) {
       const payerEmail = await findBillingRecipientEmail(subscription.tenantId);
@@ -353,4 +370,20 @@ async function reconcileStatuses(prisma: ReturnType<typeof getPrisma>, now: Date
     data: { status: "VOID" },
   });
   summary.invoicesVoided += voided.count;
+
+  // Auto-cura da desconexão: número ainda ligado numa assinatura já CANCELED = a desconexão
+  // falhou/foi interrompida na transição. Limitado por rodada. (Fatura aberta NÃO entra aqui: numa
+  // assinatura CANCELED ela pode ser a de reativação pedida pelo dono.)
+  const lingering = await prisma.subscription.findMany({
+    where: { status: "CANCELED", tenant: { whatsappInstances: { some: { deletedAt: null, status: { not: "DISCONNECTED" } } } } },
+    select: { tenantId: true },
+    take: 50,
+  });
+  for (const { tenantId } of lingering) {
+    try {
+      await disconnectAllWhatsappInstances(tenantId);
+    } catch (error) {
+      logger.warn("billing.tick.cancel_effects_failed", { tenantId, errorMessage: error instanceof Error ? error.message : String(error) });
+    }
+  }
 }

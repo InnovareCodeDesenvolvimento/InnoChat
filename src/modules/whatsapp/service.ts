@@ -275,6 +275,46 @@ export async function disconnectWhatsapp(
   return toView(updated);
 }
 
+/**
+ * Desconecta TODOS os números da empresa (cancelamento da assinatura — Termos §9: "os números de
+ * WhatsApp são desconectados"). Idempotente: só toca o que ainda não está `DISCONNECTED`. Falha na
+ * Evolution (fora do ar, não configurada) nunca impede a baixa local — o bot já é barrado pelo
+ * status CANCELED; ao reativar, o dono lê o QR de novo. `disconnectedAt` fica nulo de propósito: é
+ * desconexão deliberada, não queda (não gera alerta de "WhatsApp caiu"). Devolve quantos números tocou.
+ */
+export async function disconnectAllWhatsappInstances(tenantId: string, deps?: { evolution?: EvolutionClient }): Promise<number> {
+  const scoped = forTenant(tenantId);
+  const instances = await scoped.whatsappInstance.findMany({ where: { deletedAt: null, status: { not: "DISCONNECTED" } } });
+  if (instances.length === 0) return 0;
+
+  let evolution: EvolutionClient | null = deps?.evolution ?? null;
+  if (!evolution) {
+    try {
+      evolution = await getEvolutionClient();
+    } catch (error) {
+      logger.warn("whatsapp.disconnect_all.evolution_unavailable", { tenantId, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  for (const instance of instances) {
+    if (evolution) {
+      try {
+        await evolution.logout(instance.instanceName);
+      } catch (error) {
+        logger.warn("whatsapp.disconnect_all.evolution_failed", {
+          instanceId: instance.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    await scoped.whatsappInstance.update({
+      where: { id: instance.id },
+      data: { status: "DISCONNECTED", phoneE164: null, disconnectedAt: null },
+    });
+  }
+  return instances.length;
+}
+
 /** `removeWhatsappInstanceAction` — delete na Evolution + soft delete local (mesma cautela de `deleteService`/`deleteProfessional`: nunca perde o histórico ligado à instância). */
 export async function removeWhatsappInstance(
   tenantId: string,

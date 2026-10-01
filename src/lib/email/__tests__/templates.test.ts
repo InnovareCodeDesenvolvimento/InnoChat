@@ -4,6 +4,7 @@ import {
   invoiceGeneratedEmail,
   passwordResetEmail,
   paymentConfirmedEmail,
+  subscriptionCancelEmail,
   subscriptionSuspendedEmail,
   teamInviteEmail,
   verificationEmail,
@@ -160,5 +161,33 @@ describe("templates de e-mail", () => {
       const { html } = verificationEmail({ verifyUrl: "javascript:alert(1)", ctx });
       expect(html).not.toContain('href="javascript:');
     });
+  });
+});
+
+describe("subscriptionCancelEmail", () => {
+  const base = { tenantName: "Salão da Ana", endsAtBr: "20/11/2026", retentionDays: 90, clientsUrl: "https://app.exemplo.com.br/salao/clientes", billingUrl: "https://app.exemplo.com.br/salao/assinatura", ctx };
+
+  it("agendado: traz a data, o prazo de 90 dias, o lembrete do CSV e como desfazer", () => {
+    const mail = subscriptionCancelEmail({ ...base, immediate: false });
+    expect(mail.subject).toContain("20/11/2026");
+    for (const body of [mail.text, mail.html]) {
+      expect(body).toContain("20/11/2026");
+      expect(body).toContain("90 dias");
+      expect(body).toContain("CSV");
+    }
+    expect(mail.text).toContain("desfazer o cancelamento");
+    expect(mail.text).toContain(base.clientsUrl);
+  });
+
+  it("imediato: sem lembrete de exportar, com chamada para reativar", () => {
+    const mail = subscriptionCancelEmail({ ...base, immediate: true });
+    expect(mail.subject).toBe("Assinatura cancelada — Salão da Ana");
+    expect(mail.text).not.toContain("CSV");
+    expect(mail.text).toContain("reative");
+  });
+
+  it("escapa o nome da empresa no HTML", () => {
+    const mail = subscriptionCancelEmail({ ...base, tenantName: "<script>x</script>", immediate: false });
+    expect(mail.html).not.toContain("<script>x</script>");
   });
 });

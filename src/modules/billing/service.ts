@@ -370,7 +370,10 @@ export async function applyInvoicePayment(invoiceId: string, paidAt: Date): Prom
       throw new DomainError("NOT_FOUND", "Assinatura não encontrada para esta fatura.");
     }
 
-    const wasSuspended = effectiveStatus(subscription, paidAt) === "SUSPENDED" || subscription.status === "SUSPENDED";
+    // `CANCELED` (reativação paga pelo dono, ver `cancellation.ts#startReactivation`) também
+    // conta o novo período a partir do pagamento: `currentPeriodEnd` antigo já está no passado.
+    const wasCanceled = subscription.status === "CANCELED";
+    const wasSuspended = effectiveStatus(subscription, paidAt) === "SUSPENDED" || subscription.status === "SUSPENDED" || wasCanceled;
     const anchor = wasSuspended ? paidAt : subscription.currentPeriodEnd;
     const nextPeriodEnd = new Date(anchor);
     nextPeriodEnd.setMonth(nextPeriodEnd.getMonth() + 1);
@@ -381,6 +384,8 @@ export async function applyInvoicePayment(invoiceId: string, paidAt: Date): Prom
         status: "ACTIVE",
         currentPeriodEnd: nextPeriodEnd,
         trialEndsAt: null,
+        // Reativação: zera o estado de cancelamento (data, agendamento, motivo) e a marca de suspensão.
+        ...(wasCanceled ? { canceledAt: null, cancelAtPeriodEnd: false, cancelRequestedAt: null, cancelReason: null, suspendedEmailSentAt: null } : {}),
         // Primeiro pagamento: passa a valer o prazo de 60 dias em SUSPENDED (não o de teste).
         ...(subscription.firstPaidAt ? {} : { firstPaidAt: paidAt }),
         // O ciclo pago que está começando AGORA é o "próximo ciclo" do §7.2: se havia um

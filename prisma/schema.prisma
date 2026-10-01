@@ -861,6 +861,15 @@ model Subscription {
 
   canceledAt DateTime?
 
+  // Cancelamento pelo painel (decisão do dono, 2026-10-01). `cancelAtPeriodEnd` = o OWNER agendou
+  // o cancelamento: tudo segue funcionando até o fim do período corrente (`currentPeriodEnd`, ou
+  // `trialEndsAt` em teste), sem nova fatura; nessa data a assinatura vira CANCELED. `cancelRequestedAt`
+  // e `cancelReason` (texto livre opcional, máx. 500) ficam gravados para o dono da plataforma
+  // aprender; `canceledAt` só é preenchido quando o cancelamento de fato vale.
+  cancelAtPeriodEnd  Boolean   @default(false)
+  cancelRequestedAt  DateTime?
+  cancelReason       String?
+
   // Marca de e-mail já enviado (Vega, Fase 7 — billing/tick): sem isto, rodar o tick de hora em
   // hora reenviaria o aviso de "atendimento suspenso" a cada rodada enquanto o tenant continuar
   // SUSPENDED. Nulo = ainda não avisado NESTA suspensão; volta a nulo quando a assinatura sai de

@@ -57,7 +57,7 @@ export default async function TenantLayout({
   // persistido (que só o `billing/tick` de hora em hora mantém em dia).
   const subscription = await getPrisma().subscription.findUnique({
     where: { tenantId: membership.tenant.id },
-    select: { status: true, trialEndsAt: true, currentPeriodEnd: true },
+    select: { status: true, trialEndsAt: true, currentPeriodEnd: true, cancelAtPeriodEnd: true },
   });
   const now = new Date();
   const status = subscription ? effectiveStatus(subscription, now) : null;

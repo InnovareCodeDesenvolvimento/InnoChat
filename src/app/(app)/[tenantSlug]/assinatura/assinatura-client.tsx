@@ -16,6 +16,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/components/lib/cn";
 import { formatDateTimeLabel } from "@/components/lib/format-date";
+import { AssinaturaCanceladaCard, CancelamentoAgendadoAviso, CancelarAssinaturaCard } from "./cancelamento";
 import { changePlanAction, checkMyInvoicePaymentAction, regenerateMyInvoicePixAction, type PlanListItem } from "@/modules/billing/actions";
 
 export type BillingStatus = "TRIALING" | "ACTIVE" | "PAST_DUE" | "SUSPENDED" | "CANCELED";
@@ -31,6 +32,13 @@ export type BillingSnapshot = {
   timezone: string;
   pendingPlanId: string | null;
   pendingPlanName: string | null;
+  /** Cancelamento agendado pelo dono (vale no fim do período/teste). */
+  cancelAtPeriodEnd: boolean;
+  /** Quando o acesso termina, se há cancelamento agendado. */
+  accessEndsAt: string | null;
+  canceledAt: string | null;
+  /** Fim da guarda dos dados (cancelamento + 90 dias). */
+  retentionEndsAt: string | null;
   invoice: {
     id: string;
     amountCents: number;
@@ -519,10 +527,13 @@ export function AssinaturaClient({
               Teste termina em {formatDateTimeLabel(snapshot.trialEndsAt, snapshot.timezone)}.
             </span>
           ) : null}
-          {snapshot.status === "ACTIVE" ? (
+          {snapshot.status === "ACTIVE" && !snapshot.cancelAtPeriodEnd ? (
             <span className="text-sm text-text-secondary">
               Próxima cobrança em {formatDateTimeLabel(snapshot.currentPeriodEnd, snapshot.timezone)}.
             </span>
+          ) : null}
+          {snapshot.status === "ACTIVE" && snapshot.cancelAtPeriodEnd ? (
+            <span className="text-sm text-text-secondary">Sem nova cobrança: o cancelamento está agendado.</span>
           ) : null}
         </CardContent>
         {snapshot.status === "SUSPENDED" ? (
@@ -542,6 +553,10 @@ export function AssinaturaClient({
         ) : null}
       </Card>
 
+      <CancelamentoAgendadoAviso tenantSlug={tenantSlug} snapshot={snapshot} isOwner={isOwner} />
+
+      {snapshot.status === "CANCELED" ? <AssinaturaCanceladaCard tenantSlug={tenantSlug} snapshot={snapshot} isOwner={isOwner} /> : null}
+
       {paymentConfirmed ? (
         <Alert variant="success" title="Pagamento confirmado!" data-testid="assinatura-pagamento-confirmado">
           Recebemos o seu Pix. Sua assinatura está em dia.
@@ -552,7 +567,9 @@ export function AssinaturaClient({
         <PixCard invoice={snapshot.invoice} timezone={snapshot.timezone} tenantSlug={tenantSlug} hasDocument={hasDocument} />
       ) : null}
 
-      <PlanosCard tenantSlug={tenantSlug} snapshot={snapshot} plans={plans} isOwner={isOwner} />
+      {snapshot.status !== "CANCELED" ? <PlanosCard tenantSlug={tenantSlug} snapshot={snapshot} plans={plans} isOwner={isOwner} /> : null}
+
+      <CancelarAssinaturaCard tenantSlug={tenantSlug} snapshot={snapshot} isOwner={isOwner} />
     </div>
   );
 }

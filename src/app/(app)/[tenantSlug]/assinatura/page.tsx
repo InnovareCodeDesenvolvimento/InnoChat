@@ -5,7 +5,8 @@ import { navIconFor } from "@/components/shell/nav-items";
 import { EmptyState } from "@/components/ui/empty-state";
 import { getPrisma } from "@/lib/db/prisma";
 import { auth } from "@/lib/auth";
-import { effectiveStatus } from "@/core/billing";
+import { accessEndsAt, CANCELED_RETENTION_DAYS, effectiveStatus } from "@/core/billing";
+import { addDays } from "date-fns";
 import { listActivePlansAction, type PlanListItem } from "@/modules/billing/actions";
 import { AssinaturaClient, type BillingSnapshot } from "./assinatura-client";
 
@@ -62,6 +63,9 @@ export default async function AssinaturaPage({
   const plansResult = await listActivePlansAction(tenantSlug);
   const plans: PlanListItem[] = plansResult.ok ? plansResult.data : [];
 
+  // Cancelada por agendamento cuja data já passou (o tick ainda não gravou `canceledAt`): vale a data de término.
+  const canceledAt = subscription.canceledAt ?? (status === "CANCELED" && subscription.cancelAtPeriodEnd ? accessEndsAt(subscription) : null);
+
   const snapshot: BillingSnapshot = {
     planId: subscription.planId,
     planName: subscription.plan.name,
@@ -73,6 +77,10 @@ export default async function AssinaturaPage({
     timezone: tenant.timezone,
     pendingPlanId: subscription.pendingPlanId,
     pendingPlanName: pendingPlan?.name ?? null,
+    cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+    accessEndsAt: subscription.cancelAtPeriodEnd ? accessEndsAt(subscription).toISOString() : null,
+    canceledAt: canceledAt?.toISOString() ?? null,
+    retentionEndsAt: canceledAt ? addDays(canceledAt, CANCELED_RETENTION_DAYS).toISOString() : null,
     invoice: openInvoice
       ? {
           id: openInvoice.id,

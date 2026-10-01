@@ -26,11 +26,17 @@ const TRIAL_WARN_MS = DAY_MS;
 // Mesma regra da tela Saúde (`health-service.ts`): billing 2h, maintenance 26h.
 const BILLING_TICK_STALE_MS = 2 * 60 * 60 * 1000;
 const MAINTENANCE_TICK_STALE_MS = 26 * 60 * 60 * 1000;
-const KEY_PATTERN = /^(signup|pay|susp|cancel|trial|wa|mpwh|tick):[A-Za-z0-9_:.-]{1,100}$/;
+const KEY_PATTERN = /^(signup|pay|susp|cancel|cancelreq|trial|wa|mpwh|tick):[A-Za-z0-9_:.-]{1,100}$/;
 
 type Item = Omit<AdminNotification, "read">;
 
 const brl = (cents: number) => (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+/** Motivo livre do dono, truncado para caber no sino (React escapa na renderização). */
+function reasonSuffix(reason: string | null): string {
+  const text = reason?.trim();
+  return text ? ` Motivo: "${text.length > 160 ? `${text.slice(0, 160)}…` : text}"` : "";
+}
 
 function windowStartOf(now: Date): Date {
   return new Date(now.getTime() - WINDOW_MS);
@@ -43,7 +49,7 @@ async function loadItems(now: Date, from: Date): Promise<Item[]> {
   const graceMs = GRACE_DAYS * DAY_MS;
   const tenantSel = { select: { id: true, name: true, slug: true } } as const;
 
-  const [signups, payments, suspended, canceled, trials, instances, settings] = await Promise.all([
+  const [signups, payments, suspended, canceled, cancelRequests, trials, instances, settings] = await Promise.all([
     prisma.tenant.findMany({
       where: { createdAt: { gte: from } },
       orderBy: { createdAt: "desc" },
@@ -65,7 +71,14 @@ async function loadItems(now: Date, from: Date): Promise<Item[]> {
       where: { status: "CANCELED", canceledAt: { gte: from } },
       orderBy: { canceledAt: "desc" },
       take: SOURCE_CAP,
-      select: { id: true, canceledAt: true, tenant: tenantSel },
+      select: { id: true, canceledAt: true, cancelReason: true, tenant: tenantSel },
+    }),
+    // Cancelamento AGENDADO pelo dono (ainda vale até o fim do período): avisa na hora do pedido.
+    prisma.subscription.findMany({
+      where: { cancelAtPeriodEnd: true, status: { not: "CANCELED" }, cancelRequestedAt: { gte: from } },
+      orderBy: { cancelRequestedAt: "desc" },
+      take: SOURCE_CAP,
+      select: { id: true, cancelRequestedAt: true, cancelReason: true, trialEndsAt: true, currentPeriodEnd: true, status: true, tenant: tenantSel },
     }),
     prisma.subscription.findMany({
       where: { status: "TRIALING", trialEndsAt: { gt: now, lte: trialLimit } },
@@ -141,10 +154,25 @@ async function loadItems(now: Date, from: Date): Promise<Item[]> {
       kind: "TENANT_CANCELED",
       severity: "danger",
       title: "Empresa cancelada",
-      body: `A assinatura de ${c.tenant.name} foi cancelada.`,
+      body: `A assinatura de ${c.tenant.name} foi cancelada.${reasonSuffix(c.cancelReason)}`,
       href: "/admin/empresas",
       createdAt: c.canceledAt.toISOString(),
       tenant: c.tenant,
+    });
+  }
+
+  for (const r of cancelRequests) {
+    if (!r.cancelRequestedAt) continue;
+    const endsAt = r.status === "TRIALING" ? (r.trialEndsAt ?? r.currentPeriodEnd) : r.currentPeriodEnd;
+    items.push({
+      id: `cancelreq:${r.id}:${r.cancelRequestedAt.getTime()}`,
+      kind: "TENANT_CANCEL_SCHEDULED",
+      severity: "warning",
+      title: "Empresa pediu cancelamento",
+      body: `${r.tenant.name} cancelou a assinatura; o acesso vai até ${endsAt.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}.${reasonSuffix(r.cancelReason)}`,
+      href: "/admin/empresas",
+      createdAt: r.cancelRequestedAt.toISOString(),
+      tenant: r.tenant,
     });
   }
 

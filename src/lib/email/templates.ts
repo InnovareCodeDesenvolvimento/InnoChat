@@ -184,3 +184,46 @@ export function paymentConfirmedEmail(params: { tenantName: string; amountReais:
     ctx: params.ctx,
   });
 }
+
+/**
+ * Confirmação de cancelamento pelo painel (OWNER). `immediate` = suspensa/atrasada: o acesso já
+ * terminou; senão, `endsAtBr` é a data em que termina (fim do período já pago).
+ */
+export function subscriptionCancelEmail(params: {
+  tenantName: string;
+  immediate: boolean;
+  endsAtBr: string;
+  retentionDays: number;
+  clientsUrl: string;
+  billingUrl: string;
+  ctx?: EmailContext;
+}): Built {
+  const lead = params.immediate
+    ? `A assinatura de "${params.tenantName}" foi cancelada e o acesso ao painel foi encerrado. Os números de WhatsApp foram desconectados.`
+    : `Recebemos o pedido de cancelamento da assinatura de "${params.tenantName}". Você continua usando tudo normalmente até ${params.endsAtBr}; depois disso, os números de WhatsApp são desconectados e o painel mostra só a tela de Assinatura. Não haverá nova cobrança.`;
+  const keep = `Seus dados ficam guardados por ${params.retentionDays} dias após o cancelamento. Depois disso, os dados dos seus clientes são anonimizados.`;
+  const csv = params.immediate
+    ? ""
+    : "Antes de a data chegar, recomendamos exportar a lista dos seus clientes (CSV) pela tela de Clientes.";
+  const undo = params.immediate ? "Para voltar a usar o InnoChat, reative a assinatura pela tela de Assinatura." : "Mudou de ideia? Você pode desfazer o cancelamento na tela de Assinatura até essa data.";
+  const url = params.immediate ? params.billingUrl : params.clientsUrl;
+  const cta = params.immediate ? "Reativar minha assinatura" : "Exportar meus clientes (CSV)";
+  const subject = params.immediate ? `Assinatura cancelada — ${params.tenantName}` : `Cancelamento agendado para ${params.endsAtBr} — ${params.tenantName}`;
+  return build({
+    subject,
+    preheader: params.immediate ? "Sua assinatura foi cancelada." : `Seu acesso vai até ${params.endsAtBr}. Exporte seus clientes antes.`,
+    rows: [
+      heading(params.immediate ? "Assinatura cancelada" : "Cancelamento agendado"),
+      paragraph(lead),
+      ...(params.immediate ? [] : [factsCard([{ label: "Empresa", value: params.tenantName }, { label: "Acesso até", value: params.endsAtBr, strong: true }])]),
+      paragraph(keep),
+      csv ? paragraph(csv) : "",
+      note(undo),
+      button(url, cta),
+      fallbackLink(url),
+    ].join("\n"),
+    text: `${lead}\n\n${keep}${csv ? `\n\n${csv}\nClientes: ${params.clientsUrl}` : ""}\n\n${undo}\n${params.billingUrl}`,
+    footerReason: BILLING_REASON(params.tenantName),
+    ctx: params.ctx,
+  });
+}
