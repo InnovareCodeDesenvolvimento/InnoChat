@@ -8,7 +8,14 @@ export type NotificationKind =
   | "WHATSAPP_DISCONNECTED"
   | "TRIAL_ENDING"
   | "PAYMENT_CONFIRMED"
-  | "HANDOFF_REQUESTED";
+  | "HANDOFF_REQUESTED"
+  // Régua de cobrança (derivados do estado da assinatura, só OWNER; `src/modules/billing/dunning/bell.ts`).
+  | "INVOICE_OPEN"
+  | "INVOICE_DUE"
+  | "INVOICE_OVERDUE"
+  | "SUBSCRIPTION_SUSPENDED"
+  | "CANCEL_WARNING"
+  | "TRIAL_PROGRESS";
 
 export type NotificationSeverity = "info" | "success" | "warning" | "danger";
 

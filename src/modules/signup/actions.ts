@@ -49,6 +49,8 @@ const signUpSchema = z.preprocess(
   // `src/modules/signup/service.ts#signUp` e docs/contratos.md "Cadastro público"). Só a
   // presença é checada aqui; o dígito verificador é conferido em `signUp` (`INVALID_DOCUMENT`).
   document: z.string().trim().min(1, "Informe o CPF ou CNPJ da empresa."),
+  // Telefone do dono: vira o WhatsApp de cobrança (`Tenant.billingWhatsappE164`). Opcional; inválido = INVALID_PHONE.
+  phone: z.string().trim().max(30).optional(),
   termsVersion: z.string().min(1).max(50),
   acceptedTerms: z.boolean().refine((v) => v === true, { message: "É preciso aceitar os termos." }),
   }),
@@ -83,6 +85,7 @@ export async function signUpAction(input: unknown): Promise<Result<{ tenantSlug:
       email: data.email,
       password: data.password,
       document: data.document,
+      phone: data.phone ?? null,
       termsVersion: TERMS_VERSION,
     });
     return { tenantSlug: result.tenantSlug };
@@ -200,8 +203,8 @@ const GOOGLE_SIGNUP_WINDOW_MS = 60 * 60 * 1000;
 
 /**
  * Cria empresa + usuário (sem senha, e-mail verificado) + trial — a MESMA lógica de `signUp`
- * (`createAccount`) — e abre a sessão. `phone` é validado mas ainda não tem coluna (o cadastro por
- * senha também não pede telefone).
+ * (`createAccount`) — e abre a sessão. `phone` (opcional) vira o WhatsApp de cobrança
+ * (`Tenant.billingWhatsappE164`, normalizado para só dígitos com DDI).
  */
 export async function completeGoogleSignUpAction(input: unknown): Promise<Result<{ redirectTo: string }>> {
   return runAction(async () => {
@@ -218,6 +221,7 @@ export async function completeGoogleSignUpAction(input: unknown): Promise<Result
       token: data.token,
       tenantName: data.tenantName,
       document: data.document,
+      phone: data.phone || null,
       planCode: data.planCode || undefined,
       termsVersion: TERMS_VERSION,
     });

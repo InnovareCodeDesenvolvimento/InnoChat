@@ -28,14 +28,14 @@ let tenantId: string;
 /**
  * Força efetivamente SUSPENDED: `effectiveStatus` (src/core/billing/status.ts) olha `status` E
  * `currentPeriodEnd` juntos — só marcar `status: "SUSPENDED"` não basta se `currentPeriodEnd`
- * ainda está no futuro (o cálculo devolveria "ACTIVE"). Empurra o vencimento 2 dias para o
- * passado (depois da carência de 1 dia, dentro dos 60 dias antes de virar CANCELED) — mesmo
+ * ainda está no futuro (o cálculo devolveria "ACTIVE"). Empurra o vencimento 5 dias para o
+ * passado (depois da carência de 3 dias de quem paga, dentro dos 60 dias antes de virar CANCELED) — mesmo
  * truque documentado em `admin-service.ts#suspendCompanyManually`.
  */
 async function suspendNow() {
   await prisma.subscription.update({
     where: { tenantId },
-    data: { status: "SUSPENDED", currentPeriodEnd: new Date(Date.now() - 2 * 86_400_000) },
+    data: { status: "SUSPENDED", currentPeriodEnd: new Date(Date.now() - 5 * 86_400_000) },
   });
 }
 

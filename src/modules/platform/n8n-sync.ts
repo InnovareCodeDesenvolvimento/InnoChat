@@ -255,6 +255,10 @@ async function repointInstanceWebhooks(
   evolutionApiKey: string,
   webhookBaseUrl: string,
 ): Promise<{ repointed: number; failed: number }> {
+  // Só `WhatsappInstance` de empresa. A instância do WhatsApp da plataforma (cobrança) mora em tabela
+  // própria (`PlatformWhatsappConnection`) e NUNCA é reapontada para o bot: o webhook dela é o
+  // `/api/webhooks/platform-whatsapp/<token>`. Não filtre por prefixo de nome: um slug de empresa
+  // "plataforma" geraria o mesmo prefixo. A garantia é a separação de tabelas (testada).
   const instances = await getPrisma().whatsappInstance.findMany({
     where: { deletedAt: null },
     select: { instanceName: true, webhookToken: true },

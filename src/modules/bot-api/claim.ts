@@ -12,6 +12,7 @@ import { getMergedBotTexts } from "@/modules/bot-texts/service";
 import { closeOpenHandoff, findOpenHandoff, markHandoffAnswered } from "./handoff";
 import { contactHasBusinessRelation, logChatMessage } from "@/modules/conversations/log";
 import { isTenantBotAllowed } from "./subscription-gate";
+import { isPlatformSender } from "@/modules/platform-whatsapp/sender-guard";
 import type { InternalApiContext } from "./internal-auth";
 
 const LEASE_MS = 20_000;
@@ -160,6 +161,13 @@ export async function claimMessage(ctx: InternalApiContext, rawPayload: unknown,
 
   if (!identity.waJid && !contact) {
     return recordSimpleIgnore(ctx, normalized.providerMessageId, "UNRESOLVABLE_SENDER");
+  }
+
+  // Trava anti-loop da régua de cobrança (docs/regua-de-cobranca.md §2.4, trava 1): mensagem vinda de um
+  // número que já foi do WhatsApp da plataforma (o dono usa o celular como bot e recebeu um aviso de
+  // cobrança) NUNCA entra no bot: sem Contato, sem sessão, sem histórico, sem resposta.
+  if (await isPlatformSender(identity.waJid ?? contact?.waJid ?? null)) {
+    return recordSimpleIgnore(ctx, normalized.providerMessageId, "PLATFORM_SENDER");
   }
 
   // Mensagem enviada PELO dono do número (fromMe) para alguém que NUNCA falou com o número é conversa

@@ -1,34 +1,23 @@
-import { addDays, addMinutes, addMonths } from "date-fns";
+import { addDays, addMonths } from "date-fns";
 import { getPrisma } from "@/lib/db/prisma";
 import { withAdvisoryLock } from "@/lib/db/advisory-lock";
 import { describeDbError, isTransactionTimeout } from "@/lib/db/prisma-errors";
 import { logger } from "@/lib/logger";
-import { loadEmailContext, invoiceDueReminderEmail } from "@/lib/email";
-import { effectiveStatus, GRACE_DAYS, validateCpfCnpj } from "@/core/billing";
+import { effectiveStatus, validateCpfCnpj } from "@/core/billing";
 import {
-  billingUrlFor,
   pixEnvironmentFor,
   createInvoiceForPeriodTracked,
   findBillingRecipientEmail,
   generateInvoiceDescription,
-  sendBillingMail,
-  sendInvoiceGeneratedEmail,
-  sendSubscriptionSuspendedEmail,
   cancelPixPayments,
   voidOpenInvoices,
 } from "./service";
-import { formatCentsBRL, formatDateBR } from "./format";
 import { getMercadoPagoGateway, type MercadoPagoGateway } from "./mercadopago";
 import { reconcileInvoicePayment } from "./reconcile";
-import { deliverAutoCancelEmail, persistCanceledTransition } from "./cancellation";
-import {
-  claimOnceEmail,
-  giveUpOnceEmail,
-  listPendingOnceEmails,
-  markOnceEmailSent,
-  ONCE_EMAIL_GIVE_UP_DAYS,
-  ONCE_EMAIL_RETRY_WAIT_MINUTES,
-} from "./email-outbox";
+import { persistCanceledTransition } from "./cancellation";
+import { runDunning } from "./dunning/run";
+import type { DispatchDeps } from "./dunning/dispatcher";
+import { recordBillingEvent } from "./dunning/events";
 import { disconnectAllWhatsappInstances } from "@/modules/whatsapp/service";
 import { recordBillingTickRun } from "@/modules/platform/health-service";
 import { runReminderTick } from "@/modules/reminders/tick";
@@ -43,16 +32,16 @@ import { runReminderTick } from "@/modules/reminders/tick";
  *    junto da primeira, já que o trial dura só `TRIAL_DAYS` (3) dias — menos que a janela de 5 dias).
  * 2. Regenera o Pix de faturas `OPEN` com Pix expirado (ou nunca gerado, se o Mercado Pago
  *    estava fora do ar na criação).
- * 3. Envia lembrete de vencimento (1 dia antes e, no dia, até 24h DEPOIS do vencimento — §7.1),
- *    uma vez por fatura (`dueReminderEmailSentAt`/`dueTodayEmailSentAt`).
- * 4. Recalcula `effectiveStatus` de toda assinatura não-`CANCELED` e persiste se mudou; ao
- *    entrar em `SUSPENDED`, dispara o e-mail de suspensão (uma vez por suspensão —
- *    `suspendedEmailSentAt`, resetado quando sai de `SUSPENDED`).
+ * 3. Recalcula `effectiveStatus` de toda assinatura não-`CANCELED` e persiste se mudou (cada transição grava
+ *    um `BillingEvent`).
+ * 4. Roda a RÉGUA DE COBRANÇA (`./dunning`, docs/regua-de-cobranca.md): o planejador puro decide as etapas devidas
+ *    (fatura gerada, D-3/D-1/D, carência D+1 a D+3, suspensão, S+3 a S+45, C-7/C-1, cancelamento, teste), grava no
+ *    outbox `BillingNotice` com `ON CONFLICT DO NOTHING` e o despachante envia por e-mail e WhatsApp (claim
+ *    `FOR UPDATE SKIP LOCKED`, reconferência antes de enviar, espera crescente em falha, janela de horário). Substitui
+ *    as marcas `*SentAt` e o outbox transitório em `ProviderEvent`, que deixaram de ser escritos.
  *
- * E-MAIL QUE NÃO SAIU NÃO VIRA "ENVIADO" (R1-R3 de docs/regua-de-cobranca.md): toda marca
- * `*SentAt` só é gravada quando `sendMail` devolve `sent: true` (`sendBillingMail`). Falha de SMTP,
- * SMTP sem configuração ou erro = sem marca, a próxima rodada tenta de novo, `summary.emailsFailed`
- * conta e o sino do Admin avisa (`BILLING_EMAIL_FAILING`, derivado do resultado do tick).
+ * AVISO QUE NÃO SAIU NÃO VIRA "ENVIADO" (R1-R3): o outbox só marca `SENT` quando o SMTP/WhatsApp confirma. Falha =
+ * `FAILED` com nova tentativa; `summary.emailsFailed` conta e o sino do Admin avisa (`BILLING_EMAIL_FAILING`).
  *
  * Um tick por vez: `runBillingTick` pega `pg_try_advisory_xact_lock` (R8); sem a trava, sai sem
  * fazer nada (`skippedByLock: true`, HTTP 200).
@@ -83,8 +72,14 @@ export type BillingTickSummary = {
   invoicesReconciledPaid: number;
   /** Lembretes de véspera enviados por WhatsApp aos clientes finais (`src/modules/reminders/tick.ts`). */
   remindersToClientsSent: number;
-  /** E-mails de cobrança que NÃO saíram nesta rodada (SMTP fora/sem configuração). Reenviados na próxima. */
+  /** E-mails de cobrança que NÃO saíram nesta rodada (SMTP fora/sem configuração). Reenviados com espera crescente. */
   emailsFailed: number;
+  /** Régua: avisos gravados no outbox nesta rodada, enviados, pulados (com motivo), com falha e adiados (janela/canal). */
+  noticesEnqueued: number;
+  noticesSent: number;
+  noticesSkipped: number;
+  noticesFailed: number;
+  noticesDeferred: number;
   /** `true` quando outro tick já estava rodando e este saiu sem fazer nada (nenhum contador vale). */
   skippedByLock?: true;
   /** `true` quando o orçamento de tempo estourou: o tick parou limpo e o resto fica para a próxima rodada. */
@@ -99,6 +94,8 @@ export const TICK_BUDGET_MS = 10 * 60 * 1000;
 export type BillingTickOptions = {
   /** Só para teste: orçamento em ms (padrão `TICK_BUDGET_MS`). */
   budgetMs?: number;
+  /** Só para teste: sender de WhatsApp, espera entre envios etc. (a produção usa o sender da plataforma). */
+  dispatch?: DispatchDeps;
 };
 
 /** Relógio de parede (não o `now` lógico do tick) que diz se o orçamento acabou. */
@@ -134,6 +131,11 @@ function emptySummary(): BillingTickSummary {
     invoicesReconciledPaid: 0,
     remindersToClientsSent: 0,
     emailsFailed: 0,
+    noticesEnqueued: 0,
+    noticesSent: 0,
+    noticesSkipped: 0,
+    noticesFailed: 0,
+    noticesDeferred: 0,
   };
 }
 
@@ -145,7 +147,7 @@ export async function runBillingTick(
   // Trava de transação (solta sozinha em commit/rollback/queda de conexão: nunca fica presa por erro).
   let outcome;
   try {
-    outcome = await withAdvisoryLock(BILLING_TICK_LOCK_NAME, () => runBillingTickLocked(now, gateway, options.budgetMs ?? TICK_BUDGET_MS));
+    outcome = await withAdvisoryLock(BILLING_TICK_LOCK_NAME, () => runBillingTickLocked(now, gateway, options.budgetMs ?? TICK_BUDGET_MS, options.dispatch));
   } catch (error) {
     if (!isTransactionTimeout(error)) throw error;
     // Rede de segurança: o orçamento deveria ter parado o tick antes. A transação fez rollback e a
@@ -158,7 +160,7 @@ export async function runBillingTick(
   return { ...emptySummary(), skippedByLock: true };
 }
 
-async function runBillingTickLocked(now: Date, gateway: MercadoPagoGateway | undefined, budgetMs: number): Promise<BillingTickSummary> {
+async function runBillingTickLocked(now: Date, gateway: MercadoPagoGateway | undefined, budgetMs: number, dispatchDeps?: DispatchDeps): Promise<BillingTickSummary> {
   const prisma = getPrisma();
   const summary = emptySummary();
   const budget = startBudget(budgetMs, summary);
@@ -178,12 +180,11 @@ async function runBillingTickLocked(now: Date, gateway: MercadoPagoGateway | und
   // 0. Concilia PRIMEIRO: fatura já paga não pode receber lembrete/suspensão/Pix novo.
   await reconcileOpenInvoices(prisma, now, gateway, summary, budget);
   await voidAbandonedReactivations(prisma, now, gateway, summary, budget);
-  // Reenvia ANTES de gerar: o que nasce nesta rodada já teve a sua tentativa (sem 2 envios por rodada).
-  await retryPendingOnceEmails(now, summary, budget);
   await generateUpcomingInvoices(prisma, now, resolvedGateway, summary, budget);
   await regenerateExpiredPix(prisma, now, resolvedGateway, summary, budget);
-  await sendDueReminders(prisma, now, summary, budget);
   await reconcileStatuses(prisma, now, summary, budget, gateway);
+  // A régua roda DEPOIS das transições de status e da geração de fatura: planeja sobre o estado já persistido.
+  await runDunningRound(now, summary, budget, resolvedGateway, dispatchDeps);
 
   // Registra a execução de COBRANÇA já aqui: o lembrete aos clientes tem ritmo lento de propósito
   // (até ~45 s) e o "quando rodou" de Admin > Saúde não pode atrasar por causa dele. A cobrança
@@ -327,7 +328,9 @@ async function generateUpcomingInvoices(
         amountCents: billingPlan.priceCents,
         periodStart,
         periodEnd,
-        dueAt: periodEnd,
+        // Vence quando o período ATUAL acaba (= `periodStart`), que é quando o status efetivo muda. O vencimento
+        // era gravado no fim do período NOVO (um mês depois), e a régua de lembretes e o banner mentiam a data.
+        dueAt: periodStart,
         payerEmail,
         description: generateInvoiceDescription(subscription.tenant.name),
         gateway,
@@ -335,79 +338,18 @@ async function generateUpcomingInvoices(
 
       if (created) {
         summary.invoicesCreated += 1;
-        // `created` só é `true` uma vez, então a marca de envio único é a linha de `email-outbox`:
-        // criada aqui, confirmada ao sair, e reenviada pela rodada seguinte se o SMTP falhar (sem
-        // migration; a F1 troca isto pelo outbox `BillingNotice`).
-        await sendInvoiceGeneratedOnce(invoice.id, now, summary);
+        await recordBillingEvent({
+          tenantId: subscription.tenantId,
+          subscriptionId: subscription.id,
+          invoiceId: invoice.id,
+          type: "INVOICE_CREATED",
+          metadata: { amountCents: invoice.amountCents },
+        });
+        // O aviso "fatura gerada" não é enviado aqui: o planejador da régua o enfileira nesta mesma rodada
+        // (etapa INVOICE_CREATED) e o despachante reenvia se o SMTP falhar.
       }
     } catch (error) {
       logger.warn("billing.tick.invoice_generation_failed", { subscriptionId: subscription.id, ...describeDbError(error) });
-    }
-  }
-}
-
-/** Reivindica a marca e envia "fatura gerada"; qualquer exceção conta como e-mail que não saiu (a marca fica pendente para o reenvio). */
-async function sendInvoiceGeneratedOnce(invoiceId: string, now: Date, summary: BillingTickSummary) {
-  try {
-    if (!(await claimOnceEmail("invoice_generated", invoiceId))) return;
-    if (await deliverInvoiceGeneratedEmail(invoiceId)) await markOnceEmailSent("invoice_generated", invoiceId, now);
-    else summary.emailsFailed += 1;
-  } catch (error) {
-    summary.emailsFailed += 1;
-    logger.warn("billing.tick.invoice_email_failed", { invoiceId, ...describeDbError(error) });
-  }
-}
-
-/** Monta e envia o e-mail "fatura gerada" com o estado ATUAL da fatura. `true` = saiu (ou não há mais o que enviar). */
-async function deliverInvoiceGeneratedEmail(invoiceId: string): Promise<boolean> {
-  const invoice = await getPrisma().invoice.findUnique({
-    where: { id: invoiceId },
-    include: { subscription: { include: { tenant: true } } },
-  });
-  // Paga/anulada entre a geração e o reenvio: cobrar agora seria o pior erro da régua.
-  if (!invoice || invoice.status !== "OPEN") return true;
-  const toEmail = await findBillingRecipientEmail(invoice.subscription.tenantId);
-  if (!toEmail) return true;
-  return sendInvoiceGeneratedEmail({
-    toEmail,
-    tenantName: invoice.subscription.tenant.name,
-    tenantSlug: invoice.subscription.tenant.slug,
-    amountCents: invoice.amountCents,
-    dueAt: invoice.dueAt,
-    pixCopyPaste: invoice.pixCopyPaste,
-    timezone: invoice.subscription.tenant.timezone,
-  });
-}
-
-/**
- * Reenvia os e-mails de envio único que falharam (fatura gerada, cancelamento automático). Passado
- * `ONCE_EMAIL_GIVE_UP_DAYS` sem sucesso o aviso perdeu o sentido: encerra a marca sem reenviar.
- */
-async function retryPendingOnceEmails(now: Date, summary: BillingTickSummary, budget: TickBudget) {
-  const giveUpBefore = addDays(now, -ONCE_EMAIL_GIVE_UP_DAYS);
-  // Só reenvia o que tem mais que a espera mínima: a 1ª tentativa de quem acabou de criar a marca pode estar em curso.
-  const retryBefore = addMinutes(now, -ONCE_EMAIL_RETRY_WAIT_MINUTES);
-  const kinds = [
-    { kind: "invoice_generated" as const, deliver: (key: string) => deliverInvoiceGeneratedEmail(key) },
-    // chave do cancelamento = "<subscriptionId>:<canceledAt ms>"
-    { kind: "auto_cancel" as const, deliver: (key: string) => deliverAutoCancelEmail(key.slice(0, key.lastIndexOf(":"))) },
-  ];
-  for (const { kind, deliver } of kinds) {
-    for (const pending of await listPendingOnceEmails(kind, retryBefore)) {
-      if (budget.isOver()) return;
-      try {
-        if (pending.createdAt < giveUpBefore) {
-          // payload { gaveUp: true } diferencia "desistiu" de "enviou" na auditoria.
-          await giveUpOnceEmail(kind, pending.key, now);
-          logger.warn("billing.tick.once_email_gave_up", { kind });
-          continue;
-        }
-        if (await deliver(pending.key)) await markOnceEmailSent(kind, pending.key, now);
-        else summary.emailsFailed += 1;
-      } catch (error) {
-        summary.emailsFailed += 1;
-        logger.warn("billing.tick.once_email_retry_failed", { kind, ...describeDbError(error) });
-      }
     }
   }
 }
@@ -474,93 +416,30 @@ async function regenerateExpiredPix(
   }
 }
 
-async function sendDueReminders(prisma: ReturnType<typeof getPrisma>, now: Date, summary: BillingTickSummary, budget: TickBudget) {
-  const oneDayOut = addDays(now, 1);
-
-  const dueTomorrow = await prisma.invoice.findMany({
-    where: { status: "OPEN", dueReminderEmailSentAt: null, dueAt: { lte: oneDayOut, gt: now } },
-    include: { subscription: { include: { tenant: true } } },
-    orderBy: { dueAt: "asc" },
-    take: EMAIL_BATCH_LIMIT,
-  });
-  for (const invoice of dueTomorrow.filter(isBillableReminder)) {
-    if (budget.isOver()) return;
-    await notifyDue(invoice, false, prisma, summary, "dueReminderEmailSentAt");
-  }
-
-  const dueToday = await prisma.invoice.findMany({
-    // "Vence hoje" só até 24h DEPOIS do vencimento (R6): fora dessa janela o texto seria mentira.
-    where: { status: "OPEN", dueTodayEmailSentAt: null, dueAt: { lte: now, gt: addDays(now, -1) } },
-    include: { subscription: { include: { tenant: true } } },
-    orderBy: { dueAt: "asc" },
-    take: EMAIL_BATCH_LIMIT,
-  });
-  for (const invoice of dueToday.filter(isBillableReminder)) {
-    if (budget.isOver()) return;
-    await notifyDue(invoice, true, prisma, summary, "dueTodayEmailSentAt");
-  }
-}
-
 /**
- * Assinatura `CANCELED` só recebe e-mail de cobrança por uma REATIVAÇÃO ativa: fatura criada
- * depois do cancelamento (`createdAt >= canceledAt`). Fatura anterior que sobrou aberta nunca gera
- * lembrete (o tick a anula; o dono cancelou e não deve ser cobrado).
+ * Rodada da régua: planeja, grava no outbox e despacha. Falha isolada: nunca derruba o resto do tick (a próxima
+ * rodada replaneja; a unicidade `(cycleKey, step, channel)` impede qualquer duplicado).
  */
-function isBillableReminder(invoice: { createdAt: Date; subscription: { status: string; canceledAt: Date | null } }): boolean {
-  if (invoice.subscription.status !== "CANCELED") return true;
-  const canceledAt = invoice.subscription.canceledAt;
-  return canceledAt !== null && invoice.createdAt >= canceledAt;
-}
-
-type InvoiceWithTenant = {
-  id: string;
-  amountCents: number;
-  dueAt: Date;
-  subscription: { tenantId: string; tenant: { name: string; slug: string; timezone: string } };
-};
-
-async function notifyDue(
-  invoice: InvoiceWithTenant,
-  dueToday: boolean,
-  prisma: ReturnType<typeof getPrisma>,
+async function runDunningRound(
+  now: Date,
   summary: BillingTickSummary,
-  field: "dueReminderEmailSentAt" | "dueTodayEmailSentAt",
+  budget: TickBudget,
+  gateway: MercadoPagoGateway | undefined,
+  deps?: DispatchDeps,
 ) {
-  // Isolado por fatura: erro ao achar destinatário/montar URL/contexto nunca aborta as demais nem as etapas seguintes.
   try {
-    const payerEmail = await findBillingRecipientEmail(invoice.subscription.tenantId);
-    if (!payerEmail) return;
-
-    const { subject, html, text } = invoiceDueReminderEmail({
-      tenantName: invoice.subscription.tenant.name,
-      amountReais: formatCentsBRL(invoice.amountCents),
-      dueDateBr: formatDateBR(invoice.dueAt, invoice.subscription.tenant.timezone),
-      billingUrl: await billingUrlFor(invoice.subscription.tenant.slug),
-      dueToday,
-      ctx: await loadEmailContext(),
-    });
-
-    // Reconsulta logo antes de enviar: a fatura pode ter sido paga/anulada (ou o lembrete enviado)
-    // desde a leitura do laço, e cobrar quem acabou de pagar é o pior erro da régua. A janela que
-    // sobra é só a do próprio envio SMTP.
-    const fresh = await prisma.invoice.findUnique({
-      where: { id: invoice.id },
-      select: { status: true, dueReminderEmailSentAt: true, dueTodayEmailSentAt: true },
-    });
-    if (!fresh || fresh.status !== "OPEN" || fresh[field] !== null) return;
-
-    // Só marca como enviado se SAIU. Falha/SMTP sem configuração: sem marca, a próxima rodada repete.
-    const sent = await sendBillingMail({ to: payerEmail, subject, html, text }, "billing.tick.due_reminder_not_sent");
-    if (!sent) {
-      summary.emailsFailed += 1;
-      return;
-    }
-
-    await prisma.invoice.updateMany({ where: { id: invoice.id, [field]: null }, data: { [field]: new Date() } });
-    summary.remindersSent += 1;
+    const run = await runDunning(now, { budget, deps: { ...deps, gateway: deps?.gateway ?? gateway } });
+    const d = run.dispatch;
+    summary.noticesEnqueued = run.enqueued;
+    summary.noticesSent = d.sent;
+    summary.noticesSkipped = d.skipped;
+    summary.noticesFailed = d.failed;
+    summary.noticesDeferred = d.deferred;
+    summary.emailsFailed += d.emailsFailed;
+    summary.suspensionEmailsSent = d.emailSentSteps.filter((step) => step === "SUSPENDED").length;
+    summary.remindersSent = d.emailSentSteps.filter((step) => step !== "SUSPENDED" && step !== "INVOICE_CREATED" && step !== "PAYMENT_CONFIRMED" && step !== "AUTO_CANCELED").length;
   } catch (error) {
-    summary.emailsFailed += 1;
-    logger.warn("billing.tick.due_reminder_failed", { invoiceId: invoice.id, ...describeDbError(error) });
+    logger.error("billing.tick.dunning_failed", { ...describeDbError(error) });
   }
 }
 
@@ -578,7 +457,7 @@ async function reconcileStatuses(
 
   for (const subscription of subscriptions) {
     if (budget.isOver()) break; // o resto das transições entra na próxima rodada
-    const next = effectiveStatus(subscription, now);
+    const next = effectiveStatus({ ...subscription, timezone: subscription.tenant.timezone }, now);
     if (next === subscription.status) continue;
 
     if (next === "CANCELED") {
@@ -602,17 +481,20 @@ async function reconcileStatuses(
         cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
         currentPeriodEnd: subscription.currentPeriodEnd,
       },
-      data: {
-        status: next,
-        // Sai de SUSPENDED (pagou/reativou) → zera a marca, para avisar de novo numa suspensão futura.
-        suspendedEmailSentAt: next === "SUSPENDED" ? subscription.suspendedEmailSentAt : null,
-      },
+      // `suspendedEmailSentAt` deixou de ser escrito: o aviso de suspensão é uma linha do outbox da régua.
+      data: { status: next },
     });
     if (claimed.count === 0) continue; // mudou no meio do caminho (pagamento/desfazer): próxima rodada reavalia
     summary.statusChanges += 1;
+    await recordBillingEvent({
+      tenantId: subscription.tenantId,
+      subscriptionId: subscription.id,
+      type: "STATUS_CHANGED",
+      fromStatus: subscription.status,
+      toStatus: next,
+      metadata: { source: "tick" },
+    });
   }
-
-  await sendPendingSuspensionEmails(prisma, now, summary, budget);
 
   // Teste não convertido cancelado (por aqui, pelo dono da empresa ou pelo admin): a fatura do
   // trial vira VOID e sai de qualquer conta de inadimplência (decisão do dono, 2026-09-29).
@@ -641,53 +523,3 @@ async function reconcileStatuses(
   }
 }
 
-/** Suspensões mais antigas que isto sem e-mail não recebem mais (o aviso ficou tardio demais). */
-const SUSPENSION_EMAIL_MAX_AGE_DAYS = 7;
-
-/**
- * E-mail de suspensão (R3): para toda assinatura `SUSPENDED` com `suspendedEmailSentAt` nulo. A marca
- * só é gravada quando o e-mail SAIU; se o SMTP falhou, a assinatura continua aqui e a próxima rodada
- * tenta de novo (antes o e-mail só era tentado na transição, então falhar era perder para sempre).
- *
- * Suspensão MANUAL do admin (`suspendCompanyManually`) já grava a marca, então nunca entra aqui.
- */
-async function sendPendingSuspensionEmails(prisma: ReturnType<typeof getPrisma>, now: Date, summary: BillingTickSummary, budget: TickBudget) {
-  // O corte de idade vai na CONSULTA (suspendedSince = currentPeriodEnd + GRACE_DAYS >= now - 7 dias):
-  // com teto por rodada, linhas velhas descartadas no código ocupariam as vagas das novas.
-  const oldestPeriodEnd = addDays(now, -(SUSPENSION_EMAIL_MAX_AGE_DAYS + GRACE_DAYS));
-  const suspended = await prisma.subscription.findMany({
-    where: { status: "SUSPENDED", suspendedEmailSentAt: null, currentPeriodEnd: { gte: oldestPeriodEnd } },
-    include: { tenant: true },
-    orderBy: { currentPeriodEnd: "asc" },
-    take: EMAIL_BATCH_LIMIT,
-  });
-  for (const subscription of suspended) {
-    if (budget.isOver()) return;
-    // Isolado por assinatura: um erro aqui nunca impede as demais nem as etapas seguintes do tick.
-    try {
-      const payerEmail = await findBillingRecipientEmail(subscription.tenantId);
-      if (!payerEmail) continue;
-
-      // Reconsulta logo antes de enviar: quem pagou/foi reativado no meio do laço não pode receber "suspenso".
-      const fresh = await prisma.subscription.findUnique({ where: { id: subscription.id }, select: { status: true, suspendedEmailSentAt: true } });
-      if (!fresh || fresh.status !== "SUSPENDED" || fresh.suspendedEmailSentAt !== null) continue;
-
-      const sent = await sendSubscriptionSuspendedEmail({
-        toEmail: payerEmail,
-        tenantName: subscription.tenant.name,
-        tenantSlug: subscription.tenant.slug,
-        trialNotConverted: subscription.firstPaidAt === null,
-      });
-      if (!sent) {
-        summary.emailsFailed += 1;
-        continue;
-      }
-      // Condicional: se a conta saiu de SUSPENDED (pagou) no meio, não deixa marca para a próxima suspensão.
-      await prisma.subscription.updateMany({ where: { id: subscription.id, status: "SUSPENDED" }, data: { suspendedEmailSentAt: now } });
-      summary.suspensionEmailsSent += 1;
-    } catch (error) {
-      summary.emailsFailed += 1;
-      logger.warn("billing.tick.suspension_email_failed", { subscriptionId: subscription.id, ...describeDbError(error) });
-    }
-  }
-}

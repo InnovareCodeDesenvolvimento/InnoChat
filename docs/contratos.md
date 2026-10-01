@@ -2029,3 +2029,50 @@ Migration aditiva `20261002120000_fatura_paga_anulada`: `Invoice.paidWhileVoidAt
   cancelamento).
 - **Motivo:** normalizado na gravação (sem controle/bidi, espaços colapsados, corte por code point) e apagado
   na anonimização de 90 dias. Assunto de e-mail sempre numa linha só.
+
+## Régua de cobrança, F2: o motor (2026-10-01, plano em `docs/regua-de-cobranca.md`)
+
+Substitui o envio legado do tick (marcas `Invoice.*EmailSentAt`, `Subscription.suspendedEmailSentAt` e o outbox transitório em `ProviderEvent(provider="billing-email")`, que **deixaram de ser escritos**; as colunas ficam) por um outbox em Postgres. Código: `src/core/billing/dunning*.ts` (puro) e `src/modules/billing/dunning/*` (I/O).
+
+### Decisões do dono aplicadas
+- **Carência (D3):** 3 dias para quem já pagou, 1 dia para teste e para quem nunca pagou (`GRACE_DAYS_PAYING`, `GRACE_DAYS_TRIAL`; `GRACE_DAYS` = valor do teste, só para o FAQ). `subscriptionBoundaries(sub)` devolve `dueAt`, `graceEndsAt` e `cancelsAt`; `effectiveStatus` usa isso.
+- **Vencimento às 23:59 do dia local (D7), só adiando:** quem paga vence às 23:59:59.999 do dia local do `currentPeriodEnd` (fuso `Tenant.timezone`, padrão `America/Sao_Paulo`). Nunca antecipa, então quem estava na carência antiga não é suspenso antes do que seria. O teste continua vencendo no instante exato.
+- **Regras de teste** valem para `status = TRIALING` ou `firstPaidAt = null` (inclui o teste que o tick já persistiu como `PAST_DUE`). `firstPaidAt` ausente no snapshot conta como pagante.
+- **Bug achado e corrigido:** `generateUpcomingInvoices` gravava `Invoice.dueAt = periodEnd` (um mês depois do fim do período atual). Agora é `periodStart`, que é o vencimento real. A migration `20261005120000_regua_f2_backfill_rerun_e_vencimento` corrige as faturas regulares ainda `OPEN` e repete o backfill `LEGACY_SENT` da F1 (idempotente) para fechar a janela até o deploy do motor.
+
+### Etapas (`BillingNotice.step`) e `cycleKey`
+`INVOICE_CREATED`, `DUE_D3` (só sino), `DUE_D1`, `DUE_D0`, `GRACE_D1`, `GRACE_D2`, `GRACE_LAST`, `SUSPENDED`, `SUSP_3|7|15|30|45`, `CANCEL_WARN_7|1`, `AUTO_CANCELED`, `PAYMENT_CONFIRMED`, `TRIAL_DAY1`, `TRIAL_T1`, `TRIAL_T0`, `TRIAL_SUSP_3`, `TRIAL_CANCEL_WARN`. Chave de ciclo: fatura = `invoiceId` (também o `INVOICE_CREATED` do teste); teste = `<subscriptionId>:trial`; suspensão e cancelamento = `<subscriptionId>:<currentPeriodEnd ISO>`. Unicidade `(cycleKey, step, channel)`.
+Canais por etapa em `STEP_POLICY` (`dunning-policy.ts`). WhatsApp: `INVOICE_CREATED`, `DUE_D1`, `DUE_D0`, `GRACE_D1`, `GRACE_LAST`, `SUSPENDED`, `SUSP_7`, `SUSP_30`, `CANCEL_WARN_*`, `AUTO_CANCELED`, `PAYMENT_CONFIRMED` e, no teste, `TRIAL_DAY1` (só se conectou), `TRIAL_T1`, `TRIAL_T0`, `TRIAL_CANCEL_WARN`. As demais, só e-mail e sino. O Pix copia e cola vai em mensagem de WhatsApp separada.
+
+### Despacho
+`runBillingTick` (concilia, gera fatura, regera Pix, persiste status) e depois `runDunning`: planeja (`planNotices`, `createMany skipDuplicates`) e despacha (`dispatchDueNotices`). Claim por `UPDATE ... FOR UPDATE SKIP LOCKED` em `src/lib/db/billing-notice-queries.ts`; `SENDING` com `updatedAt` mais velho que 15 min volta à fila. Antes de enviar, o despachante reconfere com o mesmo planejador: se não é mais devido vira `SKIPPED` (`PAID`, `STATUS_CHANGED`, `MANUAL_SUSPENSION`). Motivos de `SKIPPED`: `PAID`, `STATUS_CHANGED`, `NO_RECIPIENT`, `OPTED_OUT`, `NO_PLATFORM_NUMBER`, `CHANNEL_DOWN`, `OUT_OF_WINDOW_EXPIRED`, `BLOCKED_LOOP`, `MANUAL_SUSPENSION`, `LEGACY_SENT`.
+Falha: `FAILED` com espera de 5 min, 30 min, 2 h e 6 h, teto de 5 tentativas (depois fica `FAILED` para sempre); só o código do erro é gravado. Janela: e-mail 08h às 20h todos os dias; WhatsApp 09h às 19h de segunda a sábado e, no domingo, só `SUSPENDED`, `CANCEL_WARN_*` e `AUTO_CANCELED` (D9); `PAYMENT_CONFIRMED` ignora a janela. Etapa crítica de WhatsApp sem número da plataforma espera (até a janela fechar); as demais pulam com `NO_PLATFORM_NUMBER` ou `CHANNEL_DOWN`. Orçamento de 10 min, teto por rodada (e-mail 200, WhatsApp 30), try/catch por aviso e trava continuam. O Pix que vai no aviso vale no mínimo 24 h (senão `regeneratePixForInvoice`; sem Pix válido o texto manda pagar pelo painel).
+Destinatários (D4): `Tenant.billingEmail` recebe tudo; o OWNER recebe também as etapas críticas e o recibo; sem `billingEmail`, o OWNER recebe tudo. WhatsApp: `Tenant.billingWhatsappE164`; `billingWhatsappOptOutAt` preenchido = `SKIPPED/OPTED_OUT` (D5).
+`BillingTickSummary` ganhou `noticesEnqueued`, `noticesSent`, `noticesSkipped`, `noticesFailed` e `noticesDeferred`; `emailsFailed`, `remindersSent` e `suspensionEmailsSent` continuam.
+
+### Sequência do teste grátis (§2.3.1)
+Dados reais do tenant (`loadTrialUsage`): horários marcados pelo bot (agendamento `WHATSAPP` não cancelado), conversas respondidas (clientes distintos com resposta de saída sem autor humano), lembretes enviados e clientes que voltaram a marcar. Tudo zero vira a variação "falta pouco" (conectar o WhatsApp, cadastrar serviço, cadastrar quem atende, divulgar o número). Função pura: `summarizeTrialUsage` (`src/core/billing/trial-usage.ts`).
+
+### `BillingEvent` (append-only, só `create`)
+`INVOICE_CREATED`, `STATUS_CHANGED` (tick), `PAYMENT_CONFIRMED`, `CANCELED` (`metadata.cancelSource`: `OWNER`, `AUTO_SUSPENDED`, `TRIAL_NOT_CONVERTED` ou `ADMIN`), `CANCEL_REQUESTED`, `CANCEL_UNDONE`, `REACTIVATION_STARTED`, `PLAN_CHANGED`, `MANUAL_PAYMENT`, `MANUAL_SUSPEND` (`metadata.currentPeriodEnd` diz à régua que não é atraso), `MANUAL_REACTIVATE` e `TRIAL_EXTENDED`. Gravar o evento nunca derruba a operação.
+
+### Sino da empresa: novos `kind` (derivados, só OWNER; `src/modules/billing/dunning/bell.ts`)
+Uma etapa por vez (a mais recente da régua), id `bill:<subscriptionId>:<etapa>:<instante em ms>` (o prefixo `bill` entrou no `KEY_PATTERN`), `href` = `/<slug>/assinatura`, `source: "SYSTEM"`.
+
+| `kind` | `severity` | Etapas |
+|---|---|---|
+| `INVOICE_OPEN` | info | `INVOICE_CREATED`, `DUE_D3` |
+| `INVOICE_DUE` | warning | `DUE_D1`, `DUE_D0` |
+| `INVOICE_OVERDUE` | danger | `GRACE_D1`, `GRACE_D2`, `GRACE_LAST` |
+| `SUBSCRIPTION_SUSPENDED` | danger | `SUSPENDED`, `SUSP_*`, `TRIAL_SUSP_3` |
+| `CANCEL_WARNING` | danger | `CANCEL_WARN_7`, `CANCEL_WARN_1`, `TRIAL_CANCEL_WARN` |
+| `TRIAL_ENDING` | warning | `TRIAL_T1`, `TRIAL_T0` (o id mudou de `trial:<id>` para `bill:...`) |
+| `TRIAL_PROGRESS` | info | `TRIAL_DAY1` |
+| `PAYMENT_CONFIRMED` | success | já existia; o texto do pagamento mais recente diz "renovada até dd/mm/aaaa" |
+
+### Contato de cobrança (`src/modules/billing/contact-actions.ts`, `"use server"`, retorno `Result<T>`)
+- `getBillingContactAction(tenantSlug)`: OWNER e STAFF. `Result<{ billingEmail: string | null; billingWhatsappE164: string | null; billingWhatsappDisplay: string | null; optedOut: boolean; ownerEmail: string | null }>`. `billingWhatsappE164` = só dígitos com DDI (`5584999998888`); `billingWhatsappDisplay` = `(84) 99999-8888`.
+- `updateBillingContactAction(tenantSlug, { billingEmail?: string | null; billingWhatsapp?: string | null; optOut?: boolean })`: só OWNER. Campo ausente não mexe; `null` ou vazio apaga (o e-mail volta a ser o do dono). Aceita máscara e `+55` no telefone. `optOut: true` grava `billingWhatsappOptOutAt` (idempotente, mantém a data do primeiro pedido); `false` limpa. Devolve o mesmo formato do `get`. Erros: `FORBIDDEN`, `INVALID_PAYLOAD` (campo desconhecido), `INVALID_EMAIL`, `INVALID_PHONE`, `RATE_LIMITED` (10 por hora por empresa). Sem `assertTenantCanWrite` (a tela Assinatura funciona com a conta suspensa).
+
+### Cadastro (senha e Google) salva o telefone
+`signUpAction` (campo opcional `phone`) e `completeGoogleSignUpAction` (`phone`, que já existia) passam o telefone para `Tenant.billingWhatsappE164`, normalizado por `normalizeBrPhoneToE164` (só dígitos com DDI). Inválido: `INVALID_PHONE` e nada é criado. O aviso "fatura gerada" do cadastro é enviado na hora e gravado no outbox como `SENT`; se o SMTP falhou, a régua reenvia.

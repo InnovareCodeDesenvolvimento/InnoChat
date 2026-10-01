@@ -7,6 +7,7 @@
  * resolvido por quem envia via `loadEmailContext()`. Sem ele o e-mail sai igual, só sem imagem.
  * Todo dado dinâmico é escapado no layout; URLs são geradas pelo próprio código.
  */
+import { describeStrandedClients } from "@/core/billing/trial-usage";
 import { button, factsCard, fallbackLink, heading, innoSays, invoiceCard, note, paragraph, pixBlock, renderEmailHtml, renderEmailText, type EmailContext } from "./layout";
 
 export type { EmailContext } from "./layout";
@@ -113,8 +114,18 @@ export function invoiceGeneratedEmail(params: {
   });
 }
 
-export function invoiceDueReminderEmail(params: { tenantName: string; amountReais: string; dueDateBr: string; billingUrl: string; dueToday: boolean; ctx?: EmailContext }): Built {
+export function invoiceDueReminderEmail(params: {
+  tenantName: string;
+  amountReais: string;
+  dueDateBr: string;
+  billingUrl: string;
+  dueToday: boolean;
+  /** Pix vigente (a régua regera o código se ele está perto de expirar). `null` = manda pagar pela tela de Assinatura. */
+  pixCopyPaste?: string | null;
+  ctx?: EmailContext;
+}): Built {
   const when = params.dueToday ? "vence hoje" : "vence amanhã";
+  const pix = params.pixCopyPaste?.trim() || null;
   return build({
     subject: `Sua fatura do InnoChat ${when} (${params.tenantName})`,
     preheader: `Pague pela tela de Assinatura para o atendimento por WhatsApp não ser suspenso.`,
@@ -122,18 +133,35 @@ export function invoiceDueReminderEmail(params: { tenantName: string; amountReai
       heading(params.dueToday ? "Sua fatura vence hoje" : "Sua fatura vence amanhã"),
       paragraph("Pague com Pix pela tela de Assinatura para o atendimento por WhatsApp não ser suspenso."),
       invoiceCard({ tenantName: params.tenantName, amount: params.amountReais, dateLabel: "Vencimento", dateValue: params.dueDateBr }),
+      pix ? pixBlock(pix) : "",
       button(params.billingUrl, "Pagar com Pix"),
       fallbackLink(params.billingUrl),
+      note("Se você já pagou, pode ignorar este aviso. A confirmação chega sozinha."),
     ].join("\n"),
-    text: `Sua fatura de ${params.amountReais} ${when} (${params.dueDateBr}).\n\nPague com Pix pela tela de Assinatura para o atendimento por WhatsApp não ser suspenso:\n${params.billingUrl}`,
+    text: `Sua fatura de ${params.amountReais} ${when} (${params.dueDateBr}).\n\nPague com Pix pela tela de Assinatura para o atendimento por WhatsApp não ser suspenso:\n${params.billingUrl}${pix ? `\n\nPix copia e cola:\n${pix}` : ""}\n\nSe você já pagou, pode ignorar este aviso.`,
     footerReason: BILLING_REASON(params.tenantName),
     ctx: params.ctx,
   });
 }
 
-export function subscriptionSuspendedEmail(params: { tenantName: string; billingUrl: string; trialNotConverted?: boolean; cancelInDays?: number; ctx?: EmailContext }): Built {
+export function subscriptionSuspendedEmail(params: {
+  tenantName: string;
+  billingUrl: string;
+  trialNotConverted?: boolean;
+  cancelInDays?: number;
+  /** Data do encerramento automático (quem já pagou): "Se a fatura não for paga até X, a conta é encerrada." */
+  cancelDateBr?: string | null;
+  /** Quantos clientes marcaram pelo WhatsApp durante o teste (dado real; só aparece se for maior que zero). */
+  trialClients?: number;
+  /** Pix vigente da fatura em aberto. */
+  pixCopyPaste?: string | null;
+  ctx?: EmailContext;
+}): Built {
+  const pix = params.pixCopyPaste?.trim() || null;
+  const pixText = pix ? `\n\nPix copia e cola:\n${pix}` : "";
   if (params.trialNotConverted) {
     const cancelNote = params.cancelInDays ? `Se a assinatura não for feita, a conta será encerrada em ${params.cancelInDays} dias.` : "";
+    const clientsLine = params.trialClients && params.trialClients > 0 ? `${describeStrandedClients(params.trialClients)}. Assine e o bot volta na hora.` : "";
     return build({
       subject: `Seu teste terminou (${params.tenantName})`,
       preheader: "O atendimento automático foi pausado. Assine para voltar a usar.",
@@ -141,11 +169,13 @@ export function subscriptionSuspendedEmail(params: { tenantName: string; billing
         heading("Seu período de teste terminou"),
         paragraph(`O período de teste de "${params.tenantName}" terminou e o atendimento automático por WhatsApp foi pausado.`),
         paragraph("O painel continua acessível só para leitura (agenda e clientes). Assine para continuar usando o InnoChat."),
+        clientsLine ? paragraph(clientsLine) : "",
+        pix ? pixBlock(pix) : "",
         button(params.billingUrl, "Assinar agora"),
         fallbackLink(params.billingUrl),
         cancelNote ? note(cancelNote) : "",
       ].join("\n"),
-      text: `O período de teste de "${params.tenantName}" terminou e o atendimento automático por WhatsApp foi pausado.\n\nO painel continua acessível só para leitura (agenda e clientes). Assine para continuar usando o InnoChat:\n${params.billingUrl}${cancelNote ? `\n\n${cancelNote}` : ""}`,
+      text: `O período de teste de "${params.tenantName}" terminou e o atendimento automático por WhatsApp foi pausado.\n\nO painel continua acessível só para leitura (agenda e clientes). Assine para continuar usando o InnoChat:\n${params.billingUrl}${clientsLine ? `\n\n${clientsLine}` : ""}${pixText}${cancelNote ? `\n\n${cancelNote}` : ""}`,
       footerReason: BILLING_REASON(params.tenantName),
       ctx: params.ctx,
     });
@@ -157,10 +187,12 @@ export function subscriptionSuspendedEmail(params: { tenantName: string; billing
       heading("Atendimento por WhatsApp suspenso"),
       paragraph(`O atendimento automático por WhatsApp de "${params.tenantName}" foi suspenso por falta de pagamento.`),
       paragraph("O painel continua acessível só para leitura (agenda e clientes). Pague a fatura em aberto e o atendimento volta."),
+      pix ? pixBlock(pix) : "",
       button(params.billingUrl, "Pagar fatura em aberto"),
       fallbackLink(params.billingUrl),
+      params.cancelDateBr ? note(`Se a fatura não for paga até ${params.cancelDateBr}, a conta é encerrada.`) : "",
     ].join("\n"),
-    text: `O atendimento automático por WhatsApp de "${params.tenantName}" foi suspenso por falta de pagamento.\n\nO painel continua acessível só para leitura (agenda e clientes). Pague a fatura em aberto e o atendimento volta:\n${params.billingUrl}`,
+    text: `O atendimento automático por WhatsApp de "${params.tenantName}" foi suspenso por falta de pagamento.\n\nO painel continua acessível só para leitura (agenda e clientes). Pague a fatura em aberto e o atendimento volta:\n${params.billingUrl}${pixText}${params.cancelDateBr ? `\n\nSe a fatura não for paga até ${params.cancelDateBr}, a conta é encerrada.` : ""}`,
     footerReason: BILLING_REASON(params.tenantName),
     ctx: params.ctx,
   });

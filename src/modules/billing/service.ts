@@ -4,10 +4,11 @@ import { getPrisma } from "@/lib/db/prisma";
 import { forTenant } from "@/lib/db/tenant-client";
 import { DomainError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
-import { sendMail, SmtpNotConfiguredError, loadEmailContext, invoiceGeneratedEmail, paymentConfirmedEmail, subscriptionSuspendedEmail, type SendMailInput } from "@/lib/email";
+import { sendMail, SmtpNotConfiguredError, loadEmailContext, invoiceGeneratedEmail, subscriptionSuspendedEmail, type SendMailInput } from "@/lib/email";
 import { getPublicBaseUrl } from "@/lib/public-url";
 import { CANCEL_AFTER_SUSPENDED_TRIAL_DAYS, computeTrialEndsAt, effectiveStatus, validateCpfCnpj, type SubscriptionStatus } from "@/core/billing";
 import { formatCentsBRL, formatDateBR } from "./format";
+import { recordBillingEvent } from "./dunning/events";
 import { getActiveMercadoPagoCredentials, type MercadoPagoEnv } from "@/modules/platform/mercadopago-config";
 import { getMercadoPagoGateway, getMercadoPagoGatewayForEnvironment, MercadoPagoApiError, type MercadoPagoFailureKind, type MercadoPagoGateway } from "./mercadopago";
 
@@ -465,55 +466,52 @@ export async function applyInvoicePayment(invoiceId: string, paidAt: Date): Prom
       },
     });
 
-    const tenant = await tx.tenant.findUnique({ where: { id: subscription.tenantId }, select: { name: true, slug: true, timezone: true } });
     return {
       alreadyProcessed: false,
-      receipt: tenant ? { tenantId: subscription.tenantId, tenantName: tenant.name, tenantSlug: tenant.slug, timezone: tenant.timezone, amountCents: invoice.amountCents, paidAt, activeUntil: nextPeriodEnd } : undefined,
+      receipt: {
+        tenantId: subscription.tenantId,
+        subscriptionId: subscription.id,
+        invoiceId: invoice.id,
+        amountCents: invoice.amountCents,
+        paidAt,
+        activeUntil: nextPeriodEnd,
+        fromStatus: subscription.status,
+        reactivated: wasCanceled,
+      },
     };
   });
 
-  // Recibo FORA da transação e só na primeira baixa (`receipt` só existe quando este chamador
-  // ganhou o UPDATE condicional — webhook reentregue, conciliação e baixa manual concorrentes
-  // caem em `alreadyProcessed` e nunca reenviam). Nunca lança: e-mail não desfaz pagamento.
+  // Histórico e aviso FORA da transação e só na primeira baixa (`receipt` só existe quando este chamador
+  // ganhou o UPDATE condicional: webhook reentregue, conciliação e baixa manual concorrentes caem em
+  // `alreadyProcessed` e nunca reenviam). Nenhum dos dois desfaz o pagamento.
   if (outcome.receipt) {
-    await sendPaymentConfirmedEmail(outcome.receipt);
+    const receipt = outcome.receipt;
+    await recordBillingEvent({
+      tenantId: receipt.tenantId,
+      subscriptionId: receipt.subscriptionId,
+      invoiceId: receipt.invoiceId,
+      type: "PAYMENT_CONFIRMED",
+      fromStatus: receipt.fromStatus,
+      toStatus: "ACTIVE",
+      metadata: { amountCents: receipt.amountCents, paidAt: receipt.paidAt.toISOString(), activeUntil: receipt.activeUntil.toISOString(), reactivated: receipt.reactivated },
+    });
+    // Aviso "pagamento confirmado" (e-mail e WhatsApp) pelo outbox da régua; import dinâmico por causa do ciclo service <-> dunning.
+    const { notifyPaymentConfirmed } = await import("./dunning/payment");
+    await notifyPaymentConfirmed({ tenantId: receipt.tenantId, subscriptionId: receipt.subscriptionId, invoiceId: receipt.invoiceId, now: new Date() });
   }
   return outcome.voided ? { alreadyProcessed: outcome.alreadyProcessed, voided: true } : { alreadyProcessed: outcome.alreadyProcessed };
 }
 
 type PaymentReceipt = {
   tenantId: string;
-  tenantName: string;
-  tenantSlug: string;
-  timezone: string;
+  subscriptionId: string;
+  invoiceId: string;
   amountCents: number;
   paidAt: Date;
   activeUntil: Date;
+  fromStatus: SubscriptionStatus;
+  reactivated: boolean;
 };
-
-const RECEIPT_EMAIL_TIMEOUT_MS = 10_000;
-
-async function sendPaymentConfirmedEmail(receipt: PaymentReceipt): Promise<void> {
-  try {
-    const toEmail = await findBillingRecipientEmail(receipt.tenantId);
-    if (!toEmail) return;
-    const { subject, html, text } = paymentConfirmedEmail({
-      tenantName: receipt.tenantName,
-      amountReais: formatCentsBRL(receipt.amountCents),
-      paidDateBr: formatDateBR(receipt.paidAt, receipt.timezone),
-      activeUntilBr: formatDateBR(receipt.activeUntil, receipt.timezone),
-      billingUrl: await billingUrlFor(receipt.tenantSlug),
-      ctx: await loadEmailContext(),
-    });
-    // Teto de tempo: o webhook do Mercado Pago espera resposta rápida — SMTP lento não pode segurá-la.
-    await Promise.race([
-      sendMail({ to: toEmail, subject, html, text }),
-      new Promise((resolve) => setTimeout(resolve, RECEIPT_EMAIL_TIMEOUT_MS).unref?.()),
-    ]);
-  } catch (error) {
-    logger.error("billing.email.payment_confirmed.failed", { errorMessage: error instanceof Error ? error.message : String(error) });
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Troca de plano pelo OWNER (docs/arquitetura.md §7.2)
@@ -551,6 +549,7 @@ export async function changePlan(tenantId: string, newPlanId: string): Promise<C
 
   if (isUpgrade) {
     await prisma.subscription.update({ where: { tenantId }, data: { planId: newPlan.id, pendingPlanId: null } });
+    await recordBillingEvent({ tenantId, subscriptionId: subscription.id, type: "PLAN_CHANGED", actorType: "OWNER", metadata: { appliedImmediately: true, planCode: newPlan.code } });
     return { appliedImmediately: true };
   }
 
@@ -580,6 +579,7 @@ export async function changePlan(tenantId: string, newPlanId: string): Promise<C
   }
 
   await prisma.subscription.update({ where: { tenantId }, data: { pendingPlanId: newPlan.id } });
+  await recordBillingEvent({ tenantId, subscriptionId: subscription.id, type: "PLAN_CHANGED", actorType: "OWNER", metadata: { appliedImmediately: false, planCode: newPlan.code } });
   return { appliedImmediately: false };
 }
 
@@ -667,16 +667,34 @@ export async function sendSubscriptionSuspendedEmail(params: {
   return sendBillingMail({ to: params.toEmail, ...mail }, logEvent);
 }
 
-/** E-mail de quem recebe cobrança: o OWNER mais antigo da empresa (não há campo de e-mail de cobrança dedicado na v1). */
-export async function findBillingRecipientEmail(tenantId: string): Promise<string | null> {
+/** Primeiro OWNER (o mais antigo) da empresa: e-mail e primeiro nome. */
+export async function findOwnerContact(tenantId: string): Promise<{ email: string; firstName: string | null } | null> {
   const membership = await forTenant(tenantId).membership.findFirst({
     where: { role: "OWNER" },
     orderBy: { createdAt: "asc" },
     select: { userId: true },
   });
   if (!membership) return null;
-  const user = await getPrisma().user.findUnique({ where: { id: membership.userId }, select: { email: true } });
-  return user?.email ?? null;
+  const user = await getPrisma().user.findUnique({ where: { id: membership.userId }, select: { email: true, name: true } });
+  if (!user) return null;
+  const firstName = user.name?.trim().split(/\s+/)[0] ?? "";
+  return { email: user.email, firstName: firstName || null };
+}
+
+export async function findOwnerEmail(tenantId: string): Promise<string | null> {
+  return (await findOwnerContact(tenantId))?.email ?? null;
+}
+
+/**
+ * E-mail de quem recebe cobrança: o e-mail de cobrança da empresa (`Tenant.billingEmail`, decisão D4) quando
+ * existe; senão o OWNER mais antigo. As etapas críticas da régua também vão para o OWNER (ver
+ * `src/modules/billing/dunning/recipients.ts`); aqui é o endereço "principal" (pagador do Pix, recibos).
+ */
+export async function findBillingRecipientEmail(tenantId: string): Promise<string | null> {
+  const tenant = await getPrisma().tenant.findUnique({ where: { id: tenantId }, select: { billingEmail: true } });
+  const billing = tenant?.billingEmail?.trim();
+  if (billing) return billing;
+  return findOwnerEmail(tenantId);
 }
 
 export function newTrialEndsAt(signupAt: Date): Date {

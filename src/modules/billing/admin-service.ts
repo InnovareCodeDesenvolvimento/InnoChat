@@ -2,7 +2,8 @@ import { addMonths } from "date-fns";
 import { getPrisma } from "@/lib/db/prisma";
 import { DomainError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
-import { effectiveStatus, GRACE_DAYS } from "@/core/billing";
+import { effectiveStatus, GRACE_DAYS_PAYING, GRACE_DAYS_TRIAL, usesTrialRules } from "@/core/billing";
+import { recordBillingEvent } from "./dunning/events";
 import { applyInvoicePayment, findBillingRecipientEmail, regeneratePixForInvoice as regeneratePixForInvoiceService } from "./service";
 import type { MercadoPagoGateway } from "./mercadopago";
 import type { InvoiceStatus } from "@/lib/db/types";
@@ -93,7 +94,7 @@ export async function listCompanies(params: { cursor?: string; limit?: number })
  * `SUSPENDED` (`computeNextPeriodEnd`), então essa data "artificial" nunca vaza para o próximo
  * ciclo cobrado.
  */
-export async function suspendCompanyManually(tenantId: string): Promise<void> {
+export async function suspendCompanyManually(tenantId: string, adminId?: string): Promise<void> {
   const prisma = getPrisma();
   const subscription = await prisma.subscription.findUnique({ where: { tenantId } });
   if (!subscription) throw new DomainError("NOT_FOUND", "Assinatura não encontrada.");
@@ -102,18 +103,32 @@ export async function suspendCompanyManually(tenantId: string): Promise<void> {
   }
 
   const now = new Date();
-  const pastDueAt = new Date(now.getTime() - (GRACE_DAYS + 1) * 24 * 60 * 60 * 1000);
+  // Quem paga tem 3 dias de carência e o vencimento vai até o fim do dia local (D7): a data "artificial" precisa
+  // cair antes disso com folga. Quem nunca pagou usa a regra de teste (1 dia, instante exato).
+  const dayMs = 24 * 60 * 60 * 1000;
+  const backDays = usesTrialRules({ status: "SUSPENDED", firstPaidAt: subscription.firstPaidAt }) ? GRACE_DAYS_TRIAL + 1 : GRACE_DAYS_PAYING + 2;
+  const pastDueAt = new Date(now.getTime() - backDays * dayMs);
 
+  // O evento MANUAL_SUSPEND vem ANTES da mudança: é ele que diz à régua "isto não é atraso, não cobre". Se o
+  // update falhar, sobra um evento órfão que nunca casa com um `currentPeriodEnd` real (inofensivo).
+  await recordBillingEvent({
+    tenantId,
+    subscriptionId: subscription.id,
+    type: "MANUAL_SUSPEND",
+    fromStatus: subscription.status,
+    toStatus: "SUSPENDED",
+    actorType: "ADMIN",
+    actorUserId: adminId ?? null,
+    metadata: { currentPeriodEnd: pastDueAt.toISOString() },
+  });
   await prisma.subscription.update({
     where: { tenantId },
-    // `suspendedEmailSentAt: now` = "não mandar o e-mail de cobrança": a suspensão manual pode ter
-    // qualquer motivo (não é atraso), e a varredura da régua só avisa quem tem a marca nula.
-    data: { status: "SUSPENDED", currentPeriodEnd: pastDueAt, trialEndsAt: null, suspendedEmailSentAt: now },
+    data: { status: "SUSPENDED", currentPeriodEnd: pastDueAt, trialEndsAt: null },
   });
 }
 
 /** Reativa manualmente: volta para `ACTIVE` com um ciclo novo de 1 mês a partir de hoje. */
-export async function reactivateCompanyManually(tenantId: string): Promise<void> {
+export async function reactivateCompanyManually(tenantId: string, adminId?: string): Promise<void> {
   const prisma = getPrisma();
   const subscription = await prisma.subscription.findUnique({ where: { tenantId } });
   if (!subscription) throw new DomainError("NOT_FOUND", "Assinatura não encontrada.");
@@ -122,7 +137,7 @@ export async function reactivateCompanyManually(tenantId: string): Promise<void>
   await prisma.$transaction([
     prisma.subscription.update({
       where: { tenantId },
-      data: { status: "ACTIVE", currentPeriodEnd: addMonths(now, 1), trialEndsAt: null, canceledAt: null, suspendedEmailSentAt: null },
+      data: { status: "ACTIVE", currentPeriodEnd: addMonths(now, 1), trialEndsAt: null, canceledAt: null },
     }),
     // Reativação manual = o admin liberou sem cobrar: a fatura do teste (ainda OPEN, se a conta
     // estava só suspensa) é anulada — senão ficaria em "Em teste" para sempre e travaria a
@@ -132,10 +147,19 @@ export async function reactivateCompanyManually(tenantId: string): Promise<void>
       data: { status: "VOID" },
     }),
   ]);
+  await recordBillingEvent({
+    tenantId,
+    subscriptionId: subscription.id,
+    type: "MANUAL_REACTIVATE",
+    fromStatus: subscription.status,
+    toStatus: "ACTIVE",
+    actorType: "ADMIN",
+    actorUserId: adminId ?? null,
+  });
 }
 
 /** Estende o trial em `extraDays` dias — só válido enquanto ainda está em TRIALING. */
-export async function extendTrialManually(tenantId: string, extraDays: number): Promise<void> {
+export async function extendTrialManually(tenantId: string, extraDays: number, adminId?: string): Promise<void> {
   if (extraDays <= 0 || extraDays > 30) {
     throw new DomainError("INVALID_PAYLOAD", "A extensão precisa ser entre 1 e 30 dias.");
   }
@@ -158,6 +182,14 @@ export async function extendTrialManually(tenantId: string, extraDays: number): 
   await prisma.invoice.updateMany({
     where: { subscriptionId: subscription.id, periodStart: { lte: subscription.trialEndsAt }, status: "OPEN" },
     data: { dueAt: newTrialEndsAt, periodEnd: newTrialEndsAt },
+  });
+  await recordBillingEvent({
+    tenantId,
+    subscriptionId: subscription.id,
+    type: "TRIAL_EXTENDED",
+    actorType: "ADMIN",
+    actorUserId: adminId ?? null,
+    metadata: { extraDays, trialEndsAt: newTrialEndsAt.toISOString() },
   });
 }
 
@@ -408,6 +440,18 @@ export async function markInvoicePaidManually(
     },
   });
 
+  const owner = await prisma.subscription.findUnique({ where: { id: invoice.subscriptionId }, select: { tenantId: true } });
+  if (owner) {
+    await recordBillingEvent({
+      tenantId: owner.tenantId,
+      subscriptionId: invoice.subscriptionId,
+      invoiceId,
+      type: "MANUAL_PAYMENT",
+      actorType: "ADMIN",
+      actorUserId: adminId,
+      metadata: { reason: reason.slice(0, 200) },
+    });
+  }
   logger.info("billing.admin.invoice_marked_paid_manually", { invoiceId, adminId });
   return { alreadyProcessed: false };
 }

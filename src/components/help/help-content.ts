@@ -379,6 +379,23 @@ const HELP_ENTRIES = {
     ],
     tip: "O número precisa ter WhatsApp ativo, senão o visitante não consegue conversar.",
   },
+  "admin.whatsappCobranca": {
+    title: "WhatsApp de cobrança",
+    purpose: "É o número que manda os avisos de mensalidade para os assinantes: fatura gerada, vencimento, suspensão. Não é o comercial do site. Você conecta e troca por aqui, quando quiser.",
+    steps: [
+      "Ligue a chave \"Mandar avisos de cobrança pelo WhatsApp\". Desligada, os avisos vão só por e-mail e pelo painel.",
+      "Clique em \"Conectar número\", dê um nome (por exemplo, Cobrança) e leia o QR com o WhatsApp do chip escolhido.",
+      "Para trocar de número, clique em \"Trocar de número\" e leia o QR do chip novo. O atual segue enviando até o novo conectar, então nunca falta canal.",
+      "Use \"Enviar teste\" para ver a mensagem chegando no seu celular.",
+    ],
+    examples: [
+      "Você comprou um chip só para cobrança: conecte aqui. Se o WhatsApp bloquear, conecte outro chip sem mexer em mais nada.",
+      "O número caiu: o card mostra \"Caiu\" e um QR para reconectar. Se você ler com outro celular, vale como troca de número.",
+      "Quem responde SAIR para esse número deixa de receber os avisos por WhatsApp, e a resposta aparece no sino.",
+    ],
+    tip: "Um chip só para os avisos isola o risco: se for bloqueado, o WhatsApp do seu atendimento não é afetado. Número novo envia menos por hora nos 3 primeiros dias.",
+    warning: "Não use o WhatsApp comercial do site nem o número do bot de uma empresa: o sistema recusa.",
+  },
   "config.retomada": {
     title: "Quando o bot volta a responder",
     purpose: "Quando o cliente pede para falar com uma pessoa, o bot fica em silêncio. Aqui você escolhe quanto tempo de silêncio da equipe faz o bot voltar a responder sozinho.",
@@ -541,6 +558,49 @@ const HELP_ENTRIES = {
       "Subir de plano (upgrade) vale na hora, e a diferença vem na próxima fatura.",
       "Descer de plano (downgrade) só é aceito se o que você usa hoje couber no plano menor, e vale a partir do próximo ciclo. Por exemplo: se o plano menor permite 2 profissionais e você tem 3, remova 1 antes.",
     ],
+  },
+  "assinatura.banner": {
+    title: "Aviso de cobrança no topo",
+    purpose: "Mostra quanto tempo falta para o teste acabar, para a fatura vencer ou para o bot parar de responder, com um botão que leva direto ao Pix.",
+    steps: [
+      "Clique em \"Pagar com Pix\" (ou \"Assinar com Pix\"): a tela Assinatura abre já no código Pix.",
+      "Pague pelo app do banco. O aviso some sozinho quando o pagamento é confirmado.",
+    ],
+    examples: [
+      "Faltam 2 dias e 4 horas para a fatura vencer: o aviso fica amarelo e o relógio vai descendo.",
+      "A fatura venceu ontem: o aviso fica vermelho e diz em quanto tempo o bot para de responder. Até lá, ele segue atendendo normalmente.",
+      "Depois de pagar, aparece por 7 dias \"Assinatura renovada até 20/11\". Dá para fechar no X.",
+    ],
+    warning: "Com a assinatura suspensa, o painel fica só para consulta e o bot não responde até o pagamento.",
+  },
+  "assinatura.contato": {
+    title: "Contato de cobrança",
+    purpose: "Define para onde vão os avisos da mensalidade: um e-mail do financeiro (opcional) e o WhatsApp de quem cuida do pagamento.",
+    steps: [
+      "Se quiser, informe o e-mail do financeiro. Sem ele, os avisos vão para o e-mail do dono.",
+      "Informe o WhatsApp com DDD que deve receber os avisos de cobrança.",
+      "Para não receber pelo WhatsApp, desligue \"Receber cobrança pelo WhatsApp\". Os e-mails continuam.",
+    ],
+    examples: [
+      "A clínica tem uma contadora que paga as contas: coloque o e-mail dela. O dono continua recebendo os avisos mais urgentes.",
+      "Você não quer mensagens no WhatsApp: desligue a chave e salve. Só chegam e-mails.",
+    ],
+    warning: "Só o dono da empresa altera. Quem é da equipe vê os dados, mas não edita.",
+  },
+  "assinatura.historico": {
+    title: "Histórico de pagamentos",
+    purpose: "Lista as faturas da empresa, com valor, período e situação, para você conferir o que já foi pago.",
+    examples: ["Seu contador pergunta quando foi o último pagamento: a data aparece na linha da fatura paga."],
+  },
+  "assinatura.aviso-whatsapp": {
+    title: "WhatsApp dos avisos de cobrança",
+    purpose: "Pergunta qual número de WhatsApp deve receber os avisos da mensalidade (fatura chegando, vencendo e pagamento confirmado).",
+    steps: [
+      "Digite o número com DDD e clique em \"Salvar WhatsApp\".",
+      "Para não receber pelo WhatsApp, abra a tela Assinatura e desligue a chave de cobrança.",
+    ],
+    examples: ["O dono atende pelo celular (84) 99999-0000: coloque esse número e os avisos chegam nele, além do e-mail."],
+    tip: "Se preferir, feche o aviso no X. Ele volta na próxima vez que você entrar no painel.",
   },
 } as const satisfies Record<string, HelpEntry>;
 

@@ -312,7 +312,7 @@ describe("notificações — alertas do sistema", () => {
     expect((await listNotifications(w.ctx)).items.filter((i) => i.kind === "WHATSAPP_DISCONNECTED")).toHaveLength(0);
   });
 
-  it("TRIAL_ENDING (faltam <= 24h) e PAYMENT_CONFIRMED (fatura paga) — só para o OWNER", async () => {
+  it("TRIAL_ENDING (véspera e dia do fim, derivado da régua) e PAYMENT_CONFIRMED (fatura paga) — só para o OWNER", async () => {
     const owner = await makeWorld("bill", "OWNER");
     const plan = await prisma.plan.create({
       data: { code: `it-ntf-${randomUUID().slice(0, 8)}`, name: "Plano IT", priceCents: 4990, maxWhatsappNumbers: 1, maxProfessionals: 1, active: false, sortOrder: 999 },
@@ -337,8 +337,10 @@ describe("notificações — alertas do sistema", () => {
     const list = await listNotifications(owner.ctx);
     const trial = list.items.find((i) => i.kind === "TRIAL_ENDING");
     const pay = list.items.find((i) => i.kind === "PAYMENT_CONFIRMED");
-    expect(trial?.id).toBe(`trial:${sub.id}`);
+    // Vem da régua de cobrança (`billing/dunning/bell.ts`): uma etapa por vez, id `bill:<assinatura>:<etapa>:<instante>`.
+    expect(trial?.id).toMatch(new RegExp(`^bill:${sub.id}:TRIAL_(T1|T0):[0-9]+$`));
     expect(trial?.severity).toBe("warning");
+    expect(trial?.href).toBe(`/${owner.tenant.slug}/assinatura`);
     expect(pay?.id).toBe(`pay:${invoice.id}`);
     expect(pay?.body).toContain("49,90");
     expect(pay?.href).toBe(`/${owner.tenant.slug}/assinatura`);
@@ -351,8 +353,8 @@ describe("notificações — alertas do sistema", () => {
     const staffList = await listNotifications(staffCtx);
     expect(staffList.items.some((i) => i.kind === "TRIAL_ENDING" || i.kind === "PAYMENT_CONFIRMED")).toBe(false);
 
-    // trial com mais de 24h de sobra: sem alerta
-    await prisma.subscription.update({ where: { id: sub.id }, data: { trialEndsAt: new Date(Date.now() + 30 * HOUR) } });
+    // trial com 3+ dias de sobra (a véspera é um dia LOCAL, então não vale "30 h", que depende da hora): sem alerta
+    await prisma.subscription.update({ where: { id: sub.id }, data: { trialEndsAt: new Date(Date.now() + 80 * HOUR) } });
     expect((await listNotifications(owner.ctx)).items.some((i) => i.kind === "TRIAL_ENDING")).toBe(false);
 
     // marcar todas zera o que já existia

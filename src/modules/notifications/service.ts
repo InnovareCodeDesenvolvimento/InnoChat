@@ -3,6 +3,8 @@ import { fromZonedTime } from "date-fns-tz";
 import { getPrisma } from "@/lib/db/prisma";
 import { forTenant } from "@/lib/db/tenant-client";
 import { DomainError } from "@/lib/errors";
+import { loadBillingBellItems } from "@/modules/billing/dunning/bell";
+import { formatCentsBRL, formatDateBR } from "@/modules/billing/format";
 import type { TenantContext } from "@/lib/auth/guards";
 import {
   appointmentBody,
@@ -36,7 +38,8 @@ import type { AppNotification, TimelineItem, UpcomingAppointmentItem } from "./t
  *    (só depois de max(janela, readAllAt) — normalmente poucas linhas), 4 leituras minúsculas
  *    das fontes derivadas e 1 leitura de NotificationRead. Sem N+1 (hidratação em lote via select).
  * 4. Privacidade: só o NOME do contato (nunca telefone). STAFF vê os agendamentos e a conexão do
- *    WhatsApp; TRIAL_ENDING e PAYMENT_CONFIRMED (cobrança) só o OWNER. Não há restrição de
+ *    WhatsApp; os avisos de cobrança (TRIAL_ENDING, TRIAL_PROGRESS, INVOICE_*, SUBSCRIPTION_SUSPENDED,
+ *    CANCEL_WARNING e PAYMENT_CONFIRMED) só o OWNER, derivados do planejador da régua (`billing/dunning/bell.ts`). Não há restrição de
  *    profissional por STAFF no produto hoje — se surgir, filtrar aqui.
  */
 
@@ -44,10 +47,9 @@ const WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 const PAGE_SIZE = 20;
 const POLL_MAX = 10;
 const UPCOMING_WINDOW_MIN = 60;
-const TRIAL_WARN_MS = 24 * 60 * 60 * 1000;
 const EVENT_CAP = 200; // teto de eventos considerados no contador (30 dias)
 const EVENT_PAGE_FETCH = 60;
-const KEY_PATTERN = /^(ev|upcoming|wa|trial|pay|handoff):[A-Za-z0-9_:-]{1,100}$/;
+const KEY_PATTERN = /^(ev|upcoming|wa|trial|pay|handoff|bill):[A-Za-z0-9_:-]{1,100}$/;
 
 type Item = Omit<AppNotification, "read">;
 
@@ -151,9 +153,8 @@ async function loadStateItems(ctx: TenantContext, now: Date, windowStart: Date):
   const db = forTenant(ctx.tenant.id);
   const isOwner = ctx.membership.role === "OWNER";
   const upcomingLimit = new Date(now.getTime() + UPCOMING_WINDOW_MIN * 60_000);
-  const trialLimit = new Date(now.getTime() + TRIAL_WARN_MS);
 
-  const [upcoming, instances, subscription, invoices, handoffs] = await Promise.all([
+  const [upcoming, instances, billingItems, invoices, handoffs, currentPeriodEnd] = await Promise.all([
     db.appointment.findMany({
       where: { status: "SCHEDULED", startsAt: { gt: now, lte: upcomingLimit } },
       orderBy: { startsAt: "asc" },
@@ -171,12 +172,8 @@ async function loadStateItems(ctx: TenantContext, now: Date, windowStart: Date):
       take: 20,
       select: { id: true, label: true, disconnectedAt: true },
     }),
-    isOwner
-      ? db.subscription.findFirst({
-          where: { status: "TRIALING", trialEndsAt: { gt: now, lte: trialLimit } },
-          select: { id: true, trialEndsAt: true },
-        })
-      : Promise.resolve(null),
+    // Régua de cobrança (fatura, carência, suspensão, cancelamento, teste): a etapa atual da assinatura.
+    isOwner ? loadBillingBellItems({ id: ctx.tenant.id, timezone: ctx.tenant.timezone }, now) : Promise.resolve([]),
     isOwner
       ? getPrisma().invoice.findMany({
           where: { subscription: { tenantId: ctx.tenant.id }, status: "PAID", paidAt: { gte: windowStart } },
@@ -199,6 +196,7 @@ async function loadStateItems(ctx: TenantContext, now: Date, windowStart: Date):
         contact: { select: { id: true, name: true, pushName: true } },
       },
     }),
+    isOwner ? db.subscription.findFirst({ select: { currentPeriodEnd: true } }) : Promise.resolve(null),
   ]);
 
   const items: Item[] = [];
@@ -246,32 +244,27 @@ async function loadStateItems(ctx: TenantContext, now: Date, windowStart: Date):
     });
   }
 
-  if (subscription?.trialEndsAt) {
-    items.push({
-      id: `trial:${subscription.id}`,
-      kind: "TRIAL_ENDING",
-      severity: "warning",
-      title: "Seu período de teste termina em breve",
-      body: "Faltam menos de 24 horas. Assine para o atendimento não parar.",
-      href: `/${ctx.tenant.slug}/assinatura`,
-      createdAt: new Date(subscription.trialEndsAt.getTime() - TRIAL_WARN_MS).toISOString(),
-      source: "SYSTEM",
-    });
+  for (const bill of billingItems) {
+    items.push({ ...bill, href: `/${ctx.tenant.slug}/assinatura`, source: "SYSTEM" });
   }
 
-  for (const inv of invoices) {
-    if (!inv.paidAt) continue;
+  // Só o pagamento mais recente sabe até quando a assinatura vale (o período atual); os anteriores só agradecem.
+  invoices.forEach((inv, index) => {
+    if (!inv.paidAt) return;
     items.push({
       id: `pay:${inv.id}`,
       kind: "PAYMENT_CONFIRMED",
       severity: "success",
       title: "Pagamento confirmado",
-      body: `Recebemos ${(inv.amountCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}. Obrigado!`,
+      body:
+        index === 0 && currentPeriodEnd
+          ? `Recebemos ${formatCentsBRL(inv.amountCents)}. Sua assinatura está renovada até ${formatDateBR(currentPeriodEnd.currentPeriodEnd, ctx.tenant.timezone)}.`
+          : `Recebemos ${formatCentsBRL(inv.amountCents)}. Obrigado!`,
       href: `/${ctx.tenant.slug}/assinatura`,
       createdAt: inv.paidAt.toISOString(),
       source: "SYSTEM",
     });
-  }
+  });
 
   for (const h of handoffs) {
     const contactName = contactDisplayName(h.contact);

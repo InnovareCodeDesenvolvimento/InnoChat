@@ -1,6 +1,7 @@
 import { getPrisma } from "@/lib/db/prisma";
 import type { SubscriptionStatus, WhatsappInstanceStatus } from "@/lib/db/types";
 import { getActiveMercadoPagoCredentials } from "./mercadopago-config";
+import { formatPhoneDisplay } from "@/core/platform-whatsapp/rules";
 import { loadPlatformSettingsRow, readGenericSecret } from "./secrets";
 import { testEvolutionConnection, testMercadoPagoConnection, testN8nConnection, testSmtpConnection, type ConnectionTestResult } from "./connection-tests";
 
@@ -136,7 +137,16 @@ export type MercadoPagoWebhookHealth = {
   activeEnvironment: "PRODUCTION" | "SANDBOX";
 };
 
+/** Linha "WhatsApp da plataforma" da Saúde. Só aviso: sem WhatsApp a cobrança segue por e-mail e painel (nunca 503). */
+export type PlatformWhatsappHealth = {
+  state: "DISABLED" | "CONNECTED" | "DISCONNECTED" | "NO_NUMBER";
+  label: string | null;
+  phoneDisplay: string | null;
+  disconnectedAt: string | null;
+};
+
 export type PlatformHealth = {
+  platformWhatsapp: PlatformWhatsappHealth;
   integrations: IntegrationsHealth;
   mercadoPagoWebhook: MercadoPagoWebhookHealth;
   billingTick: TickHealth;
@@ -158,12 +168,13 @@ function tickHealthFrom(lastRunAt: Date | null, lastResult: unknown, now: Date, 
 export async function getPlatformHealth(now: Date = new Date()): Promise<PlatformHealth> {
   const prisma = getPrisma();
 
-  const [integrations, settings, whatsappGroups, subscriptionGroups, inboundEventsLast24h] = await Promise.all([
+  const [integrations, settings, whatsappGroups, subscriptionGroups, inboundEventsLast24h, platformConnection] = await Promise.all([
     getIntegrationsHealth(),
     prisma.platformSettings.findUnique({
       where: { id: 1 },
       select: {
         mpEnvironment: true,
+        platformWhatsappEnabled: true,
         lastMpWebhookAt: true,
         lastMpWebhookResult: true,
         lastMpWebhookRejectedAt: true,
@@ -173,6 +184,7 @@ export async function getPlatformHealth(now: Date = new Date()): Promise<Platfor
     prisma.whatsappInstance.groupBy({ by: ["status"], where: { deletedAt: null }, _count: { _all: true } }),
     prisma.subscription.groupBy({ by: ["status"], _count: { _all: true } }),
     prisma.inboundEvent.count({ where: { createdAt: { gte: new Date(now.getTime() - 24 * 60 * 60 * 1000) } } }),
+    prisma.platformWhatsappConnection.findFirst({ where: { role: "ACTIVE" }, select: { label: true, status: true, phoneE164: true, disconnectedAt: true } }),
   ]);
 
   const whatsappInstancesByStatus = Object.fromEntries(WHATSAPP_STATUSES.map((s) => [s, 0])) as Record<WhatsappInstanceStatus, number>;
@@ -195,6 +207,19 @@ export async function getPlatformHealth(now: Date = new Date()): Promise<Platfor
   if (!integrations.evolution.ok) alerts.push("Evolution API fora do ar ou mal configurada. Conectar números novos de WhatsApp pode falhar.");
   if (!integrations.mercadoPago.ok) alerts.push("Mercado Pago fora do ar ou mal configurado. Pix novos podem não ser gerados.");
 
+  const platformWhatsapp: PlatformWhatsappHealth = !settings?.platformWhatsappEnabled
+    ? { state: "DISABLED", label: null, phoneDisplay: null, disconnectedAt: null }
+    : !platformConnection
+      ? { state: "NO_NUMBER", label: null, phoneDisplay: null, disconnectedAt: null }
+      : {
+          state: platformConnection.status === "CONNECTED" ? "CONNECTED" : "DISCONNECTED",
+          label: platformConnection.label,
+          phoneDisplay: formatPhoneDisplay(platformConnection.phoneE164),
+          disconnectedAt: platformConnection.disconnectedAt?.toISOString() ?? null,
+        };
+  if (platformWhatsapp.state === "NO_NUMBER") alerts.push("O WhatsApp de cobrança está ligado, mas sem número conectado. Os avisos vão só por e-mail e pelo painel.");
+  if (platformWhatsapp.state === "DISCONNECTED") alerts.push("O WhatsApp de cobrança caiu. Leia o QR de novo em Configurações.");
+
   const jsonField = (value: unknown, key: string): string | null => {
     const v = value && typeof value === "object" ? (value as Record<string, unknown>)[key] : null;
     return typeof v === "string" ? v : null;
@@ -213,6 +238,7 @@ export async function getPlatformHealth(now: Date = new Date()): Promise<Platfor
 
   return {
     integrations,
+    platformWhatsapp,
     mercadoPagoWebhook,
     billingTick,
     maintenanceTick,

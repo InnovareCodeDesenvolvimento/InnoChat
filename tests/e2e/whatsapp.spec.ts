@@ -285,7 +285,7 @@ test.describe.serial("WhatsApp: conexão por QR com Evolution fake", () => {
   test("TENANT_SUSPENDED: mensagem de assinatura suspensa, e reativa em seguida", async ({ page, context }) => {
     await prisma.subscription.update({
       where: { tenantId },
-      data: { status: "SUSPENDED", currentPeriodEnd: new Date(Date.now() - 2 * 86_400_000) },
+      data: { status: "SUSPENDED", currentPeriodEnd: new Date(Date.now() - 5 * 86_400_000) },
     });
     try {
       await loginOwner(page, context);

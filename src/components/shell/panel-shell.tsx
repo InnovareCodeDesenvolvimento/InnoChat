@@ -1,5 +1,4 @@
-import Link from "next/link";
-import { AlertTriangle, Clock, Lock, Mail } from "lucide-react";
+import { Mail } from "lucide-react";
 import { TenantSidebarNav } from "./sidebar-nav";
 import { MobileNav } from "./mobile-nav";
 import { UserBlock } from "./user-block";
@@ -14,6 +13,10 @@ import { CanceledGate } from "./canceled-gate";
 import { OnboardingTourProvider, TourReplayButton } from "@/components/onboarding/onboarding-tour";
 import { InnovareCodeBadge } from "@/components/brand/innovarecode-badge";
 import { ResendVerificationButton } from "@/components/account/resend-verification-button";
+import type { SaveBillingContact } from "@/components/billing/billing-contact-types";
+import { SubscriptionBanner } from "./subscription-banner";
+import { BillingPhonePrompt } from "./billing-phone-prompt";
+import type { BillingBannerState } from "./billing-banner-state";
 
 type SubscriptionStatus = "TRIALING" | "ACTIVE" | "PAST_DUE" | "SUSPENDED" | "CANCELED" | null;
 
@@ -26,7 +29,13 @@ type PanelShellProps = {
   /** Nome de exibição (`User.name`); null = ainda sem nome (o bloco mostra o e-mail). */
   userName?: string | null;
   subscriptionStatus?: SubscriptionStatus;
-  trialHoursLeft?: number | null;
+  /** Estado do banner de cobrança, já resolvido no servidor (`resolveBillingBanner`). */
+  billingBanner?: BillingBannerState | null;
+  /** Instante (ms) em que o servidor calculou `billingBanner`: ponto de partida do contador. */
+  billingNowMs?: number;
+  /** OWNER sem WhatsApp de cobrança cadastrado: mostra o pedido discreto do número. */
+  askBillingPhone?: boolean;
+  saveBillingContact?: SaveBillingContact;
   onboardingIncomplete?: boolean;
   whatsappNeedsAttention?: boolean;
   /** Status simples, já resolvido pelo servidor (`layout.tsx`) para o chip "ao vivo" da topbar —
@@ -55,82 +64,6 @@ function EmailVerificationBanner() {
       <ResendVerificationButton variant="ghost" size="sm" />
     </div>
   );
-}
-
-/**
- * Banner global de status da assinatura (docs/arquitetura.md §7.4, decisão do dono
- * 2026-09-28): `TRIALING` avisa quantas horas faltam, `PAST_DUE` e `SUSPENDED` chamam atenção
- * para a fatura — o servidor já bloqueia escrita quando `SUSPENDED` (`assertTenantCanWrite`);
- * este banner é só a comunicação visual dessa mesma regra, nunca a fonte de verdade dela.
- */
-function SubscriptionBanner({
-  tenantSlug,
-  status,
-  trialHoursLeft,
-}: {
-  tenantSlug: string;
-  status: SubscriptionStatus;
-  trialHoursLeft?: number | null;
-}) {
-  if (status === "TRIALING") {
-    return (
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-bg px-4 py-2 text-sm sm:px-6">
-        <span className="flex items-center gap-2 text-text">
-          <Clock className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
-          {trialHoursLeft !== null && trialHoursLeft !== undefined
-            ? `Seu teste termina em ${trialHoursLeft}h.`
-            : "Você está no período de teste."}
-        </span>
-        <Link href={`/${tenantSlug}/assinatura`} className="font-medium text-primary hover:underline">
-          Ver assinatura
-        </Link>
-      </div>
-    );
-  }
-
-  if (status === "PAST_DUE") {
-    return (
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-danger/30 bg-danger-bg px-4 py-2 text-sm sm:px-6">
-        <span className="flex items-center gap-2 text-danger">
-          <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
-          Sua fatura está atrasada. Pague o Pix para evitar a suspensão do painel e do bot.
-        </span>
-        <Link href={`/${tenantSlug}/assinatura`} className="font-medium text-danger hover:underline">
-          Pagar agora
-        </Link>
-      </div>
-    );
-  }
-
-  if (status === "SUSPENDED") {
-    return (
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-danger/30 bg-danger-bg px-4 py-2 text-sm sm:px-6">
-        <span className="flex items-center gap-2 text-danger">
-          <Lock className="h-4 w-4 shrink-0" aria-hidden="true" />
-          Assinatura suspensa: o painel está somente leitura e o bot está mudo. Pague a fatura para reativar.
-        </span>
-        <Link href={`/${tenantSlug}/assinatura`} className="font-medium text-danger hover:underline">
-          Pagar e reativar
-        </Link>
-      </div>
-    );
-  }
-
-  if (status === "CANCELED") {
-    return (
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-danger/30 bg-danger-bg px-4 py-2 text-sm sm:px-6">
-        <span className="flex items-center gap-2 text-danger">
-          <Lock className="h-4 w-4 shrink-0" aria-hidden="true" />
-          Assinatura cancelada: o painel mostra só a tela de Assinatura e o bot está mudo.
-        </span>
-        <Link href={`/${tenantSlug}/assinatura`} className="font-medium text-danger hover:underline">
-          Reativar
-        </Link>
-      </div>
-    );
-  }
-
-  return null;
 }
 
 function Brand({ tenantName }: { tenantName: string }) {
@@ -164,7 +97,10 @@ export function PanelShell({
   userEmail,
   userName = null,
   subscriptionStatus = null,
-  trialHoursLeft = null,
+  billingBanner = null,
+  billingNowMs = 0,
+  askBillingPhone = false,
+  saveBillingContact,
   onboardingIncomplete = false,
   whatsappNeedsAttention = false,
   whatsappStatus = "none",
@@ -225,7 +161,8 @@ export function PanelShell({
           </div>
         </header>
 
-        <SubscriptionBanner tenantSlug={tenantSlug} status={subscriptionStatus} trialHoursLeft={trialHoursLeft} />
+        <SubscriptionBanner tenantSlug={tenantSlug} timezone={timezone} state={billingBanner} serverNowMs={billingNowMs} />
+        {askBillingPhone && saveBillingContact ? <BillingPhonePrompt tenantSlug={tenantSlug} save={saveBillingContact} /> : null}
         {!emailVerified ? <EmailVerificationBanner /> : null}
 
         <main className="flex-1 p-4 pb-16 sm:p-6 sm:pb-16">

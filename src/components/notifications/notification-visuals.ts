@@ -8,6 +8,9 @@ import {
   Building2,
   Headset,
   Hourglass,
+  Lock,
+  Receipt,
+  TriangleAlert,
   Timer,
   ShieldAlert,
   Ban,
@@ -16,6 +19,7 @@ import {
   LayoutDashboard,
   MessageCircle,
   Settings2,
+  Sparkles,
   UserX,
   WifiOff,
   type LucideIcon,
@@ -34,6 +38,13 @@ export const KIND_ICON: Record<NotificationKind | "HANDOFF_REQUESTED", LucideIco
   WHATSAPP_DISCONNECTED: WifiOff,
   TRIAL_ENDING: Hourglass,
   PAYMENT_CONFIRMED: BadgeCheck,
+  // Régua de cobrança (só OWNER). O tom (azul, amarelo, vermelho) vem da `severity` de cada item.
+  INVOICE_OPEN: Receipt,
+  INVOICE_DUE: CalendarClock,
+  INVOICE_OVERDUE: TriangleAlert,
+  SUBSCRIPTION_SUSPENDED: Lock,
+  CANCEL_WARNING: Hourglass,
+  TRIAL_PROGRESS: Sparkles,
 };
 
 /** Ícones das notificações do admin da plataforma. */
@@ -49,6 +60,9 @@ export const ADMIN_KIND_ICON: Record<AdminNotificationKind, LucideIcon> = {
   MP_WEBHOOK_REJECTED: ShieldAlert,
   TICK_LATE: Timer,
   BILLING_EMAIL_FAILING: ShieldAlert,
+  PLATFORM_WHATSAPP_MISSING: WifiOff,
+  PLATFORM_WHATSAPP_DISCONNECTED: WifiOff,
+  PLATFORM_WHATSAPP_REPLY: MessageCircle,
 };
 
 /**

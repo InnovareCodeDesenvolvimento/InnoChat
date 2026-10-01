@@ -10,6 +10,7 @@ import { getPublicBaseUrl } from "@/lib/public-url";
 import type { MembershipRole } from "@/lib/db/types";
 import { slugify, validateSlug, type SlugValidationError } from "@/core/signup/slug";
 import { validateCpfCnpj } from "@/core/billing";
+import { normalizeBrPhoneToE164 } from "@/core/contact/br-phone";
 import {
   billingUrlFor,
   findBillingRecipientEmail,
@@ -20,6 +21,8 @@ import {
   tryAttachPix,
 } from "@/modules/billing/service";
 import type { MercadoPagoGateway } from "@/modules/billing/mercadopago";
+import { recordBillingEvent } from "@/modules/billing/dunning/events";
+import { maskEmail, recordInlineInvoiceNotice } from "@/modules/billing/dunning/outbox";
 
 /**
  * Cadastro público + conta (docs/arquitetura.md §7.3, docs/contratos.md). Separado de
@@ -93,6 +96,11 @@ export type SignUpInput = {
   // `payer.identification` para gerar o Pix dela; sem o documento, aquele Pix nunca saía de
   // verdade — ver `tryAttachPix`). Aceita formatado ou só dígitos (`validateCpfCnpj` normaliza).
   document: string;
+  /**
+   * Telefone do dono (WhatsApp de cobrança, decisão do dono 2026-10-01): opcional, com máscara e DDI opcional.
+   * É normalizado para só dígitos com DDI (`558499998888`) em `Tenant.billingWhatsappE164`.
+   */
+  phone?: string | null;
 };
 
 export type SignUpResult = {
@@ -141,7 +149,21 @@ type CreateAccountInput = {
   emailVerified: boolean;
   /** Plano escolhido (código de um plano ATIVO). Sem ele, vale o plano padrão de cadastro. */
   planCode?: string;
+  /** WhatsApp de cobrança já normalizado (só dígitos com DDI), ou `null`. */
+  billingWhatsappE164?: string | null;
 };
+
+/**
+ * Telefone do cadastro -> só dígitos com DDI, ou `null` se não veio. Telefone informado e inválido é
+ * `INVALID_PHONE` (antes era validado e descartado; agora vira o número de aviso de cobrança).
+ */
+export function normalizeSignupPhone(raw: string | null | undefined): string | null {
+  const trimmed = raw?.trim();
+  if (!trimmed) return null;
+  const e164 = normalizeBrPhoneToE164(trimmed);
+  if (!e164) throw new DomainError("INVALID_PHONE", "Informe o telefone com DDD, por exemplo (84) 99999-8888.");
+  return e164;
+}
 
 async function resolveSignupPlan(planCode: string | undefined) {
   if (!planCode) return getDefaultSignupPlan();
@@ -186,6 +208,8 @@ async function createAccount(input: CreateAccountInput, gateway?: MercadoPagoGat
         name: input.companyName.trim(),
         segment: input.segment?.trim() || null,
         document: input.documentDigits,
+        // Aviso de cobrança por WhatsApp (D5: ativo para todos; o dono desliga na tela Assinatura).
+        billingWhatsappE164: input.billingWhatsappE164 ?? null,
         timezone: "America/Sao_Paulo", // único fuso suportado na v1 (docs/arquitetura.md §14)
       },
     });
@@ -223,7 +247,14 @@ async function createAccount(input: CreateAccountInput, gateway?: MercadoPagoGat
   // criada como "já existe" pelo check de idempotência e nunca chamaria o Mercado Pago).
   const invoiceWithPix = await tryAttachPix(created.invoice.id, email, generateInvoiceDescription(created.tenant.name), gateway);
 
-  await sendInvoiceGeneratedEmail({
+  await recordBillingEvent({
+    tenantId: created.tenant.id,
+    subscriptionId: created.invoice.subscriptionId,
+    invoiceId: created.invoice.id,
+    type: "INVOICE_CREATED",
+    metadata: { amountCents: created.invoice.amountCents, trial: true },
+  });
+  const invoiceEmailSent = await sendInvoiceGeneratedEmail({
     toEmail: email,
     tenantName: created.tenant.name,
     tenantSlug: created.tenant.slug,
@@ -232,6 +263,19 @@ async function createAccount(input: CreateAccountInput, gateway?: MercadoPagoGat
     pixCopyPaste: invoiceWithPix?.pixCopyPaste ?? null,
     timezone: created.tenant.timezone,
   });
+  // O envio imediato do cadastro entra no outbox como `SENT`, para a régua não repetir "Sua fatura chegou".
+  // Se o SMTP falhou, nenhuma linha é gravada e a etapa INVOICE_CREATED da régua reenvia na próxima rodada.
+  if (invoiceEmailSent) {
+    await recordInlineInvoiceNotice({
+      tenantId: created.tenant.id,
+      subscriptionId: created.invoice.subscriptionId,
+      invoiceId: created.invoice.id,
+      expiresAt: created.invoice.dueAt,
+      recipientMasked: maskEmail(email),
+    }).catch((error) => {
+      logger.warn("signup.invoice_notice_record_failed", { errorName: error instanceof Error ? error.name : "unknown" });
+    });
+  }
 
   if (!input.emailVerified) await sendVerificationEmail(created.user.id, email);
 
@@ -254,6 +298,7 @@ export async function signUp(input: SignUpInput, gateway?: MercadoPagoGateway): 
     throw new DomainError("INVALID_DOCUMENT", "CPF ou CNPJ inválido. Confira os dígitos.");
   }
 
+  const billingWhatsappE164 = normalizeSignupPhone(input.phone);
   const passwordHash = await hashPassword(input.password);
 
   return createAccount(
@@ -267,6 +312,7 @@ export async function signUp(input: SignUpInput, gateway?: MercadoPagoGateway): 
       termsVersion: input.termsVersion,
       passwordHash,
       emailVerified: false,
+      billingWhatsappE164,
     },
     gateway,
   );
@@ -280,6 +326,8 @@ export type GoogleSignUpInput = {
   document: string;
   termsVersion: string;
   planCode?: string;
+  /** Telefone do dono (mesma regra do cadastro por senha). */
+  phone?: string | null;
 };
 
 /**
@@ -292,6 +340,7 @@ export async function signUpWithGoogle(input: GoogleSignUpInput, gateway?: Merca
   if (!validatedDocument.valid) {
     throw new DomainError("INVALID_DOCUMENT", "CPF ou CNPJ inválido. Confira os dígitos.");
   }
+  const billingWhatsappE164 = normalizeSignupPhone(input.phone);
   const email = input.email.trim().toLowerCase();
   const slug = await pickAvailableSlug(input.companyName);
 
@@ -308,6 +357,7 @@ export async function signUpWithGoogle(input: GoogleSignUpInput, gateway?: Merca
       googleSub: input.googleSub,
       emailVerified: true,
       planCode: input.planCode,
+      billingWhatsappE164,
     },
     gateway,
   );

@@ -52,3 +52,5 @@
 - [Cancelamento pelo painel](cancellation_design.md) — agendado vs imediato, void/reabrir faturas, efeitos no tick, reativacao paga, armadilhas de teste.
 - [F0 da régua: marcas só com sent===true, outbox em ProviderEvent, advisory lock](billing_f0_email_marks_lock.md) — 2026-10-01; armadilhas de teste e CRLF.
 - [Revisão do Órion à F0: orçamento, try/catch por item, janela de migration](billing_f0_review_fixes.md) — 2026-10-01; reenvio só após 10 min, suspensão manual com marca.
+- [F4: WhatsApp da plataforma (cobrança) trocável](platform_whatsapp_f4_design.md) — troca atômica, ProviderEvent como estado auxiliar, travas anti-loop, armadilhas de edição/teste.
+- [F2 da régua: motor, carência 3/1, vencimento 23:59, bug do dueAt](regua_f2_motor.md) — 2026-10-01; planejador puro + outbox; FK da conexão, relógio injetado, CRLF.

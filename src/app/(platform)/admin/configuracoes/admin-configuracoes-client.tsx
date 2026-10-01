@@ -29,6 +29,8 @@ import {
 } from "@/modules/platform/actions";
 import { BotFlowCard } from "@/components/admin/bot-flow-card";
 import { GoogleLoginCard, type GoogleAuthConfig } from "@/components/admin/google-login-card";
+import { PlatformWhatsappCard } from "@/components/admin/platform-whatsapp-card";
+import type { PlatformWhatsappState } from "@/modules/platform/platform-whatsapp-actions";
 import { MercadoPagoPanel } from "@/components/admin/mercado-pago-panel";
 import type { MercadoPagoConfig } from "@/components/admin/mercado-pago-types";
 import type { N8nSyncSummary } from "@/modules/platform/n8n-sync";
@@ -168,12 +170,14 @@ export function AdminConfiguracoesClient({
   initialSalesWhatsapp,
   initialMercadoPago,
   initialGoogle,
+  initialPlatformWhatsapp,
 }: {
   initialSettings: PlatformSettingsView;
   initialLegal: PlatformLegalInfo | null;
   initialSalesWhatsapp: SalesWhatsapp | null;
   initialMercadoPago: MercadoPagoConfig | null;
   initialGoogle: GoogleAuthConfig | null;
+  initialPlatformWhatsapp: PlatformWhatsappState | null;
 }) {
   const { notify } = useToast();
   const [settings, setSettings] = useState(initialSettings);
@@ -874,6 +878,8 @@ export function AdminConfiguracoesClient({
           </CardFooter>
         </form>
       </Card>
+
+      <PlatformWhatsappCard initialState={initialPlatformWhatsapp} />
 
       <Dialog open={secretDialogOpen} onOpenChange={setSecretDialogOpen}>
         <DialogContent>

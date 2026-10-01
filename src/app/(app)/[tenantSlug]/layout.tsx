@@ -5,6 +5,8 @@ import { fontVariables } from "@/app/fonts";
 import { auth } from "@/lib/auth";
 import { getPrisma } from "@/lib/db/prisma";
 import { effectiveStatus } from "@/core/billing";
+import { resolveBillingBanner } from "@/components/shell/billing-banner-state";
+import { updateBillingContactAction } from "@/modules/billing/contact-actions";
 import { ToastProvider } from "@/components/ui/toast";
 import { NavigationProgress } from "@/components/shell/navigation-progress";
 import { PanelShell } from "@/components/shell/panel-shell";
@@ -44,7 +46,10 @@ export default async function TenantLayout({
   const membership = await getPrisma().membership.findFirst({
     where: { userId: session.user.id, tenant: { slug: tenantSlug } },
     select: {
-      tenant: { select: { id: true, name: true, theme: true, timezone: true } },
+      role: true,
+      tenant: {
+        select: { id: true, name: true, theme: true, timezone: true, billingWhatsappE164: true, billingWhatsappOptOutAt: true },
+      },
     },
   });
 
@@ -55,16 +60,41 @@ export default async function TenantLayout({
   // Status efetivo da assinatura (docs/arquitetura.md §7.4) para o banner global do painel —
   // sempre calculado sob demanda (`effectiveStatus`, puro), nunca confiando só no `status`
   // persistido (que só o `billing/tick` de hora em hora mantém em dia).
-  const subscription = await getPrisma().subscription.findUnique({
-    where: { tenantId: membership.tenant.id },
-    select: { status: true, trialEndsAt: true, currentPeriodEnd: true, cancelAtPeriodEnd: true },
-  });
+  // Tudo filtrado por `tenantId` explícito (Prisma cru, fora do `forTenant`): a assinatura e as duas
+  // faturas que o banner precisa (a aberta mais próxima de vencer e o último pagamento).
+  const tenantId = membership.tenant.id;
+  const [subscription, openInvoice, lastPaidInvoice] = await Promise.all([
+    getPrisma().subscription.findUnique({
+      where: { tenantId },
+      select: { status: true, trialEndsAt: true, currentPeriodEnd: true, cancelAtPeriodEnd: true, firstPaidAt: true },
+    }),
+    getPrisma().invoice.findFirst({
+      where: { status: "OPEN", subscription: { tenantId } },
+      orderBy: { dueAt: "asc" },
+      select: { amountCents: true, dueAt: true },
+    }),
+    getPrisma().invoice.findFirst({
+      where: { status: "PAID", paidAt: { not: null }, subscription: { tenantId } },
+      orderBy: { paidAt: "desc" },
+      select: { paidAt: true },
+    }),
+  ]);
   const now = new Date();
-  const status = subscription ? effectiveStatus(subscription, now) : null;
-  const trialHoursLeft =
-    status === "TRIALING" && subscription?.trialEndsAt
-      ? Math.max(0, Math.ceil((subscription.trialEndsAt.getTime() - now.getTime()) / (60 * 60 * 1000)))
-      : null;
+  // `timezone` entra no retrato para o vencimento de quem paga valer 23:59 do dia local (core de billing).
+  const snapshot = subscription ? { ...subscription, timezone: membership.tenant.timezone } : null;
+  const status = snapshot ? effectiveStatus(snapshot, now) : null;
+  const billingBanner = snapshot
+    ? resolveBillingBanner({ subscription: snapshot, openInvoice, lastPaidAt: lastPaidInvoice?.paidAt ?? null }, now)
+    : null;
+  // Pedido do WhatsApp de cobrança: só o OWNER, só quem ainda não informou número e não desligou
+  // os avisos, e nunca em cima de um aviso vermelho (atrasada, suspensa, cancelada).
+  const askBillingPhone =
+    membership.role === "OWNER" &&
+    !membership.tenant.billingWhatsappE164 &&
+    !membership.tenant.billingWhatsappOptOutAt &&
+    billingBanner?.kind !== "GRACE" &&
+    billingBanner?.kind !== "SUSPENDED" &&
+    billingBanner?.kind !== "CANCELED";
 
   // Onboarding (docs/arquitetura.md §13): incompleto enquanto não houver nenhum serviço OU
   // nenhum profissional com expediente cadastrado — o link "Primeiros passos" some da sidebar
@@ -116,7 +146,10 @@ export default async function TenantLayout({
             userEmail={session.user.email ?? ""}
             userName={sessionUserRecord?.name ?? null}
             subscriptionStatus={status}
-            trialHoursLeft={trialHoursLeft}
+            billingBanner={billingBanner}
+            billingNowMs={now.getTime()}
+            askBillingPhone={askBillingPhone}
+            saveBillingContact={updateBillingContactAction}
             onboardingIncomplete={onboardingIncomplete}
             whatsappNeedsAttention={whatsappNeedsAttention}
             whatsappStatus={whatsappStatus}

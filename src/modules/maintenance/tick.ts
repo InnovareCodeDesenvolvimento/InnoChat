@@ -127,7 +127,7 @@ export async function runMaintenanceTick(now: Date = new Date()): Promise<Mainte
     });
   }
 
-  // Marcas de e-mail de cobranca (`billing-email`, ver `billing/email-outbox.ts`) ja processadas ha
+  // Marcas de e-mail de cobranca (`billing-email`: outbox transitorio da F0, substituido pelo `BillingNotice` na F2; sobraram so as linhas antigas) ja processadas ha
   // mais de 90 dias: a auditoria "enviou/desistiu" nao precisa durar mais que a retencao dos dados.
   // Falha isolada (limpeza nunca impede o resto).
   try {

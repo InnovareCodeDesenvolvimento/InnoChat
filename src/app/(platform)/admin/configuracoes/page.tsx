@@ -3,15 +3,17 @@ import { PageHeader } from "@/components/ui/page-header";
 import { navIconFor } from "@/components/shell/nav-items";
 import { EmptyState } from "@/components/ui/empty-state";
 import { getGoogleAuthConfigAction, getMercadoPagoConfigAction, getPlatformLegalInfoAction, getPlatformSalesWhatsappAction, getPlatformSettingsAction } from "@/modules/platform/actions";
+import { getPlatformWhatsappAction } from "@/modules/platform/platform-whatsapp-actions";
 import { AdminConfiguracoesClient } from "./admin-configuracoes-client";
 
 export default async function AdminConfiguracoesPage() {
-  const [settingsResult, legalResult, salesResult, mpResult, googleResult] = await Promise.all([
+  const [settingsResult, legalResult, salesResult, mpResult, googleResult, platformWhatsappResult] = await Promise.all([
     getPlatformSettingsAction(),
     getPlatformLegalInfoAction(),
     getPlatformSalesWhatsappAction(),
     getMercadoPagoConfigAction(),
     getGoogleAuthConfigAction(),
+    getPlatformWhatsappAction(),
   ]);
 
   if (!settingsResult.ok) {
@@ -30,6 +32,7 @@ export default async function AdminConfiguracoesPage() {
       initialSalesWhatsapp={salesResult.ok ? salesResult.data : null}
       initialMercadoPago={mpResult.ok ? mpResult.data : null}
       initialGoogle={googleResult.ok ? googleResult.data : null}
+      initialPlatformWhatsapp={platformWhatsappResult.ok ? platformWhatsappResult.data : null}
     />
   );
 }

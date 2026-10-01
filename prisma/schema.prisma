@@ -684,6 +684,8 @@ enum InboundIgnoreReason {
   BOT_PAUSED
   TENANT_SUSPENDED
   UNRESOLVABLE_SENDER
+  // Remetente é número que já foi do WhatsApp da plataforma (cobrança): o bot da empresa nunca responde (anti-loop).
+  PLATFORM_SENDER
 }
 
 // Dedupe + trilha de auditoria do webhook. Sem conteúdo de mensagem (LGPD, §11) — purga após 30

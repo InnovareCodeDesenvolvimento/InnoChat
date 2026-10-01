@@ -61,6 +61,12 @@ export async function startFakeEvolutionServer() {
       },
     },
     {
+      // Envio de texto (mensagem de teste do WhatsApp de cobrança): id fixo; a chamada fica em `received`.
+      method: "POST",
+      path: /^\/message\/sendText\//,
+      handler: () => ({ status: 201, body: { key: { id: "E2E-MSG-1" } } }),
+    },
+    {
       method: "DELETE",
       path: /^\/instance\/logout\//,
       handler: ({ url }) => {

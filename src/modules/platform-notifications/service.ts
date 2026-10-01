@@ -1,7 +1,8 @@
 import { getPrisma } from "@/lib/db/prisma";
 import { DomainError } from "@/lib/errors";
-import { GRACE_DAYS } from "@/core/billing";
+import { GRACE_DAYS_PAYING, subscriptionBoundaries } from "@/core/billing";
 import type { AdminNotification } from "./types";
+import { loadPlatformWhatsappItems } from "./platform-whatsapp-items";
 
 /**
  * Central de notificações do ADMIN da plataforma — mesmo desenho da central do tenant
@@ -14,7 +15,7 @@ import type { AdminNotification } from "./types";
  *   já filtrada por data/estado a partir de `max(janela, min(since, readAllAt))`, + 1 leitura de
  *   reads. Sem N+1 (tenant vem por select aninhado).
  * - createdAt de cada tipo vem de um instante REAL do estado (paidAt, disconnectedAt, ...); para
- *   suspensão (sem coluna própria) é `currentPeriodEnd + GRACE_DAYS`, estável até o próximo pagamento.
+ *   suspensão (sem coluna própria) é o fim da carência (`subscriptionBoundaries().graceEndsAt`: 3 dias de quem paga, 1 de teste), estável até o próximo pagamento.
  */
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -26,7 +27,7 @@ const TRIAL_WARN_MS = DAY_MS;
 // Mesma regra da tela Saúde (`health-service.ts`): billing 2h, maintenance 26h.
 const BILLING_TICK_STALE_MS = 2 * 60 * 60 * 1000;
 const MAINTENANCE_TICK_STALE_MS = 26 * 60 * 60 * 1000;
-const KEY_PATTERN = /^(signup|pay|susp|cancel|cancelreq|pvoid|trial|wa|mpwh|tick):[A-Za-z0-9_:.-]{1,100}$/;
+const KEY_PATTERN = /^(signup|pay|susp|cancel|cancelreq|pvoid|trial|wa|mpwh|tick|pwa):[A-Za-z0-9_:.-]{1,100}$/;
 
 type Item = Omit<AdminNotification, "read">;
 
@@ -51,7 +52,8 @@ function windowStartOf(now: Date): Date {
 async function loadItems(now: Date, from: Date): Promise<Item[]> {
   const prisma = getPrisma();
   const trialLimit = new Date(now.getTime() + TRIAL_WARN_MS);
-  const graceMs = GRACE_DAYS * DAY_MS;
+  // Janela larga de busca (carência de quem paga + folga do vencimento 23:59); o instante exato sai de `subscriptionBoundaries`.
+  const graceMs = (GRACE_DAYS_PAYING + 2) * DAY_MS;
   const tenantSel = { select: { id: true, name: true, slug: true } } as const;
 
   const [signups, payments, suspended, canceled, cancelRequests, voidPayments, trials, instances, settings] = await Promise.all([
@@ -70,7 +72,7 @@ async function loadItems(now: Date, from: Date): Promise<Item[]> {
     prisma.subscription.findMany({
       where: { status: "SUSPENDED", currentPeriodEnd: { gte: new Date(from.getTime() - graceMs) } },
       take: SOURCE_CAP,
-      select: { id: true, currentPeriodEnd: true, tenant: tenantSel },
+      select: { id: true, status: true, trialEndsAt: true, firstPaidAt: true, cancelAtPeriodEnd: true, currentPeriodEnd: true, tenant: tenantSel },
     }),
     prisma.subscription.findMany({
       where: { status: "CANCELED", canceledAt: { gte: from } },
@@ -146,7 +148,7 @@ async function loadItems(now: Date, from: Date): Promise<Item[]> {
   }
 
   for (const s of suspended) {
-    const at = Math.min(s.currentPeriodEnd.getTime() + graceMs, now.getTime());
+    const at = Math.min(subscriptionBoundaries({ ...s, timezone: null }).graceEndsAt.getTime(), now.getTime());
     if (at < from.getTime()) continue;
     items.push({
       id: `susp:${s.id}:${s.currentPeriodEnd.getTime()}`,
@@ -293,6 +295,9 @@ async function loadItems(now: Date, from: Date): Promise<Item[]> {
       createdAt: settings.lastBillingTickAt.toISOString(),
     });
   }
+
+  // WhatsApp de cobrança da plataforma (sem número, caído, resposta de assinante).
+  items.push(...(await loadPlatformWhatsappItems(now, from)));
 
   return items;
 }

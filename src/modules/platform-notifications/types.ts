@@ -9,7 +9,10 @@ export type PlatformNotificationKind =
   | "WHATSAPP_DISCONNECTED"
   | "MP_WEBHOOK_REJECTED"
   | "TICK_LATE"
-  | "BILLING_EMAIL_FAILING";
+  | "BILLING_EMAIL_FAILING"
+  | "PLATFORM_WHATSAPP_MISSING"
+  | "PLATFORM_WHATSAPP_DISCONNECTED"
+  | "PLATFORM_WHATSAPP_REPLY";
 
 export type PlatformNotificationSeverity = "info" | "success" | "warning" | "danger";
 

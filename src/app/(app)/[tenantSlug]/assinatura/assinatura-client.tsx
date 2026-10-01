@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { formatInTimeZone } from "date-fns-tz";
 import QRCode from "qrcode";
 import { AlertTriangle, ArrowDown, ArrowUp, Check, Copy, QrCode, Sparkles, X } from "lucide-react";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,6 +17,9 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/components/lib/cn";
 import { formatDateTimeLabel } from "@/components/lib/format-date";
+import { BillingContactCard } from "@/components/billing/billing-contact-card";
+import type { BillingContactData, SaveBillingContact } from "@/components/billing/billing-contact-types";
+import { PaymentHistoryCard, type PaymentHistoryItem } from "@/components/billing/payment-history-card";
 import { AssinaturaCanceladaCard, CancelamentoAgendadoAviso, CancelarAssinaturaCard } from "./cancelamento";
 import { changePlanAction, checkMyInvoicePaymentAction, regenerateMyInvoicePixAction, type PlanListItem } from "@/modules/billing/actions";
 
@@ -149,13 +153,27 @@ function PixCard({
   timezone,
   tenantSlug,
   hasDocument,
+  focusOnMount,
 }: {
   invoice: NonNullable<BillingSnapshot["invoice"]>;
   timezone: string;
   tenantSlug: string;
   hasDocument: boolean;
+  focusOnMount: boolean;
 }) {
   const router = useRouter();
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  // Veio do botão "Pagar com Pix" do banner: rola até o cartão e põe o foco nele (o `#pix` do link
+  // sozinho não basta, porque o cartão só existe depois que a página termina de carregar).
+  useEffect(() => {
+    if (!focusOnMount) return;
+    const id = setTimeout(() => {
+      cardRef.current?.scrollIntoView({ block: "start", behavior: "auto" });
+      cardRef.current?.focus({ preventScroll: true });
+    }, 0);
+    return () => clearTimeout(id);
+  }, [focusOnMount]);
   const [copied, setCopied] = useState(false);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const canvasRequestId = useRef(0);
@@ -206,6 +224,12 @@ function PixCard({
   }
 
   return (
+    <div
+      ref={cardRef}
+      id="pix"
+      tabIndex={-1}
+      className="scroll-mt-20 rounded-hero-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+    >
     <Card className="rounded-hero-lg border-primary/20 bg-gradient-to-br from-primary/5 to-transparent shadow-card-hover">
       <CardHeader help="assinatura.fatura">
         <CardTitle>Fatura em aberto</CardTitle>
@@ -230,7 +254,8 @@ function PixCard({
                 Gerando QR…
               </div>
             )}
-            <div className="flex-1">
+            {/* `min-w-0` + `w-full`: sem eles o código Pix (uma linha longa, sem quebra) alarga a coluna e a página ganha rolagem horizontal no celular. */}
+            <div className="w-full min-w-0 flex-1">
               <p className="text-sm font-medium text-text">Pague pelo app do seu banco</p>
               <p className="mt-1 text-sm text-text-secondary">
                 Escaneie o QR code ou copie o código Pix abaixo e cole na opção &ldquo;Pix Copia e Cola&rdquo;.
@@ -286,6 +311,7 @@ function PixCard({
         )}
       </CardContent>
     </Card>
+    </div>
   );
 }
 
@@ -493,12 +519,23 @@ export function AssinaturaClient({
   plans,
   isOwner,
   hasDocument,
+  focusPix,
+  renewedUntil,
+  history,
+  contact,
+  saveContact,
 }: {
   tenantSlug: string;
   snapshot: BillingSnapshot;
   plans: PlanListItem[];
   isOwner: boolean;
   hasDocument: boolean;
+  focusPix: boolean;
+  /** Pagamento confirmado nos últimos 7 dias: até quando a assinatura está renovada. */
+  renewedUntil: string | null;
+  history: PaymentHistoryItem[];
+  contact: BillingContactData;
+  saveContact: SaveBillingContact;
 }) {
   const router = useRouter();
   const [paymentConfirmed, setPaymentConfirmed] = useState(false);
@@ -559,6 +596,16 @@ export function AssinaturaClient({
 
       {snapshot.status === "CANCELED" ? <AssinaturaCanceladaCard tenantSlug={tenantSlug} snapshot={snapshot} isOwner={isOwner} /> : null}
 
+      {renewedUntil && !paymentConfirmed ? (
+        <Alert
+          variant="success"
+          title={`Assinatura renovada até ${formatInTimeZone(new Date(renewedUntil), snapshot.timezone, "dd/MM/yyyy")}`}
+          data-testid="assinatura-renovada"
+        >
+          Recebemos o seu pagamento. Obrigado!
+        </Alert>
+      ) : null}
+
       {paymentConfirmed ? (
         <Alert variant="success" title="Pagamento confirmado!" data-testid="assinatura-pagamento-confirmado">
           Recebemos o seu Pix. Sua assinatura está em dia.
@@ -566,10 +613,14 @@ export function AssinaturaClient({
       ) : null}
 
       {snapshot.invoice && !paymentConfirmed ? (
-        <PixCard invoice={snapshot.invoice} timezone={snapshot.timezone} tenantSlug={tenantSlug} hasDocument={hasDocument} />
+        <PixCard invoice={snapshot.invoice} timezone={snapshot.timezone} tenantSlug={tenantSlug} hasDocument={hasDocument} focusOnMount={focusPix} />
       ) : null}
 
       {snapshot.status !== "CANCELED" ? <PlanosCard tenantSlug={tenantSlug} snapshot={snapshot} plans={plans} isOwner={isOwner} /> : null}
+
+      <PaymentHistoryCard items={history} timezone={snapshot.timezone} />
+
+      <BillingContactCard tenantSlug={tenantSlug} initial={contact} canEdit={isOwner} save={saveContact} />
 
       <CancelarAssinaturaCard tenantSlug={tenantSlug} snapshot={snapshot} isOwner={isOwner} />
     </div>

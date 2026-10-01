@@ -577,4 +577,32 @@ describe("syncN8n — reapontamento dos webhooks das instâncias na Evolution", 
     expect(summary.warnings.some((w) => w.includes("reapontado"))).toBe(true);
     expect(summary.botWorkflowId).toBe("levHnMSXf1dOR3gS"); // a sync terminou mesmo com a falha
   });
+
+  it("NÃO reaponta a instância do WhatsApp da plataforma (cobrança) para o bot", async () => {
+    const { syncN8n } = await import("@/modules/platform/n8n-sync");
+    const admin = await makeAdminUser();
+    const tag = randomUUID().slice(0, 8);
+    const platformInstance = `innochat-plataforma-${tag}`;
+    await prisma.platformWhatsappConnection.deleteMany({});
+    const connection = await prisma.platformWhatsappConnection.create({
+      data: {
+        instanceName: platformInstance,
+        webhookTokenHash: `hash-${randomUUID()}`,
+        label: "Cobrança",
+        status: "CONNECTED",
+        role: "ACTIVE",
+        phoneE164: "5584991110077",
+        activatedAt: new Date(),
+      },
+    });
+    const server = createFakeN8nServer({ supportsCredentialPatch: true, supportsPublish: true });
+    vi.stubGlobal("fetch", server.fetchMock);
+
+    try {
+      await syncN8n(admin.id);
+      expect(server.evolutionWebhookCalls.filter((c) => c.instanceName === platformInstance)).toEqual([]);
+    } finally {
+      await prisma.platformWhatsappConnection.delete({ where: { id: connection.id } });
+    }
+  });
 });

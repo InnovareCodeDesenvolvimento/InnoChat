@@ -3,6 +3,7 @@ import { getPrisma } from "@/lib/db/prisma";
 import { logger } from "@/lib/logger";
 import { verifyInternalApiSecret } from "@/modules/platform/service";
 import { runBillingTick } from "@/modules/billing/tick";
+import { runPlatformWhatsappMaintenance } from "@/modules/platform-whatsapp/connections";
 
 /**
  * `POST /api/internal/v1/billing/tick` (docs/contratos.md — Fase 7). Autenticado com o MESMO
@@ -32,6 +33,9 @@ export async function POST(req: Request) {
   }
 
   try {
+    // WhatsApp da plataforma (F4), ANTES do envio da régua: encerra QR abandonado, repete o logout de número
+    // aposentado e confere o estado na Evolution (assim CHANNEL_DOWN reflete a realidade). Nunca lança.
+    await runPlatformWhatsappMaintenance();
     const summary = await runBillingTick(new Date());
     return NextResponse.json(summary, { status: 200 });
   } catch (error) {

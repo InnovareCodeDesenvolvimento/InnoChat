@@ -28,6 +28,16 @@ const { createProfessional } = await import("@/modules/agenda/catalog");
 const prisma = getPrisma();
 const cleanupTenantIds: string[] = [];
 
+/**
+ * Hoje às 15:00 UTC: dentro da janela de e-mail da régua (08h às 20h) no fuso das empresas de teste (UTC).
+ * Os avisos só saem dentro da janela, então o teste que confere e-mail não pode depender da hora em que roda.
+ */
+function windowNow(): Date {
+  const now = new Date();
+  now.setUTCHours(15, 0, 0, 0);
+  return now;
+}
+
 afterAll(async () => {
   await prisma.tenant.deleteMany({ where: { id: { in: cleanupTenantIds } } });
   await prisma.$disconnect();
@@ -174,11 +184,11 @@ describe("runBillingTick — reconciliação de status e e-mail de suspensão", 
     });
 
     const { gateway } = createMockMercadoPagoGateway();
-    const now = new Date();
+    const now = windowNow();
     const first = await runBillingTick(now, gateway);
     expect(first.suspensionEmailsSent).toBe(1);
 
-    const second = await runBillingTick(new Date(), gateway);
+    const second = await runBillingTick(now, gateway);
     expect(second.suspensionEmailsSent).toBe(0);
 
     const suspensionEmails = sentEmails.filter((e) => e.subject.includes("suspenso"));
@@ -233,7 +243,7 @@ describe("runBillingTick — teste não convertido (decisão do dono, 2026-09-29
   it("suspensão de teste manda o e-mail 'seu teste terminou' (não 'falta de pagamento') e NÃO gera 2ª fatura", async () => {
     const { subscription } = await makeUnconvertedTrial("trial-suspend", 3);
     const { gateway } = createMockMercadoPagoGateway();
-    const result = await runBillingTick(new Date(), gateway);
+    const result = await runBillingTick(windowNow(), gateway);
     expect(result.suspensionEmailsSent).toBeGreaterThanOrEqual(1);
 
     const reloaded = await prisma.subscription.findUniqueOrThrow({ where: { id: subscription.id } });
@@ -295,7 +305,7 @@ describe("runBillingTick — teste não convertido (decisão do dono, 2026-09-29
     const after = await prisma.invoice.findUniqueOrThrow({ where: { id: invoice.id } });
     expect(after.status).toBe("VOID");
     expect(after.pixCopyPaste).toBeNull();
-    expect(after.dueTodayEmailSentAt).toBeNull();
+    expect(await prisma.billingNotice.count({ where: { invoiceId: invoice.id } })).toBe(0);
     expect(sentEmails.slice(mailsBefore).some((e) => e.to.startsWith("it-tick-trial-void-quiet-"))).toBe(false);
   });
 

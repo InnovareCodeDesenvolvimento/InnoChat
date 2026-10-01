@@ -230,7 +230,8 @@ describe("cancelar assinatura ATIVA (paga) — agenda para o fim do período", (
   });
 
   it("o tick efetiva na data: CANCELED, canceledAt = fim do período, números desconectados, sem e-mail de suspensão; 2ª rodada não muda nada", async () => {
-    const periodEnd = addHours(new Date(), -2);
+    // Fim do período PASSADO: quem paga vence às 23:59 do dia local do `currentPeriodEnd` (D7), então 2 dias atrás.
+    const periodEnd = addDays(new Date(), -2);
     const t = await makeTenant("tick", { currentPeriodEnd: addDays(new Date(), 1) });
     await requestCancellation(t.tenant.id, { reason: "x" });
     // A data chega: o fim do período fica no passado.
@@ -481,7 +482,8 @@ describe("I-2: status efetivo x persistido na reativação", () => {
     await withDocument(t.tenant.id);
     const mock = createMockMercadoPagoGateway();
     await requestCancellation(t.tenant.id, { reason: "pausa" });
-    const periodEnd = addHours(new Date(), -2);
+    // Fim do período PASSADO: quem paga vence às 23:59 do dia local do `currentPeriodEnd` (D7), então 2 dias atrás.
+    const periodEnd = addDays(new Date(), -2);
     await prisma.subscription.update({ where: { id: t.subscription.id }, data: { currentPeriodEnd: periodEnd } });
     // Estado da janela: o tick ainda não persistiu CANCELED.
     expect((await prisma.subscription.findUniqueOrThrow({ where: { id: t.subscription.id } })).status).toBe("ACTIVE");
@@ -511,7 +513,8 @@ describe("I-2: status efetivo x persistido na reativação", () => {
   it("pagar fatura com agendamento vencido e status persistido ACTIVE trata como cancelada: limpa os campos e conta o ciclo do pagamento", async () => {
     const t = await makeTenant("window-pay", { currentPeriodEnd: addDays(new Date(), 1) });
     await requestCancellation(t.tenant.id, {});
-    const periodEnd = addHours(new Date(), -2);
+    // Fim do período PASSADO: quem paga vence às 23:59 do dia local do `currentPeriodEnd` (D7), então 2 dias atrás.
+    const periodEnd = addDays(new Date(), -2);
     await prisma.subscription.update({ where: { id: t.subscription.id }, data: { currentPeriodEnd: periodEnd } });
     const invoice = await openInvoice(t.subscription.id, addDays(periodEnd, -40));
 
@@ -561,7 +564,7 @@ describe("I-3: WhatsApp de empresa cancelada", () => {
     // Agendamento vencido, tick ainda não persistiu (persistido ACTIVE, efetivo CANCELED).
     const window = await makeTenant("wa-window", { currentPeriodEnd: addDays(new Date(), 1) });
     await requestCancellation(window.tenant.id, {});
-    await prisma.subscription.update({ where: { id: window.subscription.id }, data: { currentPeriodEnd: addHours(new Date(), -2) } });
+    await prisma.subscription.update({ where: { id: window.subscription.id }, data: { currentPeriodEnd: addDays(new Date(), -2) } });
     await prisma.whatsappInstance.update({ where: { id: window.instance.id }, data: { status: "QRCODE", phoneE164: null } });
     await expect(getQrCode(window.tenant.id, window.instance.id, { evolution: fakeEvolution })).rejects.toMatchObject({ code: "SUBSCRIPTION_CANCELED" });
 
@@ -593,14 +596,17 @@ describe("I-4: reativação abandonada e e-mails", () => {
   });
 
   it("assinatura CANCELED só recebe e-mail de cobrança de reativação ativa (fatura criada depois do cancelamento)", async () => {
+    // 15:00 UTC de hoje: dentro da janela de e-mail (08h às 20h) do fuso das empresas de teste (UTC).
     const now = new Date();
+    now.setUTCHours(15, 0, 0, 0);
+    // Cancelamento PEDIDO pelo dono (`cancelRequestedAt`): sem aviso de encerramento automático, só a cobrança da reativação.
     const stale = await makeTenant("mail-stale", { status: "CANCELED", currentPeriodEnd: addDays(now, -40) });
-    await prisma.subscription.update({ where: { id: stale.subscription.id }, data: { canceledAt: addDays(now, -1) } });
+    await prisma.subscription.update({ where: { id: stale.subscription.id }, data: { canceledAt: addDays(now, -1), cancelRequestedAt: addDays(now, -1) } });
     const staleInvoice = await openInvoice(stale.subscription.id, addDays(now, -30));
     await prisma.invoice.update({ where: { id: staleInvoice.id }, data: { createdAt: addDays(now, -2), dueAt: addHours(now, 12) } });
 
     const active = await makeTenant("mail-active", { status: "CANCELED", currentPeriodEnd: addDays(now, -40) });
-    await prisma.subscription.update({ where: { id: active.subscription.id }, data: { canceledAt: addDays(now, -1) } });
+    await prisma.subscription.update({ where: { id: active.subscription.id }, data: { canceledAt: addDays(now, -1), cancelRequestedAt: addDays(now, -1) } });
     const activeInvoice = await openInvoice(active.subscription.id, addDays(now, -2));
     await prisma.invoice.update({ where: { id: activeInvoice.id }, data: { dueAt: addHours(now, 12) } });
 

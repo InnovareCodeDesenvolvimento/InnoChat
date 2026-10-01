@@ -61,16 +61,16 @@ export async function listCompaniesAction(input?: unknown): Promise<Result<{ ite
 
 export async function suspendCompanyAction(tenantId: string): Promise<Result<{ tenantId: string }>> {
   return runAction(async () => {
-    await requirePlatformAdmin();
-    await suspendCompanyManually(tenantId);
+    const admin = await requirePlatformAdmin();
+    await suspendCompanyManually(tenantId, admin.id);
     return { tenantId };
   });
 }
 
 export async function reactivateCompanyAction(tenantId: string): Promise<Result<{ tenantId: string }>> {
   return runAction(async () => {
-    await requirePlatformAdmin();
-    await reactivateCompanyManually(tenantId);
+    const admin = await requirePlatformAdmin();
+    await reactivateCompanyManually(tenantId, admin.id);
     return { tenantId };
   });
 }
@@ -79,9 +79,9 @@ const extendTrialSchema = z.object({ extraDays: z.coerce.number().int().min(1).m
 
 export async function extendTrialAction(tenantId: string, input: unknown): Promise<Result<{ tenantId: string }>> {
   return runAction(async () => {
-    await requirePlatformAdmin();
+    const admin = await requirePlatformAdmin();
     const data = extendTrialSchema.parse(input);
-    await extendTrialManually(tenantId, data.extraDays);
+    await extendTrialManually(tenantId, data.extraDays, admin.id);
     return { tenantId };
   });
 }

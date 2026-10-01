@@ -43,6 +43,7 @@ export async function completeGoogleSignUp(input: {
   token: string;
   tenantName: string;
   document: string;
+  phone?: string | null;
   planCode?: string;
   termsVersion: string;
 }): Promise<{ userId: string; tenantSlug: string }> {
@@ -57,6 +58,7 @@ export async function completeGoogleSignUp(input: {
       ownerName: claims.name.trim().length >= 2 ? claims.name : claims.email.split("@")[0]!.slice(0, 80),
       companyName: input.tenantName,
       document: input.document,
+      phone: input.phone,
       termsVersion: input.termsVersion,
       planCode: input.planCode,
     });

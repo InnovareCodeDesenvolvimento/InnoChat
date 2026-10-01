@@ -17,4 +17,9 @@ export type SubscriptionSnapshot = {
   firstPaidAt?: Date | null;
   /** O dono agendou o cancelamento: ao chegar o fim do período/teste vira `CANCELED`, sem carência. */
   cancelAtPeriodEnd: boolean;
+  /**
+   * Fuso da empresa (`Tenant.timezone`), usado só para o vencimento de quem paga (23:59 do dia local).
+   * Ausente = `America/Sao_Paulo`, o único fuso suportado na v1.
+   */
+  timezone?: string | null;
 };

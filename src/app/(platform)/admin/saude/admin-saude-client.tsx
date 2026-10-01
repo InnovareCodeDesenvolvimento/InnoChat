@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Inbox, Mail, RefreshCw, Server, Wallet, Wifi } from "lucide-react";
+import { Inbox, Mail, MessageCircle, RefreshCw, Server, Wallet, Wifi } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { navIconFor } from "@/components/shell/nav-items";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,7 +13,7 @@ import { formatRelativeTimeLabel } from "@/components/lib/format-date";
 import { useToast } from "@/components/ui/toast";
 import { getPlatformHealthAction } from "@/modules/platform/actions";
 import { InteractiveTestCard } from "./interactive-test-card";
-import type { IntegrationHealth, MercadoPagoWebhookHealth, PlatformHealth, TickHealth } from "@/modules/platform/health-service";
+import type { IntegrationHealth, MercadoPagoWebhookHealth, PlatformHealth, PlatformWhatsappHealth, TickHealth } from "@/modules/platform/health-service";
 
 const WHATSAPP_STATUS_LABEL: Record<string, string> = {
   CONNECTED: "Conectado",
@@ -66,6 +66,20 @@ function IntegrationCard({ icon, label, health }: { icon: React.ReactNode; label
       <p className="mt-3 text-sm text-text-secondary">{health.detalhe}</p>
     </Card>
   );
+}
+
+/** Linha "WhatsApp de cobrança" da Saúde. Só aviso: sem WhatsApp a cobrança segue por e-mail e painel. */
+function platformWhatsappAsHealth(w: PlatformWhatsappHealth): IntegrationHealth {
+  switch (w.state) {
+    case "CONNECTED":
+      return { ok: true, configured: true, detalhe: `Conectado (${w.phoneDisplay ?? w.label ?? "número ativo"}).` };
+    case "DISCONNECTED":
+      return { ok: false, configured: true, detalhe: "Caiu. Leia o QR de novo em Configurações." };
+    case "NO_NUMBER":
+      return { ok: false, configured: false, detalhe: "Ligado, mas sem número. Os avisos vão por e-mail." };
+    default:
+      return { ok: false, configured: false, detalhe: "Desligado. Os avisos vão por e-mail e pelo painel." };
+  }
 }
 
 const WEBHOOK_REASON_LABEL: Record<string, string> = {
@@ -192,11 +206,12 @@ export function AdminSaudeClient({ initialHealth }: { initialHealth: PlatformHea
         </div>
       ) : null}
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <IntegrationCard icon={<Wifi aria-hidden="true" />} label="Evolution" health={health.integrations.evolution} />
         <IntegrationCard icon={<Server aria-hidden="true" />} label="n8n" health={health.integrations.n8n} />
         <IntegrationCard icon={<Mail aria-hidden="true" />} label="SMTP" health={health.integrations.smtp} />
         <IntegrationCard icon={<Wallet aria-hidden="true" />} label="Mercado Pago" health={health.integrations.mercadoPago} />
+        <IntegrationCard icon={<MessageCircle aria-hidden="true" />} label="WhatsApp de cobrança" health={platformWhatsappAsHealth(health.platformWhatsapp)} />
       </div>
 
       <MercadoPagoWebhookCard webhook={health.mercadoPagoWebhook} />

@@ -5,13 +5,7 @@ import { DomainError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
 import { sendMail, loadEmailContext, subscriptionCancelEmail } from "@/lib/email";
 import { getPublicBaseUrl } from "@/lib/public-url";
-import {
-  accessEndsAt,
-  CANCEL_AFTER_SUSPENDED_DAYS,
-  CANCEL_AFTER_SUSPENDED_TRIAL_DAYS,
-  CANCELED_RETENTION_DAYS,
-  effectiveStatus,
-} from "@/core/billing";
+import { accessEndsAt, CANCELED_RETENTION_DAYS, effectiveStatus } from "@/core/billing";
 import { disconnectAllWhatsappInstances } from "@/modules/whatsapp/service";
 import type { EvolutionClient } from "@/modules/whatsapp/evolution-client";
 import { formatDateBR } from "./format";
@@ -19,13 +13,13 @@ import {
   cancelPixPayments,
   findBillingRecipientEmail,
   generateInvoiceDescription,
-  sendBillingMail,
   createInvoiceForPeriodTracked,
   tryAttachPix,
   voidOpenInvoices,
 } from "./service";
 import type { MercadoPagoGateway } from "./mercadopago";
-import { claimOnceEmail, markOnceEmailSent } from "./email-outbox";
+import { recordBillingEvent, type CancelSource } from "./dunning/events";
+import { suppressAutoCancelNotices } from "./dunning/outbox";
 
 /**
  * Cancelamento da assinatura pelo OWNER (Termos §9). Regras (decisão registrada em
@@ -145,66 +139,25 @@ export async function persistCanceledTransition(
     logger.warn("billing.cancel.effects_failed", { tenantId: subscription.tenantId, errorMessage: error instanceof Error ? error.message : String(error) });
   }
 
-  // Cancelamento AUTOMÁTICO (sem pedido do dono): ele não sabe que perdeu a conta. O agendado já
-  // avisou no pedido (`requestCancellation`), então não repete aqui. Só DEPOIS dos efeitos: o aviso
-  // fala em números desconectados e faturas anuladas, então não pode sair antes disso ser verdade.
-  if (!subscription.cancelAtPeriodEnd && deps.announce !== false) await announceAutoCancel(subscription.id);
+  // Histórico (churn): voluntário (o dono agendou) x involuntário (60 dias suspensa; 7 se nunca pagou).
+  const cancelSource: CancelSource = subscription.cancelAtPeriodEnd ? "OWNER" : subscription.firstPaidAt === null ? "TRIAL_NOT_CONVERTED" : "AUTO_SUSPENDED";
+  await recordBillingEvent({
+    tenantId: subscription.tenantId,
+    subscriptionId: subscription.id,
+    type: "CANCELED",
+    fromStatus: subscription.status,
+    toStatus: "CANCELED",
+    metadata: { cancelSource },
+  });
+
+  // Cancelamento AUTOMÁTICO (sem pedido do dono): ele não sabe que perdeu a conta. O aviso (etapa
+  // AUTO_CANCELED da régua, e-mail e WhatsApp) é planejado pelo próprio tick DEPOIS dos efeitos acima, então
+  // nunca fala em números desconectados e faturas anuladas antes disso ser verdade. O agendado já avisou no
+  // pedido (`requestCancellation`). Quem está reativando agora (`announce: false`) não recebe "conta encerrada":
+  // as linhas já nascem encerradas, e a unicidade do outbox impede o planejador de recriá-las.
+  if (!subscription.cancelAtPeriodEnd && deps.announce === false) await suppressAutoCancelNotices(subscription.tenantId, subscription.id, subscription.currentPeriodEnd);
 
   return { claimed: true, invoicesVoided };
-}
-
-/**
- * E-mail do cancelamento automático (R4 da régua). Envio ÚNICO: `claimOnceEmail` cria a marca
- * (chave = assinatura + instante do cancelamento) e só quem a cria envia; se o envio falha, a marca
- * fica pendente e o tick reenvia (`retryPendingAutoCancelEmails`). Nunca desfaz o cancelamento.
- */
-async function announceAutoCancel(subscriptionId: string): Promise<void> {
-  try {
-    const subscription = await getPrisma().subscription.findUnique({ where: { id: subscriptionId }, select: { canceledAt: true } });
-    if (!subscription?.canceledAt) return;
-    const key = autoCancelKey(subscriptionId, subscription.canceledAt);
-    if (!(await claimOnceEmail("auto_cancel", key))) return;
-    if (await deliverAutoCancelEmail(subscriptionId)) await markOnceEmailSent("auto_cancel", key);
-  } catch (error) {
-    logger.error("billing.cancel.auto_email_failed", { subscriptionId, errorMessage: error instanceof Error ? error.message : String(error) });
-  }
-}
-
-export function autoCancelKey(subscriptionId: string, canceledAt: Date): string {
-  return `${subscriptionId}:${canceledAt.getTime()}`;
-}
-
-/** Monta e envia o e-mail de conta encerrada. `true` = saiu (ou não há mais o que enviar). */
-export async function deliverAutoCancelEmail(subscriptionId: string): Promise<boolean> {
-  const subscription = await getPrisma().subscription.findUnique({
-    where: { id: subscriptionId },
-    select: { status: true, canceledAt: true, firstPaidAt: true, tenantId: true, tenant: { select: { name: true, slug: true, timezone: true } } },
-  });
-  // Reativou entre o cancelamento e o reenvio: o aviso perdeu o sentido.
-  if (!subscription || subscription.status !== "CANCELED" || !subscription.canceledAt) return true;
-
-  const to = await findBillingRecipientEmail(subscription.tenantId);
-  if (!to) {
-    logger.warn("billing.cancel.auto_email_no_recipient", { tenantId: subscription.tenantId });
-    return true; // sem destinatário não adianta insistir
-  }
-  const base = await getPublicBaseUrl();
-  const trialNotConverted = subscription.firstPaidAt === null;
-  const { subject, html, text } = subscriptionCancelEmail({
-    tenantName: subscription.tenant.name,
-    immediate: true,
-    endsAtBr: formatDateBR(subscription.canceledAt, subscription.tenant.timezone),
-    retentionDays: CANCELED_RETENTION_DAYS,
-    clientsUrl: `${base}/${subscription.tenant.slug}/clientes`,
-    billingUrl: `${base}/${subscription.tenant.slug}/assinatura`,
-    automatic: {
-      unpaidDays: trialNotConverted ? CANCEL_AFTER_SUSPENDED_TRIAL_DAYS : CANCEL_AFTER_SUSPENDED_DAYS,
-      trialNotConverted,
-      retentionUntilBr: formatDateBR(addDays(subscription.canceledAt, CANCELED_RETENTION_DAYS), subscription.tenant.timezone),
-    },
-    ctx: await loadEmailContext(),
-  });
-  return sendBillingMail({ to, subject, html, text }, "billing.cancel.auto_email_not_sent");
 }
 
 async function sendCancelEmail(tenantId: string, params: { immediate: boolean; endsAt: Date }) {
@@ -275,6 +228,13 @@ export async function requestCancellation(
     await cancelPixPayments(won.pix, options.gateway);
 
     logger.info("billing.cancel.scheduled", { tenantId, wasTrial: status === "TRIALING" });
+    await recordBillingEvent({
+      tenantId,
+      subscriptionId: subscription.id,
+      type: "CANCEL_REQUESTED",
+      actorType: "OWNER",
+      metadata: { mode: "SCHEDULED", wasTrial: status === "TRIALING", hasReason: reason !== null },
+    });
     await sendCancelEmail(tenantId, { immediate: false, endsAt: accessEndsAt(subscription) });
     return scheduled(false);
   }
@@ -295,6 +255,15 @@ export async function requestCancellation(
 
   await applyCancellationEffects(subscription.id, tenantId, options);
   logger.info("billing.cancel.immediate", { tenantId, from: status });
+  await recordBillingEvent({
+    tenantId,
+    subscriptionId: subscription.id,
+    type: "CANCELED",
+    fromStatus: subscription.status,
+    toStatus: "CANCELED",
+    actorType: "OWNER",
+    metadata: { cancelSource: "OWNER", mode: "IMMEDIATE", hasReason: reason !== null },
+  });
   await sendCancelEmail(tenantId, { immediate: true, endsAt: now });
   return { mode: "IMMEDIATE", endsAt: now.toISOString(), alreadyRequested: false };
 }
@@ -330,6 +299,9 @@ export async function undoCancellation(tenantId: string, options: { now?: Date }
       });
     }
     return { undone: true };
+  }).then(async (result) => {
+    if (result.undone) await recordBillingEvent({ tenantId, subscriptionId: subscription.id, type: "CANCEL_UNDONE", actorType: "OWNER" });
+    return result;
   });
 }
 
@@ -421,5 +393,6 @@ export async function startReactivation(
     throw new DomainError("INVALID_STATE", "A fatura de reativação de hoje já foi paga. Atualize a página.");
   }
   logger.info("billing.reactivation.invoice_ready", { tenantId, invoiceId: invoice.id });
+  await recordBillingEvent({ tenantId, subscriptionId: subscription.id, invoiceId: invoice.id, type: "REACTIVATION_STARTED", actorType: "OWNER" });
   return { invoiceId: invoice.id };
 }

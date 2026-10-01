@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
-import { Building2, IdCard, Link2, Lock, Mail, MailCheck, RefreshCw, Tag, User, UserPlus } from "lucide-react";
+import { Building2, IdCard, Link2, Lock, Mail, MailCheck, Phone, RefreshCw, Tag, User, UserPlus } from "lucide-react";
 import { Field } from "@/components/ui/field";
 import { AuthInput } from "@/components/public/auth-input";
 import { AUTH_SUBMIT_CLASS, AuthPanel, AuthTrust } from "@/components/public/auth-panel";
@@ -13,6 +13,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { slugify, validateSlug, type SlugValidationError } from "@/core/signup/slug";
 import { normalizeDocumentDigits, validateCpfCnpj } from "@/core/billing/document";
 import { maskCpfCnpj } from "@/components/lib/document-mask";
+import { normalizeBrPhoneToE164 } from "@/core/contact/br-phone";
 import { signUpAction } from "@/modules/signup/actions";
 import { TERMS_VERSION } from "@/lib/legal";
 
@@ -30,6 +31,7 @@ type FormState = {
   segment: string;
   ownerName: string;
   document: string;
+  phone: string;
   email: string;
   password: string;
   confirmPassword: string;
@@ -43,6 +45,7 @@ const EMPTY_FORM: FormState = {
   segment: "",
   ownerName: "",
   document: "",
+  phone: "",
   email: "",
   password: "",
   confirmPassword: "",
@@ -79,6 +82,7 @@ export function CadastroForm({ top }: { top?: React.ReactNode }) {
     if (form.ownerName.trim().length < 2) errors.ownerName = "Informe seu nome (pelo menos 2 letras).";
     else if (form.ownerName.trim().length > 80) errors.ownerName = "O nome pode ter no máximo 80 caracteres.";
     if (!validateCpfCnpj(form.document).valid) errors.document = "Informe um CPF ou CNPJ válido.";
+    if (form.phone.trim() && !normalizeBrPhoneToE164(form.phone)) errors.phone = "Confira o WhatsApp: DDD e número, como (84) 99999-8888.";
     if (!form.email.includes("@")) errors.email = "Informe um e-mail válido.";
     if (form.password.length < 8) errors.password = "A senha precisa ter pelo menos 8 caracteres.";
     if (form.password !== form.confirmPassword) errors.confirmPassword = "As senhas não são iguais.";
@@ -102,6 +106,7 @@ export function CadastroForm({ top }: { top?: React.ReactNode }) {
         // `document` ainda não está no contrato de `signUpAction` (a Vega está adicionando) —
         // manda de qualquer forma: quando o servidor aceitar, funciona sem mudança nenhuma aqui.
         document: normalizeDocumentDigits(form.document),
+        phone: form.phone.trim() || undefined,
         email: form.email.trim(),
         password: form.password,
         termsVersion: TERMS_VERSION,
@@ -123,6 +128,10 @@ export function CadastroForm({ top }: { top?: React.ReactNode }) {
         }
         if (result.error.code === "INVALID_DOCUMENT") {
           setFieldErrors((prev) => ({ ...prev, document: "Informe um CPF ou CNPJ válido." }));
+          return;
+        }
+        if (result.error.code === "INVALID_PHONE") {
+          setFieldErrors((prev) => ({ ...prev, phone: "Confira o WhatsApp: DDD e número, como (84) 99999-8888." }));
           return;
         }
         if (result.error.code === "TERMS_VERSION_OUTDATED") {
@@ -259,6 +268,29 @@ export function CadastroForm({ top }: { top?: React.ReactNode }) {
                 onChange={(e) => setForm((f) => ({ ...f, document: normalizeDocumentDigits(e.target.value) }))}
                 maxLength={18}
                 invalid={!!fieldErrors.document}
+              />
+            )}
+          </Field>
+
+          <Field
+            label="Seu WhatsApp"
+            htmlFor="phone"
+            error={fieldErrors.phone}
+            hint={!fieldErrors.phone ? "Opcional. É por onde avisamos sobre o teste e a mensalidade." : undefined}
+          >
+            {(fieldProps) => (
+              <AuthInput
+                {...fieldProps}
+                icon={Phone}
+                name="phone"
+                type="tel"
+                inputMode="tel"
+                autoComplete="tel"
+                placeholder="(84) 99999-8888"
+                value={form.phone}
+                onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+                maxLength={20}
+                invalid={!!fieldErrors.phone}
               />
             )}
           </Field>

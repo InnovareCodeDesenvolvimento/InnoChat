@@ -8,18 +8,32 @@ import { auth } from "@/lib/auth";
 import { accessEndsAt, CANCELED_RETENTION_DAYS, effectiveStatus } from "@/core/billing";
 import { addDays } from "date-fns";
 import { listActivePlansAction, type PlanListItem } from "@/modules/billing/actions";
+import { resolveBillingBanner } from "@/components/shell/billing-banner-state";
+import type { PaymentHistoryItem } from "@/components/billing/payment-history-card";
+import { updateBillingContactAction } from "@/modules/billing/contact-actions";
 import { AssinaturaClient, type BillingSnapshot } from "./assinatura-client";
 
 export default async function AssinaturaPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ tenantSlug: string }>;
+  searchParams: Promise<{ pagar?: string }>;
 }) {
   const { tenantSlug } = await params;
+  // `?pagar=pix` (botão "Pagar com Pix" do banner): a tela abre já no cartão do Pix.
+  const focusPix = (await searchParams).pagar === "pix";
 
   const tenant = await getPrisma().tenant.findUnique({
     where: { slug: tenantSlug },
-    select: { id: true, timezone: true, document: true },
+    select: {
+      id: true,
+      timezone: true,
+      document: true,
+      billingEmail: true,
+      billingWhatsappE164: true,
+      billingWhatsappOptOutAt: true,
+    },
   });
   if (!tenant) {
     notFound();
@@ -42,7 +56,7 @@ export default async function AssinaturaPage({
   const now = new Date();
   const status = effectiveStatus(subscription, now);
 
-  const [openInvoice, pendingPlan, session] = await Promise.all([
+  const [openInvoice, pendingPlan, session, invoiceRows, ownerMembership] = await Promise.all([
     getPrisma().invoice.findFirst({
       where: { subscriptionId: subscription.id, status: "OPEN" },
       orderBy: { periodStart: "desc" },
@@ -51,7 +65,30 @@ export default async function AssinaturaPage({
       ? getPrisma().plan.findUnique({ where: { id: subscription.pendingPlanId }, select: { name: true } })
       : Promise.resolve(null),
     auth(),
+    // Histórico: pagas e a em aberto (VOID/EXPIRED não interessam à empresa), com o `tenantId`
+    // explícito pela relação: o Prisma aqui é o cru, sem o filtro automático do `forTenant`.
+    getPrisma().invoice.findMany({
+      where: { subscription: { tenantId: tenant.id }, status: { in: ["PAID", "OPEN"] } },
+      orderBy: { periodStart: "desc" },
+      take: 12,
+      select: { id: true, amountCents: true, periodStart: true, periodEnd: true, status: true, paidAt: true },
+    }),
+    getPrisma().membership.findFirst({
+      where: { tenantId: tenant.id, role: "OWNER" },
+      orderBy: { createdAt: "asc" },
+      select: { user: { select: { email: true } } },
+    }),
   ]);
+  const history: PaymentHistoryItem[] = invoiceRows.map((row) => ({
+    id: row.id,
+    amountCents: row.amountCents,
+    periodStart: row.periodStart.toISOString(),
+    periodEnd: row.periodEnd.toISOString(),
+    status: row.status === "PAID" ? "PAID" : "OPEN",
+    paidAt: row.paidAt?.toISOString() ?? null,
+  }));
+  const lastPaidAt = invoiceRows.find((row) => row.status === "PAID")?.paidAt ?? null;
+  const banner = resolveBillingBanner({ subscription: { ...subscription, timezone: tenant.timezone }, openInvoice, lastPaidAt }, now);
 
   const membership = session?.user?.id
     ? await getPrisma().membership.findFirst({
@@ -102,6 +139,17 @@ export default async function AssinaturaPage({
       plans={plans}
       isOwner={membership?.role === "OWNER"}
       hasDocument={!!tenant.document}
+      focusPix={focusPix}
+      renewedUntil={banner?.kind === "RENEWED" ? banner.until : null}
+      history={history}
+      contact={{
+        billingEmail: tenant.billingEmail,
+        billingWhatsappE164: tenant.billingWhatsappE164,
+        optedOut: tenant.billingWhatsappOptOutAt !== null,
+        // O e-mail do dono só vai para quem pode editar (serve ao texto "sem e-mail aqui, vai para...").
+        ownerEmail: membership?.role === "OWNER" ? (ownerMembership?.user.email ?? null) : null,
+      }}
+      saveContact={updateBillingContactAction}
     />
   );
 }
