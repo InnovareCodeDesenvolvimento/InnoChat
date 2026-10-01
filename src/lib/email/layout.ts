@@ -1,3 +1,5 @@
+import { DIREITOS_RESERVADOS } from "@/lib/app-info";
+
 /**
  * Layout base dos e-mails transacionais do InnoChat — HTML "email-safe": tabelas, estilos
  * inline, 600px fluido no celular, fontes do sistema, botão à prova de balas (VML para o
@@ -216,7 +218,7 @@ ${params.contentRows}
 <tr><td class="em-card em-pad" bgcolor="${C.card}" style="background-color:${C.card};padding:0 40px 32px 40px;border-radius:0 0 16px 16px;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
 <tr><td class="em-foot" style="border-top:1px solid ${C.border};padding:20px 0 0 0;font-family:${FONT};font-size:12px;line-height:19px;color:${C.muted};"><span class="em-muted" style="color:${C.muted};">${esc(params.footerReason)}</span></td></tr>
-<tr><td class="em-muted" style="padding:12px 0 0 0;font-family:${FONT};font-size:12px;line-height:19px;color:${C.muted};"><strong class="em-text" style="color:${C.text};">InnoChat</strong> · Desenvolvido por <a href="${OPERATOR_URL}" class="em-link" style="color:${C.primary};text-decoration:none;font-weight:700;">InnovareCode</a>${legalLine ? `<br>${esc(legalLine)}` : ""}${links.length ? `<br>${links.join(" &nbsp;·&nbsp; ")}` : ""}</td></tr>
+<tr><td class="em-muted" style="padding:12px 0 0 0;font-family:${FONT};font-size:12px;line-height:19px;color:${C.muted};"><strong class="em-text" style="color:${C.text};">InnoChat</strong> · Desenvolvido por <a href="${OPERATOR_URL}" class="em-link" style="color:${C.primary};text-decoration:none;font-weight:700;">InnovareCode</a><br>${esc(DIREITOS_RESERVADOS)}${legalLine ? `<br>${esc(legalLine)}` : ""}${links.length ? `<br>${links.join(" &nbsp;·&nbsp; ")}` : ""}</td></tr>
 </table>
 </td></tr>
 </table>
@@ -230,7 +232,7 @@ ${params.contentRows}
 /** Rodapé da versão texto — mesma informação do HTML. */
 export function renderEmailText(params: { body: string; footerReason: string; ctx?: EmailContext }): string {
   const ctx = params.ctx ?? {};
-  const lines = ["", "--", params.footerReason, "", `InnoChat · Desenvolvido por InnovareCode (${OPERATOR_URL})`];
+  const lines = ["", "--", params.footerReason, "", `InnoChat · Desenvolvido por InnovareCode (${OPERATOR_URL})`, DIREITOS_RESERVADOS];
   const legalLine = footerLegalLine(ctx);
   if (legalLine) lines.push(legalLine);
   const termos = withBase(ctx, "/termos");

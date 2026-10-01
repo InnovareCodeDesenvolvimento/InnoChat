@@ -1,6 +1,6 @@
+import Image from "next/image";
 import Link from "next/link";
 import { AppSignature } from "@/components/brand/app-signature";
-import { Info } from "lucide-react";
 import { LEGAL_EFFECTIVE_DATE, TERMS_VERSION } from "@/lib/legal";
 import { fillLegalPlaceholders, type PlatformLegalInfo } from "@/core/legal/placeholders";
 
@@ -118,7 +118,8 @@ export function LegalDocument({ title, intro, sections, related }: LegalDocument
     <div className="min-h-screen bg-bg">
       <header className="sticky top-0 z-10 border-b border-border bg-surface/80 backdrop-blur-md">
         <div className="mx-auto flex max-w-[calc(70ch+3rem)] items-center justify-between gap-4 px-4 py-4 sm:px-6">
-          <Link href="/" className="font-display text-lg font-bold text-text">
+          <Link href="/" className="flex items-center gap-2.5 font-display text-lg font-bold text-text">
+            <Image src="/marca/innochat-balao.png" alt="" width={32} height={32} className="h-8 w-8 shrink-0" />
             InnoChat
           </Link>
           <nav aria-label="Documentos legais" className="flex gap-4 text-sm">

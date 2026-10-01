@@ -136,3 +136,11 @@ describe("AuthInput", () => {
     for (const r of rotulos) expect(r.toLowerCase()).not.toContain("senha");
   });
 });
+
+describe("direitos reservados", () => {
+  it("a assinatura pública e os e-mails trazem o aviso da Innovare Code com o ano corrente", () => {
+    const aviso = `© ${new Date().getFullYear()} Innovare Code. Todos os direitos reservados.`;
+    expect(sig()).toContain(aviso);
+    expect(fonte("src/lib/email/layout.ts")).toContain("DIREITOS_RESERVADOS");
+  });
+});

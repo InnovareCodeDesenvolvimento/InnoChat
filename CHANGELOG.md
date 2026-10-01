@@ -7,6 +7,12 @@ Versão semântica (`MAJOR.MINOR.PATCH`), lida do `version` do `package.json` e 
 
 Toda publicação em produção sobe a versão e ganha uma entrada aqui.
 
+## v1.2.4 — 2026-10-01
+
+### Melhorias
+- Aviso "© 2026 Innovare Code. Todos os direitos reservados." no rodapé da landing, nas telas de login e cadastro, nos Termos e na Política e no rodapé de todos os e-mails.
+- Logo oficial (balão "i") também nas telas de login e cadastro e nas páginas de Termos e Privacidade.
+
 ## v1.2.3 — 2026-10-01
 
 ### Melhorias

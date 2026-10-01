@@ -14,6 +14,15 @@ export const NOME_SISTEMA = "InnoChat";
 export const DESENVOLVEDORA = "InnovareCode";
 export const DESENVOLVEDORA_URL = "https://innovarecode.com.br";
 
+/** Razão de exibição da titular dos direitos (com espaço, como nos Termos). */
+export const TITULAR_DIREITOS = "Innovare Code";
+
+/** Ano do aviso de direitos autorais (pedido do dono, 2026-10-01): acompanha o ano corrente. */
+export const ANO_COPYRIGHT = new Date().getFullYear();
+
+/** "© 2026 Innovare Code. Todos os direitos reservados." — rodapés públicos, assinatura e e-mails. */
+export const DIREITOS_RESERVADOS = `© ${ANO_COPYRIGHT} ${TITULAR_DIREITOS}. Todos os direitos reservados.`;
+
 /** Versão semântica, vinda do package.json. */
 export const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION ?? "0.0.0";
 

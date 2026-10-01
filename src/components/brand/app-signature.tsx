@@ -1,8 +1,9 @@
 import { cn } from "@/components/lib/cn";
-import { BUILD_DATE, DESENVOLVEDORA, DESENVOLVEDORA_URL, NOME_SISTEMA, VERSAO_EXIBIDA } from "@/lib/app-info";
+import { BUILD_DATE, DESENVOLVEDORA, DESENVOLVEDORA_URL, DIREITOS_RESERVADOS, NOME_SISTEMA, VERSAO_EXIBIDA } from "@/lib/app-info";
 
 /**
- * Assinatura em texto: "InnoChat v1.0.0 · Desenvolvido por InnovareCode".
+ * Assinatura em texto: "InnoChat v1.0.0 · Desenvolvido por InnovareCode", e na linha de baixo
+ * "© 2026 Innovare Code. Todos os direitos reservados.".
  *
  * Para as telas públicas e de autenticação (nos painéis a identificação é o selo fixo — não
  * repetir lá, senão a versão aparece duas vezes). `tone="dark"` é para o painel de marca escuro
@@ -34,6 +35,8 @@ export function AppSignature({ tone = "light", className }: { tone?: "light" | "
       >
         {DESENVOLVEDORA}
       </a>
+      <br />
+      <span data-testid="direitos-reservados">{DIREITOS_RESERVADOS}</span>
     </p>
   );
 }
