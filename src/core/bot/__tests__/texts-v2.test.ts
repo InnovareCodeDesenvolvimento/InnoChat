@@ -17,14 +17,14 @@ const V1_KEYS = BOT_TEXT_KEYS as readonly string[];
 const KEYS = BOT_TEXT_KEYS_V2 as readonly string[];
 
 describe("BOT_TEXT_KEYS_V2", () => {
-  it("são as chaves v1 não legadas + as 50 novas (79 no total, sem repetição)", () => {
+  it("são as chaves v1 não legadas + as 66 novas (95 no total, sem repetição)", () => {
     const keptFromV1 = V1_KEYS.filter((k) => !(LEGACY_V1_KEYS as readonly string[]).includes(k));
     expect(keptFromV1).toHaveLength(29);
     for (const k of keptFromV1) expect(KEYS).toContain(k);
     const novas = KEYS.filter((k) => !V1_KEYS.includes(k));
-    expect(novas).toHaveLength(50);
-    expect(novas.filter((k) => k.startsWith("LABEL_"))).toHaveLength(20);
-    expect(KEYS).toHaveLength(79);
+    expect(novas).toHaveLength(66);
+    expect(novas.filter((k) => k.startsWith("LABEL_"))).toHaveLength(25);
+    expect(KEYS).toHaveLength(95);
     expect(new Set(KEYS).size).toBe(KEYS.length);
   });
 
@@ -129,7 +129,8 @@ describe("DEFAULT_BOT_TEXTS_V2 idêntico à spec §5.3 (snapshot)", () => {
   });
 
   it("só sobram no código as mensagens fora do bloco (REMINDER) e os rótulos", () => {
-    const extras = KEYS.filter((k) => !(k in fromSpec)).filter((k) => !k.startsWith("LABEL_"));
+    // A lista de espera (melhoria 7) nasceu depois da spec: seus textos não estão no bloco §5.3.
+    const extras = KEYS.filter((k) => !(k in fromSpec)).filter((k) => !k.startsWith("LABEL_") && !k.startsWith("WAITLIST_"));
     expect(extras).toEqual(["REMINDER"]);
   });
 
@@ -162,7 +163,7 @@ describe("DEFAULT_BOT_TEXTS_V2 idêntico à spec §5.3 (snapshot)", () => {
       LABEL_MORE_TIMES: "Mais horários",
       LABEL_MORE: "Ver mais",
     };
-    const labels = KEYS.filter((k) => k.startsWith("LABEL_"));
+    const labels = KEYS.filter((k) => k.startsWith("LABEL_") && !k.includes("WAITLIST"));
     expect([...labels].sort()).toEqual(Object.keys(expected).sort());
     for (const [k, v] of Object.entries(expected)) expect(DEFAULT_BOT_TEXTS_V2[k as BotTextKeyV2], k).toBe(v);
   });

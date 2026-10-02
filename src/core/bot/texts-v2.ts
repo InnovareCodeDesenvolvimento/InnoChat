@@ -96,6 +96,23 @@ const NEW_V2_KEYS = [
   "STAFF_RESCHEDULED",
   "STAFF_CANCELED",
   "HANDOFF_CLOSED",
+  // Lista de espera (melhoria 7)
+  "WAITLIST_INVITE",
+  "WAITLIST_JOINED",
+  "WAITLIST_ALREADY",
+  "WAITLIST_OFFER",
+  "WAITLIST_ACCEPTED",
+  "WAITLIST_DECLINED",
+  "WAITLIST_OFFER_GONE",
+  "WAITLIST_SLOT_TAKEN",
+  "WAITLIST_VIEW",
+  "WAITLIST_EMPTY",
+  "WAITLIST_LEFT",
+  "LABEL_MENU_WAITLIST",
+  "LABEL_WAITLIST_JOIN",
+  "LABEL_WAITLIST_SKIP",
+  "LABEL_WAITLIST_ACCEPT",
+  "LABEL_WAITLIST_DECLINE",
 ] as const;
 
 export const BOT_TEXT_KEYS_V2 = [...KEPT_V1_KEYS, ...NEW_V2_KEYS] as const;
@@ -233,6 +250,27 @@ export const DEFAULT_BOT_TEXTS_V2: Record<BotTextKeyV2, string> = {
   HANDOFF_CLOSED:
     "A equipe da *{empresa}* encerrou o atendimento. Obrigado pelo contato, {nome}! 👋\n_Pra marcar ou ver seus horários, é só responder *menu*._",
 
+  // ── Lista de espera ────────────────────────────────────
+  WAITLIST_INVITE:
+    "Não tem horário livre em *{data}* para *{servico}*. 😕\n" +
+    "Quer entrar na *lista de espera*? Se abrir um horário, eu te aviso por aqui.",
+  WAITLIST_JOINED:
+    "Pronto, {nome}! Você está na *lista de espera* de *{servico}* em *{data}*.\n" +
+    "Se um horário abrir, te mando uma mensagem aqui e você tem um tempinho para aceitar.",
+  WAITLIST_ALREADY: "Você já está na lista de espera de *{servico}* em *{data}*. Assim que abrir um horário, eu te aviso.",
+  WAITLIST_OFFER:
+    "Oi, {nome}! Abriu um horário: *{servico}* com {profissional}, {data_longa} às *{hora}*.\n" +
+    "Você tem *{prazo}* para responder. Quer ficar com ele? Responda *sim* ou *não*.",
+  WAITLIST_ACCEPTED: "✅ *Horário marcado!*\n\n*{servico}* com {profissional}\n{data_longa} às *{hora}*",
+  WAITLIST_DECLINED: "Tudo bem, {nome}. Tirei você da lista de espera de *{servico}* em *{data}*. Se mudar de ideia, é só pedir de novo.",
+  WAITLIST_OFFER_GONE: "Esse horário não está mais disponível: o prazo para responder acabou. 😕",
+  WAITLIST_SLOT_TAKEN:
+    "Poxa, esse horário acabou de ser ocupado por outra pessoa. 😕\n" +
+    "Você continua na lista de espera de *{servico}* em *{data}*, e eu te aviso se abrir outro.",
+  WAITLIST_VIEW: "*Sua lista de espera*\nEscolha uma para sair da lista:",
+  WAITLIST_EMPTY: "Você não está em nenhuma lista de espera.",
+  WAITLIST_LEFT: "Pronto, tirei você da lista de espera de *{servico}* em *{data}*.",
+
   // ── Rótulos de opção (sem variáveis) ───────────────────
   LABEL_MENU_BOOK: "Agendar horário",
   LABEL_MENU_MY: "Meus agendamentos",
@@ -260,6 +298,11 @@ export const DEFAULT_BOT_TEXTS_V2: Record<BotTextKeyV2, string> = {
   LABEL_MORE_DAYS: "Ver mais datas",
   LABEL_MORE_TIMES: "Mais horários",
   LABEL_MORE: "Ver mais",
+  LABEL_MENU_WAITLIST: "Minha lista de espera",
+  LABEL_WAITLIST_JOIN: "Entrar na lista de espera",
+  LABEL_WAITLIST_SKIP: "Ver outros dias",
+  LABEL_WAITLIST_ACCEPT: "Sim, quero esse horário",
+  LABEL_WAITLIST_DECLINE: "Não, obrigado",
 };
 
 const VARS_ROLE = ["servico", "profissional"] as const;
@@ -290,6 +333,8 @@ function buildAllowedVars(): Record<BotTextKeyV2, readonly string[]> {
   );
   set(["HUMAN_HANDOFF", "HUMAN_HANDOFF_OFF_HOURS"], VARS_HANDOFF);
   set(["STAFF_BOOKED", "STAFF_RESCHEDULED", "STAFF_CANCELED"], ["servico", "profissional", "data", "hora", "quando"]);
+  set(["WAITLIST_INVITE", "WAITLIST_JOINED", "WAITLIST_ALREADY", "WAITLIST_DECLINED", "WAITLIST_SLOT_TAKEN", "WAITLIST_LEFT"], ["servico", "profissional", "data"]);
+  set(["WAITLIST_OFFER", "WAITLIST_ACCEPTED"], ["servico", "profissional", "data", "data_longa", "hora", "prazo"]);
   set(["APPOINTMENT_LIMIT"], ["limite"]);
   set(["REMINDER"], ["servico", "profissional", "hora", "quando"]);
 
@@ -351,6 +396,17 @@ export const BOT_TEXT_CATALOG: Record<BotTextKeyV2, { group: BotTextGroup; title
   STAFF_BOOKED: { group: "agendamento", title: "Agendado pela equipe", description: "Aviso ao cliente quando a equipe cria um agendamento pelo painel (só se o aviso estiver ligado)." },
   STAFF_RESCHEDULED: { group: "agendamento", title: "Remarcado pela equipe", description: "Aviso ao cliente quando a equipe remarca um agendamento pelo painel (só se o aviso estiver ligado)." },
   STAFF_CANCELED: { group: "agendamento", title: "Cancelado pela equipe", description: "Aviso ao cliente quando a equipe cancela um agendamento pelo painel (só se o aviso estiver ligado)." },
+  WAITLIST_INVITE: { group: "agendamento", title: "Convite para a lista de espera", description: "Quando o dia (ou o período) pedido não tem horário, oferece entrar na lista de espera." },
+  WAITLIST_JOINED: { group: "agendamento", title: "Entrou na lista de espera", description: "Confirmação de que o cliente entrou na lista de espera." },
+  WAITLIST_ALREADY: { group: "agendamento", title: "Já está na lista de espera", description: "Quando o cliente tenta entrar numa lista em que já está." },
+  WAITLIST_OFFER: { group: "agendamento", title: "Oferta de horário da lista de espera", description: "Mensagem enviada ao primeiro da fila quando um horário abre. {prazo} é o tempo que a pessoa tem para responder." },
+  WAITLIST_ACCEPTED: { group: "agendamento", title: "Horário da lista de espera marcado", description: "Confirmação quando o cliente aceita o horário oferecido." },
+  WAITLIST_DECLINED: { group: "agendamento", title: "Saiu da lista de espera", description: "Quando o cliente responde que não quer o horário oferecido." },
+  WAITLIST_OFFER_GONE: { group: "agendamento", title: "Oferta vencida", description: "Quando o cliente responde depois do prazo ou a oferta já não vale mais." },
+  WAITLIST_SLOT_TAKEN: { group: "agendamento", title: "Horário oferecido ocupado", description: "Quando o horário foi ocupado por outro canal antes de o cliente aceitar. Ele continua na fila." },
+  WAITLIST_VIEW: { group: "agendamento", title: "Lista de espera do cliente", description: "Título da lista de esperas do cliente, para ele escolher de qual sair." },
+  WAITLIST_EMPTY: { group: "agendamento", title: "Sem lista de espera", description: "Quando o cliente pede para ver a lista de espera e não está em nenhuma." },
+  WAITLIST_LEFT: { group: "agendamento", title: "Saiu da lista", description: "Confirmação quando o cliente escolhe sair de uma lista de espera." },
   POST_ACTION_MENU: { group: "agendamento", title: "Posso ajudar em algo mais?", description: "Pergunta ao final de uma reserva, remarcação ou cancelamento." },
   // meus agendamentos
   MY_APPOINTMENTS: { group: "meus", title: "Lista de agendamentos", description: "Título da lista de agendamentos futuros do cliente." },
@@ -395,6 +451,11 @@ export const BOT_TEXT_CATALOG: Record<BotTextKeyV2, { group: BotTextGroup; title
   LABEL_MORE_DAYS: { group: "rotulos", title: "Ver mais datas", description: "Opção de paginação da lista de dias." },
   LABEL_MORE_TIMES: { group: "rotulos", title: "Mais horários", description: "Opção de paginação da lista de horários." },
   LABEL_MORE: { group: "rotulos", title: "Ver mais", description: "Opção de paginação genérica." },
+  LABEL_MENU_WAITLIST: { group: "rotulos", title: "Menu: lista de espera", description: "Opção do menu principal, só aparece para quem está em alguma lista de espera." },
+  LABEL_WAITLIST_JOIN: { group: "rotulos", title: "Entrar na lista de espera", description: "Opção do convite quando não há horário." },
+  LABEL_WAITLIST_SKIP: { group: "rotulos", title: "Lista de espera: ver outros dias", description: "Opção do convite para seguir procurando em outros dias." },
+  LABEL_WAITLIST_ACCEPT: { group: "rotulos", title: "Oferta: aceitar", description: "Opção da oferta de horário da lista de espera." },
+  LABEL_WAITLIST_DECLINE: { group: "rotulos", title: "Oferta: recusar", description: "Opção da oferta de horário da lista de espera." },
 };
 
 /**

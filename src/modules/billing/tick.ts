@@ -22,6 +22,7 @@ import { recordBillingEvent } from "./dunning/events";
 import { disconnectAllWhatsappInstances } from "@/modules/whatsapp/service";
 import { recordBillingTickRun } from "@/modules/platform/health-service";
 import { runReminderTick } from "@/modules/reminders/tick";
+import { runWaitlistTick } from "@/modules/waitlist/respond";
 
 /**
  * `POST /api/internal/v1/billing/tick` (docs/contratos.md — Fase 7). Roda periodicamente
@@ -206,6 +207,13 @@ async function runBillingTickLocked(now: Date, gateway: MercadoPagoGateway | und
     }
   } catch (error) {
     logger.error("billing.tick.reminders_failed", { errorMessage: error instanceof Error ? error.message : String(error) });
+  }
+
+  // Lista de espera: reserva do tick próprio (a cada 5 min, se o cron chamar); aqui vence ofertas e dá baixa em dias passados.
+  try {
+    await runWaitlistTick(now);
+  } catch (error) {
+    logger.error("billing.tick.waitlist_failed", { errorMessage: error instanceof Error ? error.message : String(error) });
   }
 
   logger.info("billing.tick.completed", { ...summary });

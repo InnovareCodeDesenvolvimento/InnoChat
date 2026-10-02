@@ -12,6 +12,7 @@ import { getMergedBotTexts } from "@/modules/bot-texts/service";
 import { closeOpenHandoff, findOpenHandoff, markHandoffAnswered } from "./handoff";
 import { contactHasBusinessRelation, logChatMessage } from "@/modules/conversations/log";
 import { isTenantBotAllowed } from "./subscription-gate";
+import { buildWaitlistOfferContext, countContactActiveWaitlist, findPendingWaitlistOffer, isWaitlistAnswerText } from "@/modules/waitlist/claim-support";
 import { isPlatformSender } from "@/modules/platform-whatsapp/sender-guard";
 import type { InternalApiContext } from "./internal-auth";
 
@@ -57,7 +58,11 @@ export type ResumedFromHuman = "CLIENT_MENU" | "TIMEOUT";
 /** Resposta `process` com `X-InnoChat-Flow: 2` (docs/bot-v2-plano.md §3.4, bloco B-2). */
 export type ClaimProcessResultV2 = Omit<ClaimProcessResult, "contact" | "session" | "tenant"> & {
   flow: 2;
-  contact: ClaimProcessResult["contact"] & { firstName: string | null };
+  contact: ClaimProcessResult["contact"] & {
+    firstName: string | null;
+    /** Filas de espera ativas do cliente: decide se o menu mostra "Minha lista de espera". */
+    waitlistCount: number;
+  };
   session: ClaimProcessResult["session"] & {
     previous: { state: string; context: unknown; idleMin: number } | null;
     resumedFromHuman: ResumedFromHuman | null;
@@ -360,12 +365,25 @@ export async function claimMessage(ctx: InternalApiContext, rawPayload: unknown,
   const resumed = resumedFromHuman !== null;
   const idleMs = now.getTime() - locked.lastInboundAt.getTime();
   // Quem volta do atendente entra como sessão nova por decisão do painel, não por inatividade.
-  const expired = resumed ? false : idleMs > tenant.sessionTimeoutMin * 60_000;
+  const expiredByIdle = resumed ? false : idleMs > tenant.sessionTimeoutMin * 60_000;
+
+  // Lista de espera: se a empresa mandou uma oferta de horário e o cliente ainda não falou desde então,
+  // a próxima mensagem dele é a resposta (SIM/NÃO), mesmo que a sessão esteja no meio de outro passo ou
+  // tenha expirado. Só no fluxo v2 (o v1 não conhece o estado) e nunca com atendente na conversa.
+  const waitlistOffer =
+    flow === 2 && !resumed && locked.state !== "HUMAN"
+      ? await findPendingWaitlistOffer(ctx.tenantId, contact.id, locked.lastInboundAt, now, {
+          answerLike: normalized.content.type === "text" && isWaitlistAnswerText(normalized.content.text),
+        })
+      : null;
+  const waitlistContext = waitlistOffer ? buildWaitlistOfferContext(waitlistOffer, await getMergedBotTexts(ctx.tenantId, 2)) : null;
+
+  const expired = waitlistOffer ? false : expiredByIdle;
   const resets = expired || resumed;
 
-  const effectiveState = resets ? "MAIN_MENU" : locked.state;
-  const effectiveContext = resets ? {} : locked.context;
-  const effectiveInvalidCount = resets ? 0 : locked.invalidCount;
+  const effectiveState = waitlistContext ? "WAITLIST_OFFER" : resets ? "MAIN_MENU" : locked.state;
+  const effectiveContext = waitlistContext ?? (resets ? {} : locked.context);
+  const effectiveInvalidCount = waitlistContext || resets ? 0 : locked.invalidCount;
 
   let inboundEventId: string;
   try {
@@ -374,7 +392,11 @@ export async function claimMessage(ctx: InternalApiContext, rawPayload: unknown,
         where: { id: session.id },
         data: {
           lastInboundAt: now,
-          ...(resets ? { state: "MAIN_MENU", context: {}, invalidCount: 0 } : {}),
+          ...(waitlistContext
+            ? { state: "WAITLIST_OFFER", context: waitlistContext as never, invalidCount: 0 }
+            : resets
+              ? { state: "MAIN_MENU", context: {}, invalidCount: 0 }
+              : {}),
           ...(resumed ? { humanUntil: null } : {}),
         },
       });
@@ -420,7 +442,11 @@ export async function claimMessage(ctx: InternalApiContext, rawPayload: unknown,
     return { ...base, texts: await getMergedBotTexts(ctx.tenantId) };
   }
 
-  const [texts, opening] = await Promise.all([getMergedBotTexts(ctx.tenantId, 2), computeTenantTeamOpening(tenant, now)]);
+  const [texts, opening, waitlistCount] = await Promise.all([
+    getMergedBotTexts(ctx.tenantId, 2),
+    computeTenantTeamOpening(tenant, now),
+    countContactActiveWaitlist(ctx.tenantId, contact.id),
+  ]);
   const todayISO = formatInTimeZone(now, tenant.timezone, "yyyy-MM-dd");
   const previous =
     expired && idleMs <= PREVIOUS_MAX_IDLE_MS && locked.state !== "HUMAN"
@@ -430,7 +456,7 @@ export async function claimMessage(ctx: InternalApiContext, rawPayload: unknown,
   return {
     ...base,
     flow: 2,
-    contact: { ...base.contact, firstName: firstNameForGreeting(contact.name, contact.pushName) },
+    contact: { ...base.contact, firstName: firstNameForGreeting(contact.name, contact.pushName), waitlistCount },
     session: { ...base.session, previous, resumedFromHuman },
     tenant: {
       ...base.tenant,

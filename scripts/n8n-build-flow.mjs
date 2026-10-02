@@ -53,7 +53,12 @@ const PRO_KEYS = ['professionalId', 'professionalName', 'professionalSkipped'];
 const DAY_KEYS = ['date', 'dataLonga', 'period', 'startsAt', 'hora'];
 const nulls = (keys) => { const p = {}; for (const k of keys) p[k] = null; return p; };
 const svcPatch = (o) => Object.assign(nulls(PRO_KEYS.concat(DAY_KEYS)), { serviceId: o.id, serviceName: o.name || o.label, durationLabel: o.durationLabel || null, priceLabel: o.priceLabel || null });
-const menuBlock = () => ({ key: 'MENU_PROMPT', options: [{ id: 'BOOK', titleKey: 'LABEL_MENU_BOOK' }, { id: 'MY', titleKey: 'LABEL_MENU_MY' }, { id: 'HUMAN', titleKey: 'LABEL_MENU_HUMAN' }], footer: 'MENU_HINT' });
+// Quem está em alguma lista de espera vê "Minha lista de espera" por último (os números 1 a 3 não mudam). noWaitlist = não mostrar.
+const menuBlock = (noWaitlist) => {
+  const options = [{ id: 'BOOK', titleKey: 'LABEL_MENU_BOOK' }, { id: 'MY', titleKey: 'LABEL_MENU_MY' }, { id: 'HUMAN', titleKey: 'LABEL_MENU_HUMAN' }];
+  if (!noWaitlist && Number(contact.waitlistCount) > 0) options.push({ id: 'WAITLIST', titleKey: 'LABEL_MENU_WAITLIST' });
+  return { key: 'MENU_PROMPT', options, footer: 'MENU_HINT' };
+};
 const postBlock = () => ({ key: 'POST_ACTION_MENU', options: [{ id: 'BOOK', titleKey: 'LABEL_BOOK_ANOTHER' }, { id: 'MY', titleKey: 'LABEL_MENU_MY' }, { id: 'FINISH', titleKey: 'LABEL_FINISH' }], footer: 'FOOTER_HINT' });
 // Pós-ação em mensagem PRÓPRIA (a confirmação vai sozinha; o "Posso ajudar em algo mais?" vem logo depois).
 const postAlone = () => Object.assign(postBlock(), { newMessage: true });

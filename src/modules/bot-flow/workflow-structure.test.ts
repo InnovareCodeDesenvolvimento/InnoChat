@@ -246,4 +246,60 @@ describe("n8n/innochat-bot.json (workflow v2)", () => {
     const batch = (envio?.parameters as { options?: { batching?: { batch?: { batchSize?: number; batchInterval?: number } } } }).options?.batching?.batch;
     expect(batch).toEqual({ batchSize: 1, batchInterval: 800 });
   });
+
+  // Melhoria 7: lista de espera. Os estados novos precisam chegar ao ramo certo e as chamadas ao painel precisam estar ligadas.
+  describe("lista de espera", () => {
+    const outputsOf = (name: string): string[] => (flow.connections[name]?.main ?? []).map((o) => o.map((c) => c.node).join(","));
+    const keyOfRules = (name: string) => (byName.get(name)?.parameters.rules?.values ?? []).map((r) => String((r as { outputKey?: string }).outputKey));
+
+    it("Responder passo leva WAITLIST_INVITE, WAITLIST_OFFER e WAITLIST_VIEW ao ramo da lista de espera", () => {
+      const keys = keyOfRules("Responder passo");
+      const outs = outputsOf("Responder passo");
+      for (const state of ["WAITLIST_INVITE", "WAITLIST_OFFER", "WAITLIST_VIEW"]) {
+        expect(outs[keys.indexOf(state)], state).toBe("Responder lista de espera");
+      }
+      // A saída "estado desconhecido" (fallback) continua sendo a última, ligada à falha técnica.
+      expect(outs[outs.length - 1]).toBe("Falha técnica");
+    });
+
+    it("a opção 'lista de espera' do menu e os destinos WAITLIST_GET/POST do hub estão ligados", () => {
+      const menu = keyOfRules("Menu: opção");
+      expect(outputsOf("Menu: opção")[menu.indexOf("lista de espera")]).toBe("Responder lista de espera");
+      const hub = keyOfRules("Ir para");
+      expect(outputsOf("Ir para")[hub.indexOf("WAITLIST_GET")]).toBe("Lista de espera: consultar");
+      expect(outputsOf("Ir para")[hub.indexOf("WAITLIST_POST")]).toBe("Lista de espera: enviar");
+      expect(outputsOf("Lista de espera: consultar")).toEqual(["Resultado lista de espera"]);
+      expect(outputsOf("Lista de espera: enviar")).toEqual(["Resultado lista de espera"]);
+      expect(outputsOf("Resultado lista de espera")).toEqual(["Preparar passo"]);
+      expect(outputsOf("Responder lista de espera")).toEqual(["Preparar passo"]);
+    });
+
+    it("as chamadas ao painel usam as rotas da API interna da lista de espera", () => {
+      const responder = String(byName.get("Responder lista de espera")?.parameters.jsCode ?? "");
+      expect(responder).toContain("'/waitlist'");
+      expect(responder).toContain("/respond'");
+      expect(responder).toContain("/leave'");
+      expect(responder).toContain("/waitlist'");
+      const post = byName.get("Lista de espera: enviar");
+      expect(post?.parameters.method).toBe("POST");
+    });
+
+    it("o convite à lista só aparece quando o dia está cheio (reason FULL), antes de sugerir outros dias", () => {
+      const code = String(byName.get("Resultado horários")?.parameters.jsCode ?? "");
+      const invite = code.indexOf("done('WAITLIST_INVITE'");
+      const nextDay = code.indexOf("body.nextDay && body.nextDay.id");
+      expect(invite).toBeGreaterThan(-1);
+      expect(invite).toBeLessThan(nextDay);
+      expect(code).toContain("body.reason === 'FULL'");
+      expect(code).toContain("wlPeriod");
+    });
+
+    it("o menu e o Interpretar mostram 'Minha lista de espera' só para quem tem fila (e sempre por último)", () => {
+      const interp = String(byName.get("Interpretar")?.parameters.jsCode ?? "");
+      expect(interp).toContain("waitlistCount");
+      expect(interp).toContain("'WAITLIST_OFFER'");
+      const glue = String(byName.get("Mostrar menu")?.parameters.jsCode ?? "");
+      expect(glue).toContain("options.push({ id: 'WAITLIST', titleKey: 'LABEL_MENU_WAITLIST' })");
+    });
+  });
 });

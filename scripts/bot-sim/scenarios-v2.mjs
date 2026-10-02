@@ -42,9 +42,10 @@ try {
 await import("./scenarios-v2-a.mjs");
 await import("./scenarios-v2-b.mjs");
 await import("./scenarios-v2-api.mjs");
+await import("./scenarios-v2-waitlist.mjs");
 
 // ordem: CA-01.. , CA-47, depois API-01.. (o CA-38/39/41 varrem as mensagens dos anteriores, então ficam depois de tudo que conversa)
-const order = (s) => (/^CA-(38|39|41)$/.test(s.id) ? 1000 + Number(s.id.slice(3)) : /^CA-45$/.test(s.id) ? 2000 : /^API-/.test(s.id) ? 500 + Number(s.id.slice(4)) : Number(s.id.slice(3)));
+const order = (s) => (/^CA-(38|39|41)$/.test(s.id) ? 1000 + Number(s.id.slice(3)) : /^CA-45$/.test(s.id) ? 2000 : /^API-/.test(s.id) ? 500 + Number(s.id.slice(4)) : /^WL-/.test(s.id) ? 600 + Number(s.id.slice(3)) : Number(s.id.slice(3)));
 scenarios.sort((a, b) => order(a) - order(b));
 
 const filter = process.argv[2] ? new RegExp(process.argv[2]) : null;

@@ -232,6 +232,26 @@ export const RescheduleAppointmentRequestSchema = z
   .describe("Corpo de POST /appointments/{id}/reschedule");
 
 // ---------------------------------------------------------------------------
+// Lista de espera (melhoria 7)
+// ---------------------------------------------------------------------------
+
+export const WaitlistJoinRequestSchema = z
+  .object({
+    contactId: z.string().min(1),
+    serviceId: z.string().min(1),
+    professionalId: z.string().min(1).nullable().optional().describe("Nulo, ausente ou \"any\" = qualquer profissional."),
+    date: z.string().regex(isoDateOnly).describe("Dia desejado, YYYY-MM-DD no fuso da empresa."),
+    period: z.enum(["morning", "afternoon", "evening"]).nullable().optional().describe("Período pedido; ausente = qualquer horário."),
+  })
+  .describe("Corpo de POST /waitlist");
+
+export const WaitlistLeaveRequestSchema = z.object({ contactId: z.string().min(1) }).describe("Corpo de POST /waitlist/{id}/leave");
+
+export const WaitlistRespondRequestSchema = z
+  .object({ contactId: z.string().min(1), accept: z.boolean().describe("true = SIM (marca o horário); false = NÃO (sai da fila).") })
+  .describe("Corpo de POST /waitlist/{id}/respond");
+
+// ---------------------------------------------------------------------------
 // Outros (§6.8)
 // ---------------------------------------------------------------------------
 

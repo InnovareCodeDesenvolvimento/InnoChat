@@ -15,6 +15,9 @@ export const STATIC_OPTION_IDS: Record<string, string[]> = {
   SELECT_DAY: ["NEXT", "MORE", "PREV"],
   NEXT_SLOTS: ["BY_DAY"],
   LIMIT_REACHED: ["HUMAN"],
+  // Lista de espera (melhoria 7). O item WAITLIST do menu só existe quando o cliente tem fila (ver MAIN_MENU abaixo).
+  WAITLIST_INVITE: ["JOIN", "SKIP"],
+  WAITLIST_OFFER: ["ACCEPT", "DECLINE"],
 };
 
 const HUMAN_WORDS = [
@@ -27,6 +30,7 @@ export const STATE_ALIASES: Record<string, Record<string, string[]>> = {
     BOOK: ["agendar", "marcar", "agendamento", "horario", "reservar", "quero agendar", "quero marcar"],
     MY: ["meus", "meus agendamentos", "ver", "consultar", "remarcar", "cancelar", "desmarcar"],
     HUMAN: HUMAN_WORDS,
+    WAITLIST: ["lista de espera", "minha lista de espera", "minha lista", "lista", "espera", "sair da lista"],
   },
   CONFIRM: {
     CONFIRM: ["sim", "s", "confirmar", "confirmo", "pode", "pode ser", "ok", "isso", "certo", "👍", "✅", "👌"],
@@ -70,6 +74,14 @@ export const STATE_ALIASES: Record<string, Record<string, string[]>> = {
   LIMIT_REACHED: {
     HUMAN: HUMAN_WORDS,
   },
+  WAITLIST_INVITE: {
+    JOIN: ["entrar", "entrar na lista", "lista de espera", "sim", "s", "quero", "pode", "pode ser", "👍", "✅"],
+    SKIP: ["ver outros dias", "outros dias", "outro dia", "nao", "n", "❌", "👎"],
+  },
+  WAITLIST_OFFER: {
+    ACCEPT: ["sim", "s", "quero", "aceito", "aceitar", "pode", "pode ser", "ok", "isso", "👍", "✅", "👌"],
+    DECLINE: ["nao", "n", "nao quero", "nao obrigado", "recuso", "dispenso", "❌", "👎"],
+  },
 };
 
 /** Paginação vale em qualquer estado que tenha as opções MORE/PREV. */
@@ -83,11 +95,15 @@ export const YES_IDS: Record<string, string> = {
   CONFIRM: "CONFIRM",
   CONFIRM_CANCEL: "YES",
   RESUME_OFFER: "CONTINUE",
+  WAITLIST_INVITE: "JOIN",
+  WAITLIST_OFFER: "ACCEPT",
 };
 export const NO_IDS: Record<string, string> = {
   CONFIRM: "EDIT",
   CONFIRM_CANCEL: "NO",
   RESUME_OFFER: "RESTART",
+  WAITLIST_INVITE: "SKIP",
+  WAITLIST_OFFER: "DECLINE",
 };
 
 /** Comandos globais (spec §2.3): a mensagem INTEIRA normalizada tem que ser um sinônimo. */

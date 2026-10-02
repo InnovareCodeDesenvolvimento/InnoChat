@@ -194,6 +194,54 @@ const paths = {
       },
     }),
   },
+  "/waitlist": {
+    post: op({
+      summary: "Coloca o cliente na lista de espera (idempotente) (melhoria 7)",
+      description: "Mesma fila (contato + serviço + dia + profissional) devolve 200 com `alreadyExisted: true`. Quando um horário abre, o painel oferece ao primeiro da fila compatível por WhatsApp (prazo de 30 minutos).",
+      requestBody: schemas.WaitlistJoinRequestSchema,
+      responses: {
+        "201": { description: "Entrou na lista: { entry: { id, alreadyExisted, servico, profissional, data, dateISO } }" },
+        "200": { description: "Já estava na lista (mesmo corpo do 201)" },
+        "404": NOT_FOUND,
+        "422": errorResponse("Data fora do prazo de agendamento, profissional que não faz o serviço, ou limite de filas por cliente.", { error: { code: "RULE_VIOLATION", message: "Só dá para entrar na lista de hoje até 30/10." } }),
+      },
+    }),
+  },
+  "/waitlist/{id}/respond": {
+    post: op({
+      summary: "SIM/NÃO do cliente à oferta de horário da lista de espera (melhoria 7)",
+      description: "`accept: true` marca o horário e devolve { accepted, alreadyExisted, appointment }. `accept: false` sai da fila e passa o horário ao próximo: { accepted: false, declined, servico, data }.",
+      pathParams: ["id"],
+      requestBody: schemas.WaitlistRespondRequestSchema,
+      responses: {
+        "200": { description: "SIM (agendamento criado, idempotente) ou NÃO" },
+        "409": errorResponse("OFFER_GONE (vencida, recusada ou de outra pessoa) ou SLOT_TAKEN (o horário foi ocupado por outro canal; o cliente continua na fila, details = { servico, data }).", { error: { code: "OFFER_GONE", message: "Essa oferta já não vale mais." } }),
+        "422": errorResponse("LIMIT_REACHED: o cliente já tem o máximo de agendamentos futuros.", { error: { code: "LIMIT_REACHED", message: "O cliente já atingiu o limite de agendamentos futuros." } }),
+      },
+    }),
+  },
+  "/waitlist/{id}/leave": {
+    post: op({
+      summary: "O cliente sai da lista de espera (idempotente) (melhoria 7)",
+      pathParams: ["id"],
+      requestBody: schemas.WaitlistLeaveRequestSchema,
+      responses: { "200": { description: "{ left, servico, data }" }, "404": NOT_FOUND },
+    }),
+  },
+  "/contacts/{contactId}/waitlist": {
+    get: op({
+      summary: "Filas ativas do cliente (no máximo 10) (melhoria 7)",
+      pathParams: ["contactId"],
+      responses: { "200": { description: "{ options: [{ id, label, servico, profissional, data, dateISO }] }" }, "404": NOT_FOUND },
+    }),
+  },
+  "/waitlist/tick": {
+    post: op({
+      summary: "Tick da lista de espera: vence ofertas e passa o horário ao próximo (melhoria 7)",
+      description: "Só `Authorization: Bearer` (sem `X-InnoChat-Instance`); varre todas as empresas. Idempotente. Ideal a cada 5 minutos; o tick de cobrança de hora em hora também roda esta varredura.",
+      responses: { "200": { description: "{ offersExpired, acceptedRecovered, pastEntriesExpired }" } },
+    }),
+  },
   "/connection-events": {
     post: op({
       summary: "Aplica connection.update da Evolution — sempre 200 (§6.8)",
