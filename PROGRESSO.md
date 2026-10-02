@@ -5,6 +5,35 @@ para clínicas, salões e qualquer negócio de serviços com horário marcado.
 Repositório: https://github.com/InnovareCodeDesenvolvimento/InnoChat (branch `main`; o antigo é o remote `antigo`).
 Decisões do dono: memória `decisoes-iniciais-innochat` e `docs/arquitetura.md` §15.
 
+## Atualização (2026-10-02): v1.4.1 no ar
+
+**Publicado desde a v1.1.1:**
+- Landing premium:
+  - celular realista com o Inno;
+  - "Você conhece esse dia" multi-nicho;
+  - rede animada, painel 3D e jornada em rolagem;
+  - botão "Tirar dúvidas" com o WhatsApp comercial cadastrado no Admin.
+- Cancelamento e reativação pelo painel (Termos de 2026-10-01).
+- Textos humanizados em todo o sistema (`docs/guia-de-voz.md`).
+- Régua de cobrança completa (`docs/regua-de-cobranca.md`):
+  - outbox `BillingNotice`;
+  - carência de 3 dias;
+  - sequência do teste grátis com dados reais;
+  - WhatsApp de cobrança da plataforma, trocável no Admin;
+  - avisos no painel;
+  - contato de cobrança com confirmação por SIM.
+
+**Pendências do dono:**
+- Conectar o chip de cobrança em Admin → Configurações.
+- Repetir no Admin as suspensões manuais anteriores à v1.4.1.
+- Credenciais do Google.
+- Ativar os planos que devem aparecer na landing.
+
+**Próximas fases da régua:**
+- F6, visão financeira no Admin (MRR, inadimplência, timeline);
+- F7, health/monitor externo;
+- F8, documentação.
+
 ## Atualização (2026-09-30)
 
 **No ar:**
