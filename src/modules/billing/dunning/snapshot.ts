@@ -2,7 +2,7 @@ import { subDays } from "date-fns";
 import { getPrisma } from "@/lib/db/prisma";
 import { logger } from "@/lib/logger";
 import type { Prisma } from "@/lib/db/types";
-import { safeTimezone, usesTrialRules, type DunningInput } from "@/core/billing";
+import { effectiveCycle, grossCentsFor, safeTimezone, usesTrialRules, type DunningInput } from "@/core/billing";
 import { manualSuspensionPeriodEnds } from "./events";
 
 /**
@@ -17,6 +17,8 @@ export type DunningSubject = {
   tenantName: string;
   tenantSlug: string;
   planPriceCents: number;
+  /** Ciclo atual da assinatura (usado quando ainda não há fatura). */
+  billingCycle: string;
 };
 
 /** Cancelamentos recentes ainda entram na varredura (aviso de encerramento automático e autocura). */
@@ -29,7 +31,7 @@ function loadRaw(where: Prisma.SubscriptionWhereInput, take?: number) {
     where,
     include: {
       tenant: { select: { id: true, name: true, slug: true, timezone: true } },
-      plan: { select: { priceCents: true } },
+      plan: { select: { priceCents: true, annualPriceCents: true } },
       invoices: { where: { status: "OPEN" }, orderBy: { periodStart: "desc" }, take: 1, select: { id: true, dueAt: true, createdAt: true, isTrialConversion: true } },
     },
     orderBy: { currentPeriodEnd: "asc" },
@@ -58,7 +60,8 @@ async function toSubjects(rows: LoadedSubscription[], now: Date): Promise<Dunnin
       tenantId: r.tenantId,
       tenantName: r.tenant.name,
       tenantSlug: r.tenant.slug,
-      planPriceCents: r.plan.priceCents,
+      planPriceCents: grossCentsFor(r.plan, effectiveCycle(r.plan, r.billingCycle === "ANNUAL" ? "ANNUAL" : "MONTHLY")),
+      billingCycle: r.billingCycle,
       input: {
         timezone: safeTimezone(r.tenant.timezone),
         subscription: {

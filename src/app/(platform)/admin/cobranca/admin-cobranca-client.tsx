@@ -372,7 +372,13 @@ export function AdminCobrancaClient({
                       </div>
                     </div>
                   </TableCell>
-                  <TableCell className="tabular-nums">{formatCentsBRL(invoice.amountCents)}</TableCell>
+                  <TableCell className="tabular-nums">
+                    {formatCentsBRL(invoice.amountCents)}
+                    {invoice.cycle === "ANNUAL" ? <Badge variant="neutral" className="ml-1.5">Anual</Badge> : null}
+                    {invoice.discountCents > 0 ? (
+                      <span className="block text-xs text-text-secondary">cupom {invoice.couponCode ?? ""}: -{formatCentsBRL(invoice.discountCents)}</span>
+                    ) : null}
+                  </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1.5">
                       <Badge variant={STATUS_BADGE[invoice.status]}>{STATUS_LABEL[invoice.status]}</Badge>

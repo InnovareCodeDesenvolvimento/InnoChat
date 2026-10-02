@@ -13,6 +13,7 @@ import { Pricing } from "@/components/landing/pricing";
 import { SalesWhatsappButton } from "@/components/landing/sales-whatsapp-button";
 import { Segments } from "@/components/landing/segments";
 import { SocialProof } from "@/components/landing/social-proof";
+import { MetaTracking } from "@/components/public/meta-tracking";
 import { TRIAL_DAYS } from "@/core/billing";
 import { SITE_URL } from "@/lib/site";
 import { getLandingPlans } from "@/modules/billing/landing-plans";
@@ -128,6 +129,7 @@ export default async function LandingPage() {
       </main>
       <LandingFooter contactEmail={contactEmail} />
       {salesWhatsapp ? <SalesWhatsappButton e164={salesWhatsapp.e164} display={salesWhatsapp.display} /> : null}
+      <MetaTracking />
     </div>
   );
 }

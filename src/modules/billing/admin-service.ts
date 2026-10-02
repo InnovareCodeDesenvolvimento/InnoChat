@@ -2,7 +2,7 @@ import { addMonths } from "date-fns";
 import { getPrisma } from "@/lib/db/prisma";
 import { DomainError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
-import { effectiveStatus, GRACE_DAYS_PAYING, GRACE_DAYS_TRIAL, usesTrialRules } from "@/core/billing";
+import { effectiveStatus, GRACE_DAYS_PAYING, GRACE_DAYS_TRIAL, MIN_CHARGE_CENTS, mrrContributionCents, usesTrialRules } from "@/core/billing";
 import { recordBillingEvent } from "./dunning/events";
 import { applyInvoicePayment, findBillingRecipientEmail, regeneratePixForInvoice as regeneratePixForInvoiceService } from "./service";
 import type { MercadoPagoGateway } from "./mercadopago";
@@ -26,6 +26,8 @@ export async function listPlans() {
 export type UpdatePlanInput = {
   name?: string;
   priceCents?: number;
+  /** Preço anual (12 meses) em centavos; `null` remove a opção anual. */
+  annualPriceCents?: number | null;
   maxWhatsappNumbers?: number;
   maxProfessionals?: number | null;
   active?: boolean;
@@ -35,6 +37,15 @@ export type UpdatePlanInput = {
 export async function updatePlan(planId: string, input: UpdatePlanInput) {
   const existing = await getPrisma().plan.findUnique({ where: { id: planId } });
   if (!existing) throw new DomainError("NOT_FOUND", "Plano não encontrado.");
+  const monthly = input.priceCents ?? existing.priceCents;
+  const annual = input.annualPriceCents === undefined ? existing.annualPriceCents : input.annualPriceCents;
+  if (annual !== null) {
+    if (annual < MIN_CHARGE_CENTS) throw new DomainError("INVALID_ANNUAL_PRICE", "O preço anual precisa ser pelo menos R$ 1,00.");
+    // Anual mais caro que 12 mensalidades quase sempre é erro de digitação (centavos no lugar de reais, por exemplo).
+    if (monthly > 0 && annual > monthly * 12) {
+      throw new DomainError("INVALID_ANNUAL_PRICE", "O preço anual não pode ser maior que 12 mensalidades.");
+    }
+  }
   return getPrisma().plan.update({ where: { id: planId }, data: input });
 }
 
@@ -216,6 +227,10 @@ export type AdminInvoiceListItem = {
   createdAt: Date;
   /** `TRIAL` = fatura do cadastro (teste); a UI rotula "Teste". */
   kind: "TRIAL" | "REGULAR";
+  /** Ciclo da fatura (anual cobre 12 meses) e desconto de cupom já abatido de `amountCents`. */
+  cycle: "MONTHLY" | "ANNUAL";
+  discountCents: number;
+  couponCode: string | null;
 };
 
 export type ListInvoicesAdminParams = {
@@ -278,6 +293,9 @@ export async function listInvoicesAdmin(params: ListInvoicesAdminParams = {}): P
       hasMpPayment: !!invoice.mpPaymentId,
       createdAt: invoice.createdAt,
       kind: invoice.isTrialConversion ? "TRIAL" : "REGULAR",
+      cycle: invoice.cycle === "ANNUAL" ? "ANNUAL" : "MONTHLY",
+      discountCents: invoice.discountCents,
+      couponCode: invoice.couponCode,
     })),
   };
 }
@@ -341,7 +359,8 @@ export async function billingMonthlyTotals(now: Date = new Date()): Promise<Bill
     overdueCents: overdue._sum.amountCents ?? 0,
     trialCents: trial._sum.amountCents ?? 0,
     trialCount: trial._count._all,
-    mrrCents: activeSubscriptions.reduce((sum, s) => sum + s.plan.priceCents, 0),
+    // Anual entra como preço anual / 12 (Melhoria 6).
+    mrrCents: activeSubscriptions.reduce((sum, s) => sum + mrrContributionCents(s.plan, s.billingCycle === "ANNUAL" ? "ANNUAL" : "MONTHLY"), 0),
   };
 }
 

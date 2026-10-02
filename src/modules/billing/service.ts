@@ -6,8 +6,9 @@ import { DomainError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
 import { sendMail, SmtpNotConfiguredError, loadEmailContext, invoiceGeneratedEmail, subscriptionSuspendedEmail, type SendMailInput, type SendMailResult } from "@/lib/email";
 import { getPublicBaseUrl } from "@/lib/public-url";
-import { CANCEL_AFTER_SUSPENDED_TRIAL_DAYS, computeTrialEndsAt, effectiveStatus, validateCpfCnpj, type SubscriptionStatus } from "@/core/billing";
+import { CANCEL_AFTER_SUSPENDED_TRIAL_DAYS, computeTrialEndsAt, cycleMonths, effectiveStatus, validateCpfCnpj, type BillingCycle, type SubscriptionStatus } from "@/core/billing";
 import { formatCentsBRL, formatDateBR } from "./format";
+import { consumeCouponCycleInTx, type InvoiceChargeSnapshot } from "./coupons";
 import { recordBillingEvent } from "./dunning/events";
 import { getActiveMercadoPagoCredentials, type MercadoPagoEnv } from "@/modules/platform/mercadopago-config";
 import { getMercadoPagoGateway, getMercadoPagoGatewayForEnvironment, MercadoPagoApiError, type MercadoPagoFailureKind, type MercadoPagoGateway } from "./mercadopago";
@@ -114,6 +115,8 @@ export async function createInvoiceForPeriod(params: {
   payerEmail: string;
   description: string;
   gateway?: MercadoPagoGateway;
+  /** Ciclo e cupom da fatura (`loadInvoiceCharge`). Ausente = mensal, sem desconto. `amountCents` deve ser o LÍQUIDO. */
+  charge?: Pick<InvoiceChargeSnapshot, "cycle" | "discountCents" | "couponCode" | "couponId">;
 }) {
   const { invoice } = await createInvoiceForPeriodTracked(params);
   return invoice;
@@ -129,6 +132,8 @@ export async function createInvoiceForPeriodTracked(params: {
   payerEmail: string;
   description: string;
   gateway?: MercadoPagoGateway;
+  /** Ciclo e cupom da fatura (`loadInvoiceCharge`). Ausente = mensal, sem desconto. `amountCents` deve ser o LÍQUIDO. */
+  charge?: Pick<InvoiceChargeSnapshot, "cycle" | "discountCents" | "couponCode" | "couponId">;
 }) {
   const prisma = getPrisma();
 
@@ -139,15 +144,28 @@ export async function createInvoiceForPeriodTracked(params: {
     return { invoice: existing, created: false };
   }
 
-  const invoice = await prisma.invoice.create({
-    data: {
-      subscriptionId: params.subscriptionId,
-      amountCents: params.amountCents,
-      periodStart: params.periodStart,
-      periodEnd: params.periodEnd,
-      dueAt: params.dueAt,
-      status: "OPEN",
-    },
+  const charge = params.charge;
+  // Fatura e ciclo de cupom gastos na MESMA transação: se a criação falhar (corrida no unique do período),
+  // o ciclo do cupom não é perdido; se der certo, nunca há fatura descontada sem o ciclo ter sido gasto.
+  const invoice = await prisma.$transaction(async (tx) => {
+    const row = await tx.invoice.create({
+      data: {
+        subscriptionId: params.subscriptionId,
+        amountCents: params.amountCents,
+        periodStart: params.periodStart,
+        periodEnd: params.periodEnd,
+        dueAt: params.dueAt,
+        status: "OPEN",
+        cycle: charge?.cycle ?? "MONTHLY",
+        discountCents: charge?.discountCents ?? 0,
+        couponCode: charge && charge.discountCents > 0 ? charge.couponCode : null,
+      },
+    });
+    if (charge?.couponId && charge.discountCents > 0) {
+      const sub = await tx.subscription.findUniqueOrThrow({ where: { id: params.subscriptionId }, select: { tenantId: true } });
+      await consumeCouponCycleInTx(tx, { subscriptionId: params.subscriptionId, tenantId: sub.tenantId, couponId: charge.couponId, invoiceId: row.id, discountCents: charge.discountCents });
+    }
+    return row;
   });
 
   const withPix = await tryAttachPix(invoice.id, params.payerEmail, params.description, params.gateway);
@@ -472,8 +490,9 @@ export async function applyInvoicePayment(
     const wasCanceled = subscription.status === "CANCELED" || (subscription.cancelAtPeriodEnd && effectiveStatus(subscription, paidAt) === "CANCELED");
     const wasSuspended = effectiveStatus(subscription, paidAt) === "SUSPENDED" || subscription.status === "SUSPENDED" || wasCanceled;
     const anchor = wasSuspended ? paidAt : subscription.currentPeriodEnd;
+    // Fatura anual cobre 12 meses; a mensal, 1 (vale o ciclo da FATURA paga, não o da assinatura hoje).
     const nextPeriodEnd = new Date(anchor);
-    nextPeriodEnd.setMonth(nextPeriodEnd.getMonth() + 1);
+    nextPeriodEnd.setMonth(nextPeriodEnd.getMonth() + cycleMonths(invoice.cycle === "ANNUAL" ? "ANNUAL" : "MONTHLY"));
 
     await tx.subscription.update({
       where: { id: subscription.id },
@@ -513,6 +532,7 @@ export async function applyInvoicePayment(
         activeUntil: nextPeriodEnd,
         fromStatus: subscription.status,
         reactivated: wasCanceled,
+        firstPayment: !subscription.firstPaidAt,
       },
     };
   });
@@ -533,6 +553,13 @@ export async function applyInvoicePayment(
       toStatus: "ACTIVE",
       metadata: { amountCents: receipt.amountCents, paidAt: receipt.paidAt.toISOString(), activeUntil: receipt.activeUntil.toISOString(), reactivated: receipt.reactivated },
     });
+    // Purchase na API de Conversões do Meta: só no PRIMEIRO pagamento, em segundo plano e sem nunca
+    // lançar (o webhook do Mercado Pago não pode cair por causa de rastreio).
+    if (receipt.firstPayment) {
+      void import("@/modules/meta/tracking")
+        .then((m) => m.trackPurchaseInBackground({ tenantId: receipt.tenantId, invoiceId: receipt.invoiceId, amountCents: receipt.amountCents, paidAt: receipt.paidAt }))
+        .catch(() => undefined);
+    }
     // Aviso "pagamento confirmado" (e-mail e WhatsApp) pelo outbox da régua; import dinâmico por causa do ciclo service <-> dunning.
     const { notifyPaymentConfirmed } = await import("./dunning/payment");
     await notifyPaymentConfirmed({ tenantId: receipt.tenantId, subscriptionId: receipt.subscriptionId, invoiceId: receipt.invoiceId, now: new Date() });
@@ -550,6 +577,8 @@ type PaymentReceipt = {
   activeUntil: Date;
   fromStatus: SubscriptionStatus;
   reactivated: boolean;
+  /** Primeira baixa da assinatura (`firstPaidAt` ainda vazio) — vira o evento Purchase do Meta. */
+  firstPayment: boolean;
 };
 
 // ---------------------------------------------------------------------------
@@ -666,13 +695,15 @@ export async function sendInvoiceGeneratedEmail(params: {
   dueAt: Date;
   pixCopyPaste: string | null;
   timezone: string;
+  /** Fatura de plano anual: o valor sai com "(plano anual)" para não parecer cobrança mensal. */
+  annual?: boolean;
 }): Promise<boolean> {
   const logEvent = "billing.email.invoice_generated.not_sent";
   let mail: { subject: string; html: string; text: string };
   try {
     mail = invoiceGeneratedEmail({
       tenantName: params.tenantName,
-      amountReais: formatCentsBRL(params.amountCents),
+      amountReais: params.annual ? `${formatCentsBRL(params.amountCents)} (plano anual)` : formatCentsBRL(params.amountCents),
       dueDateBr: formatDateBR(params.dueAt, params.timezone),
       pixCopyPaste: params.pixCopyPaste,
       billingUrl: await billingUrlFor(params.tenantSlug),
@@ -744,8 +775,8 @@ export function newTrialEndsAt(signupAt: Date): Date {
   return computeTrialEndsAt(signupAt);
 }
 
-export function generateInvoiceDescription(tenantName: string): string {
-  return `Assinatura InnoChat (${tenantName})`;
+export function generateInvoiceDescription(tenantName: string, cycle: BillingCycle = "MONTHLY"): string {
+  return cycle === "ANNUAL" ? `Assinatura InnoChat anual (${tenantName})` : `Assinatura InnoChat (${tenantName})`;
 }
 
 /** Chave curta para operações que precisam de aleatoriedade (ex.: idempotência local). */

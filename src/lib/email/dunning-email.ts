@@ -1,4 +1,4 @@
-import { buildEmailCopy, type DunningCopyData } from "@/core/billing/dunning-copy";
+import { amountWithCycle, buildEmailCopy, type DunningCopyData } from "@/core/billing/dunning-copy";
 import type { DunningStep } from "@/core/billing/dunning-policy";
 import { button, fallbackLink, heading, invoiceCard, note, paragraph, pixBlock, renderEmailHtml, renderEmailText, type EmailContext } from "./layout";
 import {
@@ -29,10 +29,10 @@ const REASON = (tenantName: string) => `Você recebeu este e-mail porque é o re
 export function renderDunningEmail(step: DunningStep, d: DunningCopyData, ctx: EmailContext, extra: DunningEmailExtra = {}): RenderedEmail | null {
   switch (step) {
     case "INVOICE_CREATED":
-      return invoiceGeneratedEmail({ tenantName: d.tenantName, amountReais: d.amount, dueDateBr: d.dueDate ?? "", pixCopyPaste: d.pixCopyPaste, billingUrl: d.billingUrl, ctx });
+      return invoiceGeneratedEmail({ tenantName: d.tenantName, amountReais: amountWithCycle(d), dueDateBr: d.dueDate ?? "", pixCopyPaste: d.pixCopyPaste, billingUrl: d.billingUrl, ctx });
     case "DUE_D1":
     case "DUE_D0":
-      return invoiceDueReminderEmail({ tenantName: d.tenantName, amountReais: d.amount, dueDateBr: d.dueDate ?? "", billingUrl: d.billingUrl, dueToday: step === "DUE_D0", pixCopyPaste: d.pixCopyPaste, ctx });
+      return invoiceDueReminderEmail({ tenantName: d.tenantName, amountReais: amountWithCycle(d), dueDateBr: d.dueDate ?? "", billingUrl: d.billingUrl, dueToday: step === "DUE_D0", pixCopyPaste: d.pixCopyPaste, ctx });
     case "SUSPENDED":
       return subscriptionSuspendedEmail({
         tenantName: d.tenantName,
@@ -47,7 +47,7 @@ export function renderDunningEmail(step: DunningStep, d: DunningCopyData, ctx: E
     case "PAYMENT_CONFIRMED":
       return paymentConfirmedEmail({
         tenantName: d.tenantName,
-        amountReais: d.amount,
+        amountReais: amountWithCycle(d),
         paidDateBr: d.paidDate ?? "",
         activeUntilBr: d.activeUntil ?? "",
         billingUrl: d.billingUrl,
@@ -75,7 +75,7 @@ export function renderDunningEmail(step: DunningStep, d: DunningCopyData, ctx: E
   const rows = [
     heading(copy.heading),
     ...copy.paragraphs.map((p) => paragraph(p)),
-    copy.card ? invoiceCard({ tenantName: d.tenantName, amount: d.amount, dateLabel: copy.card.dateLabel, dateValue: copy.card.dateValue }) : "",
+    copy.card ? invoiceCard({ tenantName: d.tenantName, amount: amountWithCycle(d), dateLabel: copy.card.dateLabel, dateValue: copy.card.dateValue }) : "",
     pix ? pixBlock(pix) : "",
     button(url, copy.cta),
     fallbackLink(url),
@@ -83,7 +83,7 @@ export function renderDunningEmail(step: DunningStep, d: DunningCopyData, ctx: E
   ].join("\n");
   const text = [
     ...copy.paragraphs,
-    ...(copy.card ? [`${copy.card.dateLabel}: ${copy.card.dateValue}\nValor: ${d.amount}`] : []),
+    ...(copy.card ? [`${copy.card.dateLabel}: ${copy.card.dateValue}\nValor: ${amountWithCycle(d)}`] : []),
     ...(pix ? [`Pix copia e cola:\n${pix}`] : []),
     `${copy.cta}:\n${url}`,
     ...(copy.note ? [copy.note] : []),

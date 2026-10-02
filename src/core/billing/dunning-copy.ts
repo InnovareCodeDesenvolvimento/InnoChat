@@ -17,6 +17,8 @@ export type DunningCopyData = {
   tenantName: string;
   /** "R$ 49,90". */
   amount: string;
+  /** Fatura de plano anual: o valor sai com "do plano anual" e os textos não dizem "por mês". */
+  annual?: boolean;
   /** Vencimento da fatura ("28/10/2026"). */
   dueDate: string | null;
   /** Tela Assinatura. */
@@ -68,6 +70,20 @@ function addressed(d: DunningCopyData, text: string): string {
   return d.ownerName ? `${d.ownerName}, ${text}` : text.charAt(0).toUpperCase() + text.slice(1);
 }
 
+/** Valor com o ciclo: "R$ 539,00 do plano anual" quando a fatura é anual. */
+export function amountWithCycle(d: Pick<DunningCopyData, "amount" | "annual">): string {
+  return d.annual ? `${d.amount} do plano anual` : d.amount;
+}
+
+function amt(d: DunningCopyData): string {
+  return amountWithCycle(d);
+}
+
+/** Só o teste mostra "por mês": no anual o sufixo some, pois o valor já diz "do plano anual". */
+function perPeriod(d: DunningCopyData): string {
+  return d.annual ? "" : " por mês";
+}
+
 function daysWord(n: number): string {
   return n === 1 ? "1 dia" : `${n} dias`;
 }
@@ -95,33 +111,33 @@ export function buildWhatsappMessages(step: DunningStep, d: DunningCopyData): st
 
   switch (step) {
     case "INVOICE_CREATED": {
-      const text = `${hello(d)} A fatura do InnoChat de ${d.tenantName} já está disponível: ${d.amount}, com vencimento em ${d.dueDate}. ${pixLine(d, "O código Pix vai na próxima mensagem. Se preferir, pague pelo painel:", "Pague pelo painel:")} ${link}`;
+      const text = `${hello(d)} A fatura do InnoChat de ${d.tenantName} já está disponível: ${amt(d)}, com vencimento em ${d.dueDate}. ${pixLine(d, "O código Pix vai na próxima mensagem. Se preferir, pague pelo painel:", "Pague pelo painel:")} ${link}`;
       return withPix(`${text}\n\n${OPT_OUT_FOOTER}`);
     }
     case "DUE_D1":
       return first(
-        withPix(`${hello(d)} Passando pra lembrar que a fatura do InnoChat vence amanhã (${d.dueDate}). Valor: ${d.amount}. ${pixLine(d, "O Pix vai na mensagem seguinte. ", "")}Pelo painel: ${link}\nSe você já pagou, pode ignorar.`),
+        withPix(`${hello(d)} Passando pra lembrar que a fatura do InnoChat vence amanhã (${d.dueDate}). Valor: ${amt(d)}. ${pixLine(d, "O Pix vai na mensagem seguinte. ", "")}Pelo painel: ${link}\nSe você já pagou, pode ignorar.`),
       );
     case "DUE_D0":
       return first(
-        withPix(`Bom dia${d.ownerName ? `, ${name(d)}` : ""}! A fatura do InnoChat de ${d.tenantName} vence hoje: ${d.amount}. Pague até as 23h59 pro bot não parar: ${link}\nAssim que o Pix cair, a confirmação chega por aqui.`),
+        withPix(`Bom dia${d.ownerName ? `, ${name(d)}` : ""}! A fatura do InnoChat de ${d.tenantName} vence hoje: ${amt(d)}. Pague até as 23h59 pro bot não parar: ${link}\nAssim que o Pix cair, a confirmação chega por aqui.`),
       );
     case "GRACE_D1":
       return first(
-        withPix(`${addressed(d, "a fatura do InnoChat venceu ontem.")} O bot de ${d.tenantName} continua atendendo até o fim do dia ${d.lastServiceDate}. Pra não parar, pague o Pix de ${d.amount}: ${link}`),
+        withPix(`${addressed(d, "a fatura do InnoChat venceu ontem.")} O bot de ${d.tenantName} continua atendendo até o fim do dia ${d.lastServiceDate}. Pra não parar, pague o Pix de ${amt(d)}: ${link}`),
       );
     case "GRACE_LAST":
       return first(
-        withPix(`${addressed(d, "hoje é o último dia.")} Se a fatura de ${d.amount} não for paga até a meia-noite, o bot de ${d.tenantName} para de responder seus clientes amanhã. Pague aqui: ${link}`),
+        withPix(`${addressed(d, "hoje é o último dia.")} Se a fatura de ${amt(d)} não for paga até a meia-noite, o bot de ${d.tenantName} para de responder seus clientes amanhã. Pague aqui: ${link}`),
       );
     case "SUSPENDED": {
       if (d.trialNotConverted) {
         const clients = d.trial && d.trial.clients > 0 ? ` ${describeStrandedClients(d.trial.clients)}.` : "";
-        return first(withPix(`${addressed(d, "seu teste do InnoChat acabou e o bot de")} ${d.tenantName} parou.${clients} Assine por ${d.amount} e ele volta na hora: ${link}`));
+        return first(withPix(`${addressed(d, "seu teste do InnoChat acabou e o bot de")} ${d.tenantName} parou.${clients} Assine por ${amt(d)} e ele volta na hora: ${link}`));
       }
       return first(
         withPix(
-          `${addressed(d, "o atendimento automático de")} ${d.tenantName} foi pausado porque a fatura de ${d.amount} não foi paga. Seus clientes continuam conseguindo mandar mensagem, mas o bot não responde. Pague o Pix e ele volta em poucos minutos: ${link}`,
+          `${addressed(d, "o atendimento automático de")} ${d.tenantName} foi pausado porque a fatura de ${amt(d)} não foi paga. Seus clientes continuam conseguindo mandar mensagem, mas o bot não responde. Pague o Pix e ele volta em poucos minutos: ${link}`,
         ),
       );
     }
@@ -129,7 +145,7 @@ export function buildWhatsappMessages(step: DunningStep, d: DunningCopyData): st
     case "SUSP_30": {
       const sales = d.salesWhatsapp ? ` Se quiser conversar sobre o plano, chama a gente no ${d.salesWhatsapp}.` : "";
       return first([
-        `${addressed(d, "o bot de")} ${d.tenantName} está parado há ${daysWord(d.daysSuspended ?? (step === "SUSP_7" ? 7 : 30))}. Está tudo guardado: agenda, clientes e serviços. Pra voltar, é só pagar ${d.amount}: ${link}${sales}`,
+        `${addressed(d, "o bot de")} ${d.tenantName} está parado há ${daysWord(d.daysSuspended ?? (step === "SUSP_7" ? 7 : 30))}. Está tudo guardado: agenda, clientes e serviços. Pra voltar, é só pagar ${amt(d)}: ${link}${sales}`,
       ]);
     }
     case "CANCEL_WARN_7":
@@ -137,7 +153,7 @@ export function buildWhatsappMessages(step: DunningStep, d: DunningCopyData): st
       const left = d.daysToCancel ?? (step === "CANCEL_WARN_7" ? 7 : 1);
       const lead = left === 1 ? "falta 1 dia" : `faltam ${left} dias`;
       return first([
-        `${addressed(d, `${lead} pra conta de`)} ${d.tenantName} ser encerrada (${d.cancelDate}). Depois disso os números são desconectados e, ${d.retentionDays} dias depois, os dados dos seus clientes são anonimizados. Pra manter, pague ${d.amount}: ${link}\nPra guardar a lista de clientes, exporte o CSV na tela Clientes.`,
+        `${addressed(d, `${lead} pra conta de`)} ${d.tenantName} ser encerrada (${d.cancelDate}). Depois disso os números são desconectados e, ${d.retentionDays} dias depois, os dados dos seus clientes são anonimizados. Pra manter, pague ${amt(d)}: ${link}\nPra guardar a lista de clientes, exporte o CSV na tela Clientes.`,
       ]);
     }
     case "AUTO_CANCELED":
@@ -147,8 +163,8 @@ export function buildWhatsappMessages(step: DunningStep, d: DunningCopyData): st
     case "PAYMENT_CONFIRMED":
       return first([
         d.firstPayment
-          ? `Bem-vindo ao InnoChat${d.ownerName ? `, ${name(d)}` : ""}! Recebemos ${d.amount} de ${d.tenantName} em ${d.paidDate}. Sua assinatura vale até ${d.activeUntil}. Obrigado.`
-          : `Pagamento recebido! ${d.amount} de ${d.tenantName}, confirmado em ${d.paidDate}. Sua assinatura está renovada até ${d.activeUntil}. Obrigado.`,
+          ? `Bem-vindo ao InnoChat${d.ownerName ? `, ${name(d)}` : ""}! Recebemos ${amt(d)} de ${d.tenantName} em ${d.paidDate}. Sua assinatura vale até ${d.activeUntil}. Obrigado.`
+          : `Pagamento recebido! ${amt(d)} de ${d.tenantName}, confirmado em ${d.paidDate}. Sua assinatura está renovada até ${d.activeUntil}. Obrigado.`,
       ]);
     case "TRIAL_DAY1": {
       const done = results(d);
@@ -158,10 +174,10 @@ export function buildWhatsappMessages(step: DunningStep, d: DunningCopyData): st
     case "TRIAL_T1": {
       const done = results(d);
       const lead = done ? `Até agora o Inno ${done}. ` : "";
-      return first(withPix(`${hello(d)} Seu teste do InnoChat termina amanhã às ${d.trialEndsTime}. ${lead}Pro bot de ${d.tenantName} continuar atendendo, é só assinar com Pix (${d.amount}): ${link}`));
+      return first(withPix(`${hello(d)} Seu teste do InnoChat termina amanhã às ${d.trialEndsTime}. ${lead}Pro bot de ${d.tenantName} continuar atendendo, é só assinar com Pix (${amt(d)}): ${link}`));
     }
     case "TRIAL_T0":
-      return first(withPix(`${addressed(d, "hoje é o último dia do teste.")} Assine pro bot de ${d.tenantName} não parar amanhã: ${d.amount} no Pix, ${link}`));
+      return first(withPix(`${addressed(d, "hoje é o último dia do teste.")} Assine pro bot de ${d.tenantName} não parar amanhã: ${amt(d)} no Pix, ${link}`));
     case "TRIAL_CANCEL_WARN": {
       const left = d.daysToCancel ?? 2;
       return first([`${addressed(d, "a conta de teste de")} ${d.tenantName} será encerrada em ${daysWord(left)}. Se quiser continuar, assine pelo painel: ${link}`]);
@@ -203,7 +219,7 @@ export function buildEmailCopy(step: DunningStep, d: DunningCopyData): EmailCopy
         preheader: `O bot continua atendendo até o fim do dia ${d.lastServiceDate}.`,
         heading: "Sua fatura venceu",
         paragraphs: [
-          `A fatura de ${d.amount} do InnoChat venceu em ${d.dueDate}. Ainda dá tempo: o bot continua atendendo até o fim do dia ${d.lastServiceDate}. Depois disso ele para de responder até o pagamento.`,
+          `A fatura de ${amt(d)} do InnoChat venceu em ${d.dueDate}. Ainda dá tempo: o bot continua atendendo até o fim do dia ${d.lastServiceDate}. Depois disso ele para de responder até o pagamento.`,
         ],
         card: { dateLabel: "Venceu em", dateValue: d.dueDate ?? "" },
         showPix: true,
@@ -216,7 +232,7 @@ export function buildEmailCopy(step: DunningStep, d: DunningCopyData): EmailCopy
         subject: `A fatura de ${t} segue em aberto`,
         preheader: `O bot atende até o fim do dia ${d.lastServiceDate}.`,
         heading: "Sua fatura segue em aberto",
-        paragraphs: [`O bot continua atendendo até o fim do dia ${d.lastServiceDate}. Pague ${d.amount} pelo painel para ele não parar.`],
+        paragraphs: [`O bot continua atendendo até o fim do dia ${d.lastServiceDate}. Pague ${amt(d)} pelo painel para ele não parar.`],
         card: { dateLabel: "Venceu em", dateValue: d.dueDate ?? "" },
         showPix: true,
         cta: "Pagar com Pix",
@@ -228,7 +244,7 @@ export function buildEmailCopy(step: DunningStep, d: DunningCopyData): EmailCopy
         subject: `Último dia para pagar a fatura (${t})`,
         preheader: "Depois da meia-noite o bot para de responder.",
         heading: "Hoje é o último dia",
-        paragraphs: [`Se a fatura de ${d.amount} não for paga até a meia-noite, o bot de "${t}" para de responder seus clientes amanhã. Seus dados continuam guardados.`],
+        paragraphs: [`Se a fatura de ${amt(d)} não for paga até a meia-noite, o bot de "${t}" para de responder seus clientes amanhã. Seus dados continuam guardados.`],
         card: { dateLabel: "Venceu em", dateValue: d.dueDate ?? "" },
         showPix: true,
         cta: "Pagar com Pix",
@@ -247,7 +263,7 @@ export function buildEmailCopy(step: DunningStep, d: DunningCopyData): EmailCopy
         preheader: "Sua agenda e seus clientes continuam guardados.",
         heading: "O bot está parado",
         paragraphs: [
-          `Sua agenda e seus clientes continuam guardados. Para o bot voltar a responder, pague ${d.amount} pelo painel. A confirmação é automática.`,
+          `Sua agenda e seus clientes continuam guardados. Para o bot voltar a responder, pague ${amt(d)} pelo painel. A confirmação é automática.`,
           ...(cancel ? [cancel] : []),
         ],
         card: null,
@@ -262,10 +278,10 @@ export function buildEmailCopy(step: DunningStep, d: DunningCopyData): EmailCopy
       const left = d.daysToCancel ?? (step === "CANCEL_WARN_7" ? 7 : 1);
       return {
         subject: left === 1 ? `Sua conta no InnoChat será encerrada amanhã (${t})` : `Sua conta no InnoChat será encerrada em ${left} dias (${t})`,
-        preheader: `Pague ${d.amount} para manter a conta.`,
+        preheader: `Pague ${amt(d)} para manter a conta.`,
         heading: "Sua conta vai ser encerrada",
         paragraphs: [
-          `A conta de "${t}" será encerrada em ${d.cancelDate} se a fatura de ${d.amount} continuar em aberto.`,
+          `A conta de "${t}" será encerrada em ${d.cancelDate} se a fatura de ${amt(d)} continuar em aberto.`,
           `Depois do encerramento, os números de WhatsApp são desconectados e, ${d.retentionDays} dias depois, os dados dos seus clientes são anonimizados.`,
           "Quer guardar a lista de clientes? Exporte o CSV pela tela Clientes antes dessa data.",
         ],
@@ -315,7 +331,7 @@ export function buildEmailCopy(step: DunningStep, d: DunningCopyData): EmailCopy
         heading: "Seu teste termina amanhã",
         paragraphs: [
           ...(done ? [done] : []),
-          `Seu teste termina amanhã, às ${d.trialEndsTime}. Para o bot de "${t}" seguir atendendo, assine com Pix: ${d.amount} por mês.`,
+          `Seu teste termina amanhã, às ${d.trialEndsTime}. Para o bot de "${t}" seguir atendendo, assine com Pix: ${amt(d)}${perPeriod(d)}.`,
         ],
         card: { dateLabel: "Teste termina", dateValue: `${d.trialEndsDate ?? ""} às ${d.trialEndsTime ?? ""}`.trim() },
         showPix: true,
@@ -330,7 +346,7 @@ export function buildEmailCopy(step: DunningStep, d: DunningCopyData): EmailCopy
         subject: `Seu teste termina hoje às ${d.trialEndsTime} (${t})`,
         preheader: "Assine para o bot não parar amanhã.",
         heading: "Hoje é o último dia do teste",
-        paragraphs: [...(done ? [done] : []), `Assine para o bot de "${t}" não parar amanhã. O valor é ${d.amount} por mês, no Pix.`],
+        paragraphs: [...(done ? [done] : []), `Assine para o bot de "${t}" não parar amanhã. O valor é ${amt(d)}${perPeriod(d)}, no Pix.`],
         card: { dateLabel: "Teste termina", dateValue: `hoje, ${d.trialEndsTime ?? ""}`.trim() },
         showPix: true,
         cta: "Assinar com Pix",

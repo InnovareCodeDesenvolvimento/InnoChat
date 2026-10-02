@@ -1,19 +1,22 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import { Building2, IdCard, Link2, Lock, Mail, MailCheck, Phone, RefreshCw, Tag, User, UserPlus } from "lucide-react";
 import { Field } from "@/components/ui/field";
 import { AuthInput } from "@/components/public/auth-input";
 import { AUTH_SUBMIT_CLASS, AuthPanel, AuthTrust } from "@/components/public/auth-panel";
 import { FormSection, TermsCheckbox } from "@/components/public/signup-shared";
+import { SignupBillingSection, type SignupPricing } from "@/components/public/signup-billing";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
 import { EmptyState } from "@/components/ui/empty-state";
 import { slugify, validateSlug, type SlugValidationError } from "@/core/signup/slug";
+import type { BillingCycle } from "@/core/billing/pricing";
 import { normalizeDocumentDigits, validateCpfCnpj } from "@/core/billing/document";
 import { maskCpfCnpj } from "@/components/lib/document-mask";
 import { normalizeBrPhoneToE164 } from "@/core/contact/br-phone";
+import { isPixelActive, newEventId, trackPixel } from "@/components/public/meta-events";
 import { signUpAction } from "@/modules/signup/actions";
 import { TERMS_VERSION } from "@/lib/legal";
 
@@ -52,13 +55,25 @@ const EMPTY_FORM: FormState = {
   acceptedTerms: false,
 };
 
-export function CadastroForm({ top }: { top?: React.ReactNode }) {
+export function CadastroForm({ top, pricing = null }: { top?: React.ReactNode; pricing?: SignupPricing | null }) {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  // Cobrança depois do teste (mensal/anual) e cupom opcional: o servidor revalida os dois.
+  const [billingCycle, setBillingCycle] = useState<BillingCycle>("MONTHLY");
+  const [couponCode, setCouponCode] = useState("");
+  const [couponError, setCouponError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [termsOutdated, setTermsOutdated] = useState(false);
   const [done, setDone] = useState<{ email: string } | null>(null);
   const [isPending, startTransition] = useTransition();
+  const leadSentRef = useRef(false);
+
+  // Lead: a primeira vez que a pessoa mexe no cadastro (campo ou botão do Google). Uma vez só por visita.
+  function handleStart() {
+    if (leadSentRef.current) return;
+    leadSentRef.current = true;
+    trackPixel("Lead");
+  }
 
   const slugValidation = useMemo(() => (form.slug ? validateSlug(form.slug) : null), [form.slug]);
 
@@ -94,8 +109,12 @@ export function CadastroForm({ top }: { top?: React.ReactNode }) {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setFormError(null);
+    setCouponError(null);
     setTermsOutdated(false);
     if (!validateClientSide()) return;
+
+    // Só existe id de evento se o visitante aceitou o Pixel: sem ele o servidor não manda nada à Meta.
+    const metaEventId = isPixelActive() ? newEventId() : undefined;
 
     startTransition(async () => {
       const result = await signUpAction({
@@ -111,6 +130,9 @@ export function CadastroForm({ top }: { top?: React.ReactNode }) {
         password: form.password,
         termsVersion: TERMS_VERSION,
         acceptedTerms: form.acceptedTerms,
+        billingCycle: pricing?.annualPriceCents ? billingCycle : "MONTHLY",
+        couponCode: couponCode.trim() || undefined,
+        metaEventId,
       });
 
       if (!result.ok) {
@@ -134,6 +156,10 @@ export function CadastroForm({ top }: { top?: React.ReactNode }) {
           setFieldErrors((prev) => ({ ...prev, phone: "Confira o WhatsApp: DDD e número, como (84) 99999-8888." }));
           return;
         }
+        if (result.error.code.startsWith("COUPON_") || result.error.code === "INVALID_CYCLE") {
+          setCouponError(result.error.message);
+          return;
+        }
         if (result.error.code === "TERMS_VERSION_OUTDATED") {
           setTermsOutdated(true);
           return;
@@ -142,6 +168,7 @@ export function CadastroForm({ top }: { top?: React.ReactNode }) {
         return;
       }
 
+      if (metaEventId) trackPixel("CompleteRegistration", metaEventId);
       setDone({ email: form.email.trim() });
     });
   }
@@ -168,6 +195,7 @@ export function CadastroForm({ top }: { top?: React.ReactNode }) {
       title="Crie sua conta em 2 minutos"
       description="3 dias de teste grátis. Sem cartão de crédito para começar."
     >
+      <div onFocusCapture={handleStart} onClickCapture={handleStart}>
         {top ? <div className="mb-6 flex flex-col gap-4">{top}</div> : null}
         <form onSubmit={handleSubmit} className="flex flex-col gap-6" noValidate>
           {termsOutdated ? (
@@ -344,6 +372,20 @@ export function CadastroForm({ top }: { top?: React.ReactNode }) {
             </Field>
           </FormSection>
 
+          <FormSection step={4} title="Depois do teste" id="sec-cobranca">
+            <SignupBillingSection
+              pricing={pricing}
+              cycle={billingCycle}
+              onCycleChange={setBillingCycle}
+              couponCode={couponCode}
+              onCouponCodeChange={(code) => {
+                setCouponCode(code);
+                setCouponError(null);
+              }}
+              couponError={couponError}
+            />
+          </FormSection>
+
           <TermsCheckbox
             checked={form.acceptedTerms}
             onChange={(checked) => setForm((f) => ({ ...f, acceptedTerms: checked }))}
@@ -357,6 +399,7 @@ export function CadastroForm({ top }: { top?: React.ReactNode }) {
             <AuthTrust trial />
           </div>
         </form>
+      </div>
     </AuthPanel>
   );
 }

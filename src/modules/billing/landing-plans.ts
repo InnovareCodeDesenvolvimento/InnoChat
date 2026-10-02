@@ -1,5 +1,6 @@
 import { listActivePlans } from "./service";
 import { formatCentsBRL } from "./format";
+import { annualSavingsLabel, planOffersAnnual } from "@/core/billing";
 
 /**
  * Planos para a vitrine pública (landing). Vêm SEMPRE do banco (`Plan`, editável em Admin →
@@ -15,6 +16,9 @@ export type LandingPlan = {
   name: string;
   priceCents: number;
   priceLabel: string;
+  /** Plano anual: valor do ano, o texto da economia ("2 meses grátis" ou "economize R$ X") ou `null` sem anual. */
+  annualLabel: string | null;
+  annualSavingsLabel: string | null;
   professionalsLabel: string;
   whatsappLabel: string;
 };
@@ -42,6 +46,8 @@ export async function getLandingPlans(now: number = Date.now()): Promise<Landing
       name: plan.name,
       priceCents: plan.priceCents,
       priceLabel: formatCentsBRL(plan.priceCents),
+      annualLabel: planOffersAnnual(plan) ? formatCentsBRL(plan.annualPriceCents as number) : null,
+      annualSavingsLabel: annualSavingsLabel({ priceCents: plan.priceCents, annualPriceCents: plan.annualPriceCents ?? null }),
       professionalsLabel: professionalsLabel(plan.maxProfessionals),
       whatsappLabel: whatsappLabel(plan.maxWhatsappNumbers),
     }));

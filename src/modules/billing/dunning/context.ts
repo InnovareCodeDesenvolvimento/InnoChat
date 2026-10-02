@@ -74,7 +74,7 @@ export async function buildNoticeCopyContext(args: {
 
   const invoiceId = args.invoiceId ?? subject.input.openInvoice?.id ?? null;
   const invoice = invoiceId
-    ? await prisma.invoice.findUnique({ where: { id: invoiceId }, select: { id: true, status: true, amountCents: true, pixCopyPaste: true, pixExpiresAt: true, paidAt: true, dueAt: true } })
+    ? await prisma.invoice.findUnique({ where: { id: invoiceId }, select: { id: true, status: true, amountCents: true, pixCopyPaste: true, pixExpiresAt: true, paidAt: true, dueAt: true, cycle: true } })
     : null;
   const amountCents = invoice?.amountCents ?? subject.planPriceCents;
 
@@ -96,6 +96,8 @@ export async function buildNoticeCopyContext(args: {
     ownerName: args.ownerFirstName,
     tenantName: subject.tenantName,
     amount: formatCentsBRL(amountCents),
+    // Fatura anual: os textos dizem "plano anual" junto do valor e nunca "por mês".
+    annual: invoice ? invoice.cycle === "ANNUAL" : subject.billingCycle === "ANNUAL",
     dueDate: formatDateBR(dueInstant, tz),
     billingUrl: `${base}/${subject.tenantSlug}/assinatura`,
     panelUrl: `${base}/${subject.tenantSlug}/inicio`,

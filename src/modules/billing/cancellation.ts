@@ -5,7 +5,8 @@ import { DomainError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
 import { sendMail, loadEmailContext, subscriptionCancelEmail } from "@/lib/email";
 import { getPublicBaseUrl } from "@/lib/public-url";
-import { accessEndsAt, CANCELED_RETENTION_DAYS, effectiveStatus } from "@/core/billing";
+import { accessEndsAt, CANCELED_RETENTION_DAYS, cycleMonths, effectiveStatus } from "@/core/billing";
+import { loadInvoiceCharge } from "./coupons";
 import { disconnectAllWhatsappInstances } from "@/modules/whatsapp/service";
 import type { EvolutionClient } from "@/modules/whatsapp/evolution-client";
 import { formatDateBR } from "./format";
@@ -343,12 +344,15 @@ export async function startReactivation(
   // periodStart = início do dia (UTC): dois cliques/abas no mesmo dia colidem no
   // `@@unique(subscriptionId, periodStart)` e caem na mesma fatura.
   const periodStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-  const description = generateInvoiceDescription(subscription.tenant.name);
+  // Quem voltou segue no ciclo e no cupom que tinha (anual vale 12 meses a partir do pagamento).
+  const charge = await loadInvoiceCharge(subscription, subscription.plan);
+  const description = generateInvoiceDescription(subscription.tenant.name, charge.cycle);
   const params = {
     subscriptionId: subscription.id,
-    amountCents: subscription.plan.priceCents,
+    amountCents: charge.netCents,
+    charge,
     periodStart,
-    periodEnd: addMonths(periodStart, 1),
+    periodEnd: addMonths(periodStart, cycleMonths(charge.cycle)),
     dueAt: addDays(now, 3),
     payerEmail,
     description,

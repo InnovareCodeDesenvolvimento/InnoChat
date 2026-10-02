@@ -11,6 +11,8 @@ import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Alert } from "@/components/ui/alert";
 import { useToast } from "@/components/ui/toast";
+import { HelpButton } from "@/components/help/help-button";
+import { annualFreeMonths, annualSavingsCents, MIN_CHARGE_CENTS } from "@/core/billing";
 import { updatePlanAction } from "@/modules/billing/admin-actions";
 
 export type PlanRow = {
@@ -18,6 +20,8 @@ export type PlanRow = {
   code: string;
   name: string;
   priceCents: number;
+  /** Preço do ano (12 meses) em centavos; `null` = o plano não tem opção anual. */
+  annualPriceCents: number | null;
   maxWhatsappNumbers: number;
   maxProfessionals: number | null;
   active: boolean;
@@ -31,6 +35,7 @@ function formatBRL(cents: number): string {
 type FormState = {
   name: string;
   priceReais: string;
+  annualReais: string;
   maxWhatsappNumbers: string;
   maxProfessionalsUnlimited: boolean;
   maxProfessionals: string;
@@ -42,12 +47,37 @@ function toForm(plan: PlanRow): FormState {
   return {
     name: plan.name,
     priceReais: (plan.priceCents / 100).toFixed(2),
+    annualReais: plan.annualPriceCents !== null ? (plan.annualPriceCents / 100).toFixed(2) : "",
     maxWhatsappNumbers: String(plan.maxWhatsappNumbers),
     maxProfessionalsUnlimited: plan.maxProfessionals === null,
     maxProfessionals: plan.maxProfessionals !== null ? String(plan.maxProfessionals) : "",
     active: plan.active,
     sortOrder: String(plan.sortOrder),
   };
+}
+
+/** "2 meses grátis" quando a economia fecha meses inteiros; senão "economia de R$ X". */
+function savingsText(plan: { priceCents: number; annualPriceCents: number | null }): string {
+  const savings = annualSavingsCents(plan);
+  const months = annualFreeMonths(plan);
+  if (months >= 1 && months * plan.priceCents === savings) return months === 1 ? "1 mês grátis" : `${months} meses grátis`;
+  return `economia de ${formatBRL(savings)}`;
+}
+
+/** Dica ao vivo sob o campo do preço anual: quanto custam 12 mensalidades e quanto o anual economiza. */
+function annualHint(form: { priceReais: string; annualReais: string }): string {
+  const annualText = form.annualReais.trim();
+  if (annualText === "") return "Em branco: o plano fica só com cobrança mensal.";
+  const monthly = Math.round(Number(form.priceReais.replace(",", ".")) * 100);
+  const annual = Math.round(Number(annualText.replace(",", ".")) * 100);
+  if (Number.isNaN(annual) || annual <= 0) return "Digite o valor do ano, por exemplo 590,00.";
+  if (Number.isNaN(monthly) || monthly <= 0) return "Defina o preço mensal para ver a economia.";
+  if (annual > monthly * 12) return `Maior que 12 mensalidades (${formatBRL(monthly * 12)}). Confira o valor.`;
+  const plan = { priceCents: monthly, annualPriceCents: annual };
+  if (annualSavingsCents(plan) === 0) return "Igual a 12 mensalidades: sem desconto para quem escolher o anual.";
+  const months = annualFreeMonths(plan);
+  const whole = months >= 1 && months * monthly === annualSavingsCents(plan);
+  return `12 mensalidades custam ${formatBRL(monthly * 12)}. Quem escolher o anual economiza ${formatBRL(annualSavingsCents(plan))}${whole ? ` (${months === 1 ? "1 mês grátis" : `${months} meses grátis`})` : ""}.`;
 }
 
 export function AdminPlanosClient({ initialPlans }: { initialPlans: PlanRow[] }) {
@@ -80,10 +110,23 @@ export function AdminPlanosClient({ initialPlans }: { initialPlans: PlanRow[] })
       return;
     }
 
+    // Em branco = sem opção anual. Preenchido precisa ser um valor válido.
+    const annualText = form.annualReais.trim();
+    const annualPriceCents = annualText === "" ? null : Math.round(Number(annualText.replace(",", ".")) * 100);
+    if (annualPriceCents !== null && (Number.isNaN(annualPriceCents) || annualPriceCents < MIN_CHARGE_CENTS)) {
+      setFormError("O preço anual precisa ser pelo menos R$ 1,00, ou deixe em branco.");
+      return;
+    }
+    if (annualPriceCents !== null && priceCents > 0 && annualPriceCents > priceCents * 12) {
+      setFormError("O preço anual não pode ser maior que 12 mensalidades.");
+      return;
+    }
+
     startTransition(async () => {
       const result = await updatePlanAction(editing.id, {
         name: form.name.trim(),
         priceCents,
+        annualPriceCents,
         maxWhatsappNumbers: Number(form.maxWhatsappNumbers) || 1,
         maxProfessionals: form.maxProfessionalsUnlimited ? null : Number(form.maxProfessionals) || 1,
         active: form.active,
@@ -138,6 +181,16 @@ export function AdminPlanosClient({ initialPlans }: { initialPlans: PlanRow[] })
               )}
               {plan.priceCents > 0 ? <span className="text-sm font-medium text-text-secondary">/mês</span> : null}
             </p>
+            {plan.annualPriceCents !== null ? (
+              <p className="mt-1 text-sm text-text-secondary" data-testid="plano-anual">
+                ou <span className="font-semibold text-text">{formatBRL(plan.annualPriceCents)}</span> por ano
+                {annualSavingsCents(plan) > 0 ? (
+                  <span className="font-semibold text-success"> ({savingsText(plan)})</span>
+                ) : null}
+              </p>
+            ) : (
+              <p className="mt-1 text-sm text-text-secondary">Sem opção anual</p>
+            )}
 
             <ul className="mt-4 flex flex-col gap-2 text-sm text-text-secondary">
               <li className="flex items-center gap-2">
@@ -164,7 +217,7 @@ export function AdminPlanosClient({ initialPlans }: { initialPlans: PlanRow[] })
       </div>
 
       <Dialog open={!!editing} onOpenChange={(open) => !open && closeEdit()}>
-        <DialogContent>
+        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto">
           <DialogHeader icon={navIconFor("admin/planos")}>
             <DialogTitle>Editar plano</DialogTitle>
             <DialogDescription>Alterações valem para novas cobranças a partir de agora.</DialogDescription>
@@ -187,6 +240,22 @@ export function AdminPlanosClient({ initialPlans }: { initialPlans: PlanRow[] })
                     value={form.priceReais}
                     onChange={(e) => setForm((f) => f && { ...f, priceReais: e.target.value })}
                     required
+                  />
+                )}
+              </Field>
+
+              <Field
+                label="Preço anual (R$)"
+                labelAction={<HelpButton helpKey="admin.planoAnual" />}
+                hint={annualHint(form)}
+              >
+                {(fieldProps) => (
+                  <Input
+                    {...fieldProps}
+                    inputMode="decimal"
+                    placeholder="Em branco = sem opção anual"
+                    value={form.annualReais}
+                    onChange={(e) => setForm((f) => f && { ...f, annualReais: e.target.value })}
                   />
                 )}
               </Field>

@@ -5,7 +5,7 @@ vi.mock("./service", () => ({ listActivePlans: () => listActivePlans() }));
 
 import { getLandingPlans, resetLandingPlansCache } from "./landing-plans";
 
-const row = (over: Record<string, unknown>) => ({ id: "1", name: "A", priceCents: 5990, maxProfessionals: 3, maxWhatsappNumbers: 1, ...over });
+const row = (over: Record<string, unknown>) => ({ id: "1", name: "A", priceCents: 5990, annualPriceCents: null, maxProfessionals: 3, maxWhatsappNumbers: 1, ...over });
 
 describe("getLandingPlans", () => {
   beforeEach(() => {

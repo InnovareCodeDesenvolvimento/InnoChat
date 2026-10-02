@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildEmailCopy, buildWhatsappMessages, type DunningCopyData } from "../dunning-copy";
+import { amountWithCycle, buildEmailCopy, buildWhatsappMessages, type DunningCopyData } from "../dunning-copy";
 import { DUNNING_STEPS, STEP_POLICY } from "../dunning-policy";
 import { summarizeTrialUsage } from "../trial-usage";
 
@@ -142,5 +142,25 @@ describe("sequência do teste: dados reais e variação 'falta pouco'", () => {
   it("teste suspenso: fala dos clientes que marcaram pelo WhatsApp só quando existem", () => {
     expect(buildWhatsappMessages("SUSPENDED", data({ trialNotConverted: true }))[0]).toContain("3 clientes que marcaram pelo WhatsApp vão ficar sem resposta");
     expect(buildWhatsappMessages("SUSPENDED", data({ trialNotConverted: true, trial: almost }))[0]).not.toContain("clientes que marcaram");
+  });
+});
+
+describe("régua com plano anual (Melhoria 6)", () => {
+  it("amountWithCycle acrescenta o plano anual e some quando é mensal", () => {
+    expect(amountWithCycle({ amount: "R$ 590,00", annual: true })).toBe("R$ 590,00 do plano anual");
+    expect(amountWithCycle({ amount: "R$ 59,00", annual: false })).toBe("R$ 59,00");
+    expect(amountWithCycle({ amount: "R$ 59,00" })).toBe("R$ 59,00");
+  });
+
+  it.each(DUNNING_STEPS)("%s: todo valor aparece com 'plano anual' e nunca como 'por mês'", (step) => {
+    const d = data({ amount: "R$ 590,00", annual: true });
+    const whats = buildWhatsappMessages(step, d).join(" ");
+    const email = JSON.stringify(buildEmailCopy(step, d) ?? "");
+    for (const text of [whats, email]) {
+      const withAmount = text.split("R$ 590,00").length - 1;
+      const withLabel = text.split("R$ 590,00 do plano anual").length - 1;
+      expect(withLabel, text).toBe(withAmount);
+      expect(text).not.toContain("por mês");
+    }
   });
 });

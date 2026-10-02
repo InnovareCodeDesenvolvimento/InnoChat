@@ -142,7 +142,7 @@ export const TERMOS_SECTIONS: LegalSection[] = [
       {
         subtitle: "Assinatura e forma de pagamento",
         blocks: [
-          "Os Planos são **mensais e pré-pagos**: cada mês é pago antes de ser usado. O pagamento é feito por **Pix**, processado pelo Mercado Pago. Para gerar o Pix, o Mercado Pago pode exigir o CPF ou CNPJ do pagador, que a Empresa informa no Painel. Os preços vigentes aparecem no Painel, na tela de Assinatura.",
+          "Os Planos são **pré-pagos**, mensais ou anuais: cada período é pago antes de ser usado. O pagamento é feito por **Pix**, processado pelo Mercado Pago. Para gerar o Pix, o Mercado Pago pode exigir o CPF ou CNPJ do pagador, que a Empresa informa no Painel. Os preços vigentes aparecem no Painel, na tela de Assinatura.",
           "A fatura de cada mês é gerada alguns dias antes do vencimento e avisada por e-mail e no Painel. O código Pix tem validade limitada e pode ser gerado de novo pelo Painel se expirar. Confirmado o pagamento, a assinatura é renovada por mais um mês a partir do vencimento anterior (ou a partir da data do pagamento, se a conta estava suspensa).",
         ],
       },
@@ -156,6 +156,14 @@ export const TERMOS_SECTIONS: LegalSection[] = [
               "**Cancelamento automático:** após 60 dias de suspensão sem pagamento, a assinatura é cancelada e os números de WhatsApp são desconectados. Veja na seção 9 o que acontece com os dados.",
             ],
           },
+        ],
+      },
+      {
+        subtitle: "Plano anual e cupons",
+        blocks: [
+          "O Plano pode ser contratado em ciclo **mensal** ou **anual**. No ciclo anual, a Empresa paga de uma só vez, por Pix, o valor anual do Plano, que cobre 12 meses de uso e custa menos que 12 mensalidades. A Empresa pode trocar o ciclo pelo Painel; a troca vale a partir da próxima fatura, sem cálculo proporcional, e o período já pago segue até o fim.",
+          "Cupons de desconto têm regras próprias (porcentagem ou valor, validade, limite de usos e número de cobranças descontadas), que aparecem ao aplicar o cupom. Cada cupom pode ser usado uma vez por Empresa e não é acumulável com outro. O desconto nunca deixa a fatura abaixo de R$ 1,00 e não vale retroativamente para faturas já emitidas.",
+          "No ciclo anual, os valores pagos não são reembolsados de forma proporcional se a Empresa cancelar antes do fim dos 12 meses; o cancelamento vale ao fim do período já pago, como descrito na seção de cancelamento, e o acesso continua até lá. Isso não afasta os direitos garantidos por lei.",
         ],
       },
       {
@@ -173,7 +181,7 @@ export const TERMOS_SECTIONS: LegalSection[] = [
       {
         subtitle: "Reembolso e documentos fiscais",
         blocks: [
-          "Por se tratar de serviço pré-pago e mensal, os valores pagos não são reembolsados, nem de forma proporcional, ressalvados os direitos garantidos por lei.",
+          "Por se tratar de serviço pré-pago, mensal ou anual, os valores pagos não são reembolsados, nem de forma proporcional, ressalvados os direitos garantidos por lei.",
           "O InnoChat não emite documentos fiscais automaticamente. Dúvidas sobre documentos fiscais podem ser enviadas ao [E-MAIL DE CONTATO].",
         ],
       },

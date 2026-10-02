@@ -396,6 +396,24 @@ const HELP_ENTRIES = {
     tip: "Um chip só para os avisos isola o risco: se for bloqueado, o WhatsApp do seu atendimento não é afetado. Número novo envia menos por hora nos 3 primeiros dias.",
     warning: "Não use o WhatsApp comercial do site nem o número do bot de uma empresa: o sistema recusa.",
   },
+  "admin.pixelMeta": {
+    title: "Pixel do Meta",
+    purpose: "Conta quantas pessoas chegam pelos seus anúncios do Facebook e do Instagram, começam o cadastro, criam a conta e pagam a primeira mensalidade. Com isso o Meta aprende quem comprar e o anúncio fica mais barato.",
+    steps: [
+      "No Gerenciador de Eventos do Meta, abra a sua fonte de dados (o Pixel). O ID são só números e aparece logo abaixo do nome do Pixel.",
+      "Cole o ID no campo \"ID do Pixel\".",
+      "Para contar o pagamento, abra Configurações, vá na parte de Conversões, clique em gerar chave de acesso e cole a chave no campo da chave de acesso. Ela é guardada cifrada e nunca volta para a tela.",
+      "Ligue a chave \"Pixel do Meta\". O aviso de cookies passa a aparecer na página inicial, nas páginas por tipo de negócio e no cadastro.",
+      "Para testar, abra \"Testar eventos\" no Gerenciador, copie o código que começa com TEST, cole em \"Código de teste\", salve e clique em \"Enviar evento de teste\".",
+    ],
+    examples: [
+      "ID do Pixel: 1234567890123456 (15 ou 16 números).",
+      "Código de teste: TEST12345. Depois de validar, apague o código e salve, senão os eventos reais ficam marcados como teste.",
+      "Quem clicar em Recusar no aviso de cookies não é contado, e nada do Meta carrega no navegador dessa pessoa.",
+    ],
+    tip: "O pagamento só é enviado para quem aceitou os cookies na hora do cadastro. Quem recusou nunca é enviado, nem pelo servidor.",
+    warning: "O Pixel não roda dentro do painel das empresas, só nas páginas abertas ao público.",
+  },
   "admin.smtpTeste": {
     title: "E-mail de teste",
     purpose: "Manda um e-mail simples, pelo mesmo servidor e remetente dos avisos de cobrança, e mostra o que o servidor respondeu. Serve para saber se a mensagem chega de verdade na sua caixa.",
@@ -410,6 +428,66 @@ const HELP_ENTRIES = {
     ],
     tip: "\"Aceito pelo servidor\" quer dizer que o servidor pegou a mensagem. Só você, olhando a caixa, confirma que ela chegou.",
     warning: "Cada administrador pode mandar 5 testes a cada 10 minutos.",
+  },
+  "pagina.adminBackup": {
+    title: "Backup do banco",
+    purpose: "Guarda uma cópia do banco de dados todo dia num lugar fora do servidor, apaga as cópias antigas e avisa você por e-mail e pelo sino se a cópia atrasar. Se o banco se perder, é daqui que ele volta.",
+    steps: [
+      "Escolha para onde a cópia vai (bucket S3 ou Google Drive) e preencha os dados do destino.",
+      "Clique em \"Testar conexão\" para ver se o destino aceita gravar.",
+      "Clique em \"Fazer backup agora\". É a prova de que o caminho inteiro funciona, antes de confiar no horário marcado.",
+      "Ligue o backup automático e escolha a hora.",
+    ],
+    examples: [
+      "Você liga o automático às 3h. Todo dia a cópia sai sozinha e aparece no histórico com tamanho e data.",
+      "A cópia não saiu por dois dias seguidos: você recebe um e-mail e o sino do Admin fica vermelho.",
+    ],
+    tip: "Guardar a cópia no mesmo servidor do banco não vale: se o servidor se perder, as duas se perdem juntas.",
+    warning: "Não existe botão de restaurar de propósito. Restaurar apaga o banco atual, então é feito por linha de comando. O passo a passo está no runbook.",
+  },
+  "backup.agendamento": {
+    title: "Agendamento do backup",
+    purpose: "Define se o backup roda sozinho, a que horas (horário de Brasília), por quantos dias as cópias ficam guardadas e depois de quantas horas sem cópia o sistema avisa.",
+    examples: [
+      "Hora 3 e guardar por 14 dias: todo dia às 3h sai uma cópia, e as de mais de 14 dias são apagadas do destino.",
+      "Avisar depois de 36 horas: se passar um dia e meio sem cópia nova, chega o e-mail de backup atrasado.",
+    ],
+    tip: "As cópias antigas só são apagadas depois que a nova foi enviada e conferida. E o sistema nunca apaga a última cópia que existe.",
+  },
+  "backup.destino": {
+    title: "Destino do backup",
+    purpose: "É o lugar onde as cópias ficam guardadas: um bucket S3 (ou compatível, como Cloudflare R2 e Backblaze) ou uma pasta do Google Drive. Escolha um só. Os segredos ficam cifrados e não voltam para a tela.",
+    steps: [
+      "Para S3, informe o endereço, o bucket, a região, a pasta (opcional), a chave de acesso e o segredo.",
+      "Deixe o campo do segredo em branco para manter o que já está salvo.",
+    ],
+    examples: [
+      "Cloudflare R2: endereço https://SEU-ID.r2.cloudflarestorage.com, região auto, bucket innochat-backup, pasta banco.",
+      "Backblaze B2: endereço https://s3.us-west-004.backblazeb2.com, região us-west-004.",
+    ],
+    warning: "Use um bucket só para backup. A cópia tem dados de todas as empresas, e a chave que serve outros arquivos não deveria abrir isso.",
+  },
+  "backup.drive": {
+    title: "Google Drive",
+    purpose: "Guarda as cópias numa pasta do seu Drive. Há dois jeitos: Conectar com Google (indicado para Gmail pessoal) ou chave de conta de serviço (para Google Workspace).",
+    steps: [
+      "Conectar com Google: crie um app OAuth no Google Cloud, cole o Client ID e o Client Secret, salve e clique em Conectar. O sistema cria a pasta \"Backups InnoChat\" no seu Drive.",
+      "Conta de serviço: cole o conteúdo do arquivo de chave, crie uma pasta no Drive, compartilhe com o e-mail da conta de serviço como Editor e cole o link da pasta.",
+    ],
+    examples: [
+      "Você usa Gmail pessoal: use Conectar com Google. Conta de serviço não tem espaço próprio e o Google recusa o envio.",
+      "Você tem Workspace e uma unidade compartilhada: a conta de serviço entra como membro dela e a pasta é de lá.",
+    ],
+    tip: "Na tela de consentimento do Google Cloud, deixe o app em \"Em produção\". Em \"Teste\" o acesso expira em 7 dias e o backup para sozinho.",
+    warning: "No Drive, uma pessoa pode tirar o acesso sem querer (apagar a pasta, revogar a conta). Por isso o sistema avisa assim que a cópia falha, dizendo a causa.",
+  },
+  "backup.historico": {
+    title: "Histórico de backups",
+    purpose: "Lista cada cópia feita ou tentada: quando, se foi automática ou manual, o tamanho e, se falhou, o motivo e o que fazer.",
+    examples: [
+      "Uma linha vermelha com \"a pasta do Google Drive não está acessível\": alguém tirou o compartilhamento. Compartilhe de novo e use Fazer backup agora.",
+      "Uma linha marcada como \"só teste\" é uma cópia gerada sem destino: foi conferida, mas não saiu do servidor, então não vale como backup.",
+    ],
   },
   "admin.saudeCobranca": {
     title: "Cobrança na Saúde",
@@ -522,6 +600,51 @@ const HELP_ENTRIES = {
       "Canal WhatsApp e empresa \"Studio Bela\": confere se o aviso chegou no telefone dela.",
     ],
   },
+  "pagina.adminErros": {
+    title: "Erros do sistema",
+    purpose: "Reúne os erros que o InnoChat registrou sozinho, tanto os do servidor quanto os que apareceram no navegador de alguém. Erros iguais ficam juntos num só item, com a conta de quantas vezes aconteceram.",
+    steps: [
+      "Olhe os itens em \"Abertos\": são os que ainda precisam de atenção.",
+      "Clique em \"Ver detalhes\" para ler a mensagem, a rota e as últimas vezes em que aconteceu.",
+      "Depois de corrigir, clique em \"Resolver\". Se o erro voltar, ele reabre e avisa de novo.",
+    ],
+    examples: [
+      "Aparece \"TypeError: não foi possível ler a lista de serviços\" com 12 ocorrências desde ontem: abra os detalhes e veja em qual tela foi.",
+      "Um erro que você já sabe que não tem conserto agora (de um navegador antigo, por exemplo): clique em \"Ignorar\" e ele só continua somando, sem alertar.",
+    ],
+    tip: "Quando aparece um erro novo, ele chega no sino e por e-mail, no máximo um e-mail a cada 15 minutos.",
+    warning: "Nenhum e-mail, telefone ou senha é guardado: o sistema apaga esses dados do texto do erro antes de gravar.",
+  },
+  "admin.errosFiltros": {
+    title: "Filtros dos erros",
+    purpose: "Mostram só os erros da situação ou da origem que você escolher. Os números no topo seguem a origem escolhida.",
+    examples: [
+      "Situação \"Abertos\" e origem \"Navegador\": só o que quebrou na tela de alguém e ainda não foi resolvido.",
+      "Situação \"Resolvidos\": confere se algum erro que você tinha corrigido voltou a aparecer.",
+    ],
+  },
+  "admin.errosLista": {
+    title: "Lista de erros",
+    purpose: "Cada linha é um tipo de erro, com quantas vezes aconteceu, quando foi a última e em qual versão do sistema. A mais recente fica no topo.",
+    steps: [
+      "\"Resolver\" marca o erro como corrigido.",
+      "\"Ignorar\" deixa o erro quieto: ele continua contando, mas não alerta nem mostra detalhes novos.",
+      "\"Reabrir\" devolve o erro para os abertos.",
+    ],
+    examples: [
+      "Um erro com 200 ocorrências e última vez há 5 minutos ainda está acontecendo agora.",
+      "Um erro resolvido que volta a acontecer reabre sozinho e gera um novo aviso.",
+    ],
+  },
+  "admin.errosDetalhe": {
+    title: "Detalhe do erro",
+    purpose: "Mostra as últimas vezes em que o erro aconteceu: o dia e a hora, a versão, a rota e o detalhe técnico que ajuda a achar o ponto exato do código.",
+    examples: [
+      "A rota é a mesma da Agenda em todas as ocorrências: o problema está nessa tela.",
+      "Só as ocorrências da versão 1.7.0 em diante: o erro nasceu nessa publicação.",
+    ],
+    tip: "O detalhe técnico é para quem programa. Se for mandar para o suporte, copie a mensagem e a rota.",
+  },
   "pagina.adminEmpresaCobranca": {
     title: "Cobrança da empresa",
     purpose: "Reúne num lugar só o plano, a situação da assinatura, as faturas e tudo o que aconteceu com essa empresa na cobrança.",
@@ -537,6 +660,100 @@ const HELP_ENTRIES = {
       "Você lê: \"Lembrete da véspera enviado por WhatsApp\", depois \"Fatura paga\": o aviso funcionou.",
       "Se aparece \"Suspensa por falta de pagamento\" sem nenhum aviso antes, vale checar o canal de envio.",
     ],
+  },
+  "conta.doisFatores": {
+    title: "Verificação em 2 etapas",
+    purpose: "Pede, além da senha, um código de 6 dígitos que o app do seu celular gera e troca a cada 30 segundos. Mesmo que alguém descubra a senha, não entra sem o celular.",
+    steps: [
+      "Instale no celular um app como Google Authenticator, Microsoft Authenticator ou Authy.",
+      "Clique em \"Ativar verificação em 2 etapas\" e leia o QR code no app (ou digite a chave).",
+      "Digite o código de 6 dígitos que o app mostrar e confirme.",
+      "Guarde os 10 códigos de recuperação num lugar seguro: eles aparecem só uma vez.",
+    ],
+    examples: [
+      "Na hora de entrar, depois da senha, a tela pede o código. Você abre o app, vê 482 913 e digita.",
+      "Perdeu ou trocou de celular? Na tela do código, digite um código de recuperação, como abcde-fghij. Cada um vale uma vez só.",
+    ],
+    tip: "Quem entra com o Google não precisa disso: o próprio Google já confere.",
+    warning: "Para o administrador da plataforma a verificação é obrigatória. Se a pessoa perder o celular e os códigos, outro administrador pode redefinir.",
+  },
+  "admin.doisFatores": {
+    title: "Verificação em 2 etapas da equipe",
+    purpose: "Mostra quem tem a verificação em 2 etapas ativa e deixa você redefinir a de quem perdeu o celular e os códigos de recuperação.",
+    steps: [
+      "Confirme que a pessoa é quem diz ser (por exemplo, por telefone).",
+      "Clique em \"Redefinir\" ao lado do nome e confirme.",
+    ],
+    examples: [
+      "A Paula trocou de celular e perdeu os códigos: você redefine, ela entra só com a senha e cadastra o app de novo.",
+    ],
+    warning: "Redefinir desconecta a pessoa de todos os aparelhos. Administradores são obrigados a cadastrar de novo no próximo acesso.",
+  },
+  "admin.planoAnual": {
+    title: "Preço do plano anual",
+    purpose: "É o valor cobrado de uma vez só por 12 meses de uso. O desconto aparece sozinho: 12 mensalidades menos o preço anual. Deixe em branco para o plano não ter opção anual.",
+    steps: [
+      "Digite o valor do ano em reais, por exemplo 590,00.",
+      "Confira a economia que aparece logo abaixo do campo.",
+      "Clique em Salvar. A opção anual aparece no cadastro, na landing e na tela Assinatura das empresas.",
+    ],
+    examples: [
+      "Mensal de R$ 59,00 e anual de R$ 590,00: 12 mensalidades custam R$ 708,00, então a empresa economiza R$ 118,00 (2 meses grátis).",
+      "Na receita mensal recorrente, esse plano anual entra como R$ 590,00 dividido por 12, ou seja, R$ 49,17 por mês.",
+    ],
+    warning: "Mudar o preço vale só para as próximas faturas. Quem já pagou o ano não recebe devolução nem cobrança de diferença.",
+  },
+  "admin.cupons": {
+    title: "Cupons de desconto",
+    purpose: "Crie códigos que a empresa digita no cadastro ou na tela Assinatura para pagar menos. Dá para escolher porcentagem ou valor em reais, validade, limite de usos e por quantas cobranças o desconto vale.",
+    steps: [
+      "Clique em \"Novo cupom\" e escolha o código, o desconto e a duração.",
+      "Se quiser, limite a certos planos, ao plano mensal ou anual, a uma data e a um número de empresas.",
+      "Para parar de oferecer, use \"Desativar\". Cupom nunca é apagado, para o histórico continuar certo.",
+      "Em \"Resgates\" você vê quais empresas usaram e quanto cada uma economizou.",
+    ],
+    examples: [
+      "BEMVINDO20: 20% de desconto só na primeira fatura, válido até 31/12 e limitado a 50 empresas.",
+      "AMIGO50: R$ 50,00 de desconto em cada uma das 3 primeiras cobranças, só para o plano mensal.",
+    ],
+    tip: "Uma empresa só pode usar o mesmo cupom uma vez. O desconto nunca deixa a fatura abaixo de R$ 1,00.",
+    warning: "Depois que uma empresa usa o cupom, tipo, valor, duração e ciclo ficam travados, porque mudariam o desconto de quem já usou. Crie outro cupom se precisar de uma regra nova.",
+  },
+  "admin.cupomResgates": {
+    title: "Resgates do cupom",
+    purpose: "Lista as empresas que adotaram este cupom, quando isso aconteceu e quanto o desconto valeu na primeira fatura em que entrou.",
+    examples: [
+      "A Clínica Bela adotou o cupom em 03/10 e economizou R$ 11,80 na primeira fatura.",
+      "Empresa com valor \"ainda sem fatura\": o cupom está guardado e entra na próxima cobrança.",
+    ],
+    tip: "Um resgate é a empresa adotar o cupom. As cobranças seguintes com desconto não criam outro resgate.",
+  },
+  "assinatura.cobranca": {
+    title: "Cobrança mensal ou anual",
+    purpose: "Escolha se a cobrança é todo mês ou uma vez por ano, com desconto. A troca vale a partir da próxima fatura, sem cálculo proporcional.",
+    steps: [
+      "Escolha \"Mensal\" ou \"Anual\".",
+      "Confira o valor da próxima fatura e a economia do ano.",
+      "A fatura que já está em aberto continua como foi emitida. A troca vale na seguinte.",
+    ],
+    examples: [
+      "Você paga R$ 59,00 por mês. Trocando para o anual, a próxima fatura sai de R$ 590,00 e cobre 12 meses.",
+      "Voltou para o mensal no meio do ano? O ano já pago continua valendo até o fim. Só a fatura seguinte volta a ser mensal.",
+    ],
+    warning: "Não devolvemos nem calculamos proporcional ao trocar. O período já pago segue até o fim.",
+  },
+  "assinatura.cupom": {
+    title: "Cupom de desconto",
+    purpose: "Se você recebeu um código de desconto, digite aqui. O desconto entra a partir da próxima fatura e vale pelo tempo que o cupom definir.",
+    steps: [
+      "Digite o código e clique em \"Conferir\" para ver o valor.",
+      "Clique em \"Aplicar cupom\" para guardar.",
+    ],
+    examples: [
+      "O cupom BEMVINDO20 tira 20% da próxima fatura de R$ 59,00 e ela sai por R$ 47,20.",
+      "Cupom de 3 cobranças: o desconto aparece nas 3 próximas faturas e depois some sozinho.",
+    ],
+    tip: "Só dá para ter um cupom por vez, e cada cupom só pode ser usado uma vez por empresa.",
   },
   "config.retomada": {
     title: "Quando o bot volta a responder",

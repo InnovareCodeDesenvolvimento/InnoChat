@@ -21,6 +21,7 @@ import { BillingContactCard } from "@/components/billing/billing-contact-card";
 import type { BillingContactData, SaveBillingContact } from "@/components/billing/billing-contact-types";
 import { PaymentHistoryCard, type PaymentHistoryItem } from "@/components/billing/payment-history-card";
 import { AssinaturaCanceladaCard, CancelamentoAgendadoAviso, CancelarAssinaturaCard } from "./cancelamento";
+import { CicloCard, CupomCard, type CycleSnapshot } from "./ciclo-cupom";
 import { changePlanAction, checkMyInvoicePaymentAction, regenerateMyInvoicePixAction, type PlanListItem } from "@/modules/billing/actions";
 
 export type BillingStatus = "TRIALING" | "ACTIVE" | "PAST_DUE" | "SUSPENDED" | "CANCELED";
@@ -30,6 +31,8 @@ export type BillingSnapshot = {
   planName: string;
   planSortOrder: number;
   priceCents: number;
+  /** Cobrança mensal/anual e cupom em uso (Melhoria 6). */
+  cycle: CycleSnapshot;
   status: BillingStatus;
   trialEndsAt: string | null;
   currentPeriodEnd: string;
@@ -52,6 +55,9 @@ export type BillingSnapshot = {
     pixCopyPaste: string | null;
     pixExpiresAt: string | null;
     paidAt: string | null;
+    cycle: "MONTHLY" | "ANNUAL";
+    discountCents: number;
+    couponCode: string | null;
   } | null;
 };
 
@@ -234,8 +240,14 @@ function PixCard({
       <CardHeader help="assinatura.fatura">
         <CardTitle>Fatura em aberto</CardTitle>
         <CardDescription>
-          {formatBRL(invoice.amountCents)}, com vencimento em {formatDateTimeLabel(invoice.dueAt, timezone)}
+          {formatBRL(invoice.amountCents)}{invoice.cycle === "ANNUAL" ? " do plano anual (12 meses)" : ""}, com vencimento em {formatDateTimeLabel(invoice.dueAt, timezone)}
         </CardDescription>
+        {invoice.discountCents > 0 ? (
+          <p className="mt-1 text-sm text-success" data-testid="fatura-desconto">
+            {invoice.couponCode ? `Cupom ${invoice.couponCode}: ` : "Desconto: "}
+            {formatBRL(invoice.discountCents)} já abatidos do valor.
+          </p>
+        ) : null}
       </CardHeader>
       <CardContent className="flex flex-col items-center gap-5 sm:flex-row sm:items-start">
         {invoice.pixCopyPaste ? (
@@ -555,7 +567,9 @@ export function AssinaturaClient({
           <CardTitle>{snapshot.planName}</CardTitle>
           <CardDescription>
             {snapshot.priceCents > 0
-              ? `${formatBRL(snapshot.priceCents)} por mês`
+              ? snapshot.cycle.billingCycle === "ANNUAL" && snapshot.cycle.annualPriceCents !== null
+                ? `${formatBRL(snapshot.cycle.annualPriceCents)} por ano (cobrança anual)`
+                : `${formatBRL(snapshot.priceCents)} por mês`
               : "Preço a definir. O teste continua funcionando."}
           </CardDescription>
         </CardHeader>
@@ -614,6 +628,13 @@ export function AssinaturaClient({
 
       {snapshot.invoice && !paymentConfirmed ? (
         <PixCard invoice={snapshot.invoice} timezone={snapshot.timezone} tenantSlug={tenantSlug} hasDocument={hasDocument} focusOnMount={focusPix} />
+      ) : null}
+
+      {snapshot.status !== "CANCELED" && snapshot.priceCents > 0 ? (
+        <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
+          <CicloCard tenantSlug={tenantSlug} cycle={snapshot.cycle} isOwner={isOwner} />
+          <CupomCard tenantSlug={tenantSlug} coupon={snapshot.cycle.coupon} isOwner={isOwner} />
+        </div>
       ) : null}
 
       {snapshot.status !== "CANCELED" ? <PlanosCard tenantSlug={tenantSlug} snapshot={snapshot} plans={plans} isOwner={isOwner} /> : null}

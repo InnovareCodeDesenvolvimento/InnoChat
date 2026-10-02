@@ -2,10 +2,12 @@ import type { LucideIcon } from "lucide-react";
 import {
   Activity,
   Bot,
+  Bug,
   Building2,
   Calendar,
   CircleUser,
   ClipboardList,
+  DatabaseBackup,
   CreditCard,
   LayoutDashboard,
   Headset,
@@ -17,6 +19,7 @@ import {
   Send,
   Settings,
   UserRound,
+  TicketPercent,
   Users,
   Wallet,
 } from "lucide-react";
@@ -137,6 +140,7 @@ const ADMIN_GROUPS_DEF: { id: string; label: string; items: { label: string; hre
       { label: "Visão geral", href: "/admin/financeiro", icon: Wallet },
       { label: "Cobranças", href: "/admin/cobranca", icon: Receipt },
       { label: "Envios de cobrança", href: "/admin/envios", icon: Send },
+      { label: "Cupons", href: "/admin/cupons", icon: TicketPercent },
     ],
   },
   {
@@ -146,6 +150,8 @@ const ADMIN_GROUPS_DEF: { id: string; label: string; items: { label: string; hre
       { label: "Planos", href: "/admin/planos", icon: Layers },
       { label: "Configurações da plataforma", href: "/admin/configuracoes", icon: Settings },
       { label: "Saúde", href: "/admin/saude", icon: Activity },
+      { label: "Backup", href: "/admin/backup", icon: DatabaseBackup },
+      { label: "Erros", href: "/admin/erros", icon: Bug },
     ],
   },
 ];

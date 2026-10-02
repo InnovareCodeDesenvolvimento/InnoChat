@@ -8,3 +8,5 @@ export * from "./dunning-copy";
 export * from "./trial-usage";
 export * from "./dunning-bell";
 export * from "./dunning-labels";
+export * from "./pricing";
+export * from "./coupon-labels";

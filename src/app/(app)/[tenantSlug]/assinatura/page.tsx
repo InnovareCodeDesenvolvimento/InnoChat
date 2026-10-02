@@ -5,13 +5,15 @@ import { navIconFor } from "@/components/shell/nav-items";
 import { EmptyState } from "@/components/ui/empty-state";
 import { getPrisma } from "@/lib/db/prisma";
 import { auth } from "@/lib/auth";
-import { accessEndsAt, CANCELED_RETENTION_DAYS, effectiveStatus } from "@/core/billing";
+import { accessEndsAt, annualSavingsCents, annualSavingsLabel, CANCELED_RETENTION_DAYS, effectiveStatus, planOffersAnnual, type CouponKind } from "@/core/billing";
 import { addDays } from "date-fns";
 import { listActivePlansAction, type PlanListItem } from "@/modules/billing/actions";
 import { resolveBillingBanner } from "@/components/shell/billing-banner-state";
 import type { PaymentHistoryItem } from "@/components/billing/payment-history-card";
 import { updateBillingContactAction } from "@/modules/billing/contact-actions";
+import { loadInvoiceCharge } from "@/modules/billing/coupons";
 import { AssinaturaClient, type BillingSnapshot } from "./assinatura-client";
+import type { CycleSnapshot } from "./ciclo-cupom";
 
 export default async function AssinaturaPage({
   params,
@@ -81,7 +83,7 @@ export default async function AssinaturaPage({
       where: { subscription: { tenantId: tenant.id }, status: { in: ["PAID", "OPEN"] } },
       orderBy: { periodStart: "desc" },
       take: 12,
-      select: { id: true, amountCents: true, periodStart: true, periodEnd: true, status: true, paidAt: true },
+      select: { id: true, amountCents: true, periodStart: true, periodEnd: true, status: true, paidAt: true, cycle: true, discountCents: true, couponCode: true },
     }),
     getPrisma().membership.findFirst({
       where: { tenantId: tenant.id, role: "OWNER" },
@@ -96,6 +98,9 @@ export default async function AssinaturaPage({
     periodEnd: row.periodEnd.toISOString(),
     status: row.status === "PAID" ? "PAID" : "OPEN",
     paidAt: row.paidAt?.toISOString() ?? null,
+    cycle: row.cycle === "ANNUAL" ? "ANNUAL" : "MONTHLY",
+    discountCents: row.discountCents,
+    couponCode: row.couponCode,
   }));
   const lastPaidAt = invoiceRows.find((row) => row.status === "PAID")?.paidAt ?? null;
   const banner = resolveBillingBanner({ subscription: { ...subscription, timezone: tenant.timezone }, openInvoice, lastPaidAt }, now);
@@ -106,11 +111,38 @@ export default async function AssinaturaPage({
   // Cancelada por agendamento cuja data já passou (o tick ainda não gravou `canceledAt`): vale a data de término.
   const canceledAt = subscription.canceledAt ?? (status === "CANCELED" && subscription.cancelAtPeriodEnd ? accessEndsAt(subscription) : null);
 
+  // Ciclo e cupom: o que a PRÓXIMA fatura vai cobrar (plano pendente de downgrade, se houver, já conta).
+  const nextPlan = subscription.pendingPlanId ? await getPrisma().plan.findUnique({ where: { id: subscription.pendingPlanId } }) : null;
+  const billedPlan = nextPlan ?? subscription.plan;
+  const charge = await loadInvoiceCharge(subscription, billedPlan);
+  const couponRow = subscription.couponId ? await getPrisma().coupon.findUnique({ where: { id: subscription.couponId } }) : null;
+  const cycleSnapshot: CycleSnapshot = {
+    // Ciclo EFETIVO: plano sem preço anual cobra mensal mesmo que a assinatura guarde ANNUAL (troca de plano).
+    billingCycle: charge.cycle,
+    annualPriceCents: planOffersAnnual(subscription.plan) ? subscription.plan.annualPriceCents : null,
+    monthlyPriceCents: subscription.plan.priceCents,
+    annualSavingsCents: annualSavingsCents(subscription.plan),
+    annualSavingsLabel: annualSavingsLabel(subscription.plan),
+    next: { grossCents: charge.grossCents, discountCents: charge.discountCents, netCents: charge.netCents, cycle: charge.cycle },
+    coupon: couponRow
+      ? {
+          code: couponRow.code,
+          kind: couponRow.kind as CouponKind,
+          value: couponRow.value,
+          duration: couponRow.duration as "ONCE" | "N_CYCLES" | "FOREVER",
+          durationCycles: couponRow.durationCycles,
+          cyclesRemaining: subscription.couponCyclesRemaining,
+          paused: charge.couponId === null,
+        }
+      : null,
+  };
+
   const snapshot: BillingSnapshot = {
     planId: subscription.planId,
     planName: subscription.plan.name,
     planSortOrder: subscription.plan.sortOrder,
     priceCents: subscription.plan.priceCents,
+    cycle: cycleSnapshot,
     status,
     trialEndsAt: subscription.trialEndsAt?.toISOString() ?? null,
     currentPeriodEnd: subscription.currentPeriodEnd.toISOString(),
@@ -131,6 +163,9 @@ export default async function AssinaturaPage({
           pixCopyPaste: openInvoice.pixCopyPaste,
           pixExpiresAt: openInvoice.pixExpiresAt?.toISOString() ?? null,
           paidAt: openInvoice.paidAt?.toISOString() ?? null,
+          cycle: openInvoice.cycle === "ANNUAL" ? "ANNUAL" : "MONTHLY",
+          discountCents: openInvoice.discountCents,
+          couponCode: openInvoice.couponCode,
         }
       : null,
   };

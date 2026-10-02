@@ -143,9 +143,11 @@ export function computeNextPeriodEnd(params: {
   currentPeriodEnd: Date;
   wasSuspended: boolean;
   paidAt: Date;
+  /** Meses que a fatura paga cobre: 1 (mensal, padrão) ou 12 (anual). */
+  months?: number;
 }): Date {
   const anchor = params.wasSuspended ? params.paidAt : params.currentPeriodEnd;
-  return addMonths(anchor, 1);
+  return addMonths(anchor, params.months ?? 1);
 }
 
 /** `true` quando falta `leadDays` dias ou menos para `dueAt` (ou já venceu). */

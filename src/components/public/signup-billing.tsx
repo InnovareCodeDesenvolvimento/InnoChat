@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Check, Loader2, Ticket, TriangleAlert } from "lucide-react";
 import { cn } from "@/components/lib/cn";
 import {
@@ -62,26 +62,27 @@ export function SignupBillingSection({
   const offersAnnual = pricing ? planOffersAnnual(pricing) : false;
   const effectiveCycle: BillingCycle = offersAnnual ? cycle : "MONTHLY";
   const [couponOpen, setCouponOpen] = useState(couponCode.trim() !== "");
-  const [status, setStatus] = useState<CouponStatus>({ kind: "idle" });
-  const requestRef = useRef(0);
+  // Resultado da última consulta, com a chave (código + ciclo) a que ele responde. O estado "idle/checking" é DERIVADO
+  // (sem setState no efeito): sem chave igual, ainda está conferindo.
+  const [answer, setAnswer] = useState<{ key: string; status: CouponStatus } | null>(null);
+  const code = couponCode.trim();
+  const key = `${code}|${effectiveCycle}`;
+  const status: CouponStatus = code.length < 3 ? { kind: "idle" } : answer && answer.key === key ? answer.status : { kind: "checking" };
 
   // Validação ao vivo: espera a pessoa parar de digitar e refaz quando o ciclo muda (o cupom pode valer só no anual).
   useEffect(() => {
-    const code = couponCode.trim();
-    if (code.length < 3) {
-      requestRef.current += 1;
-      setStatus({ kind: "idle" });
-      return;
-    }
-    const current = ++requestRef.current;
-    setStatus({ kind: "checking" });
+    if (code.length < 3) return;
+    let cancelled = false;
     const timer = setTimeout(async () => {
       const result = await previewSignupCouponAction({ code, billingCycle: effectiveCycle });
-      if (current !== requestRef.current) return; // resposta velha: já digitaram outra coisa
-      setStatus(result.ok ? { kind: "valid", preview: result.data } : { kind: "invalid", message: result.error.message });
+      if (cancelled) return; // resposta velha: já digitaram outra coisa
+      setAnswer({ key, status: result.ok ? { kind: "valid", preview: result.data } : { kind: "invalid", message: result.error.message } });
     }, DEBOUNCE_MS);
-    return () => clearTimeout(timer);
-  }, [couponCode, effectiveCycle]);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [code, effectiveCycle, key]);
 
   if (!pricing) return null;
 
@@ -103,7 +104,7 @@ export function SignupBillingSection({
               onSelect={() => onCycleChange("MONTHLY")}
               title="Mensal"
               price={`${brl(pricing.priceCents)} por mês`}
-              note="Cancele quando quiser."
+              note="Uma fatura por mês."
             />
             <CycleOption
               name="billingCycle"

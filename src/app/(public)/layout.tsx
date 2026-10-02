@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "@/app/globals.css";
 import { fontVariables } from "@/app/fonts";
 import { ToastProvider } from "@/components/ui/toast";
+import { ClientErrorReporter } from "@/components/error-monitor/client-error-reporter";
 
 export const metadata: Metadata = {
   title: "InnoChat",
@@ -24,6 +25,7 @@ export default function PublicLayout({ children }: { children: React.ReactNode }
   return (
     <html lang="pt-BR" data-theme="INDIGO_CLINICO" className={fontVariables}>
       <body>
+        <ClientErrorReporter />
         <ToastProvider>{children}</ToastProvider>
       </body>
     </html>

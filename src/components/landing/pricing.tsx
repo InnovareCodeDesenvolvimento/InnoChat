@@ -70,6 +70,12 @@ export function Pricing({ plans }: { plans: LandingPlan[] | null }) {
                     </span>
                     <span className="text-base font-medium text-text-secondary">/mês</span>
                   </p>
+                  {plan.annualLabel ? (
+                    <p data-testid="plano-anual" className="mt-2 text-sm text-text-secondary">
+                      ou <span className="font-semibold text-text">{plan.annualLabel}</span> por ano
+                      {plan.annualSavingsLabel ? <span className="font-semibold text-success"> ({plan.annualSavingsLabel})</span> : null}
+                    </p>
+                  ) : null}
                   <ul className="mb-8 mt-6 space-y-3 border-t border-border pt-6">
                     {[plan.professionalsLabel, plan.whatsappLabel].map((line) => (
                       <li key={line} className="flex items-start gap-2.5 text-base font-semibold text-text">
@@ -116,7 +122,7 @@ export function Pricing({ plans }: { plans: LandingPlan[] | null }) {
         )}
 
         <p className="mx-auto mt-10 max-w-2xl text-center text-sm leading-relaxed text-text-secondary">
-          Pagamento mensal por Pix. Você pode trocar de plano depois, pelo próprio painel.
+          Pagamento por Pix, mensal ou anual. Você pode trocar de plano depois, pelo próprio painel.
         </p>
       </div>
     </section>

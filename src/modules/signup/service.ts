@@ -9,7 +9,8 @@ import { sendMail, loadEmailContext, verificationEmail, passwordResetEmail, team
 import { getPublicBaseUrl } from "@/lib/public-url";
 import type { MembershipRole } from "@/lib/db/types";
 import { slugify, validateSlug, type SlugValidationError } from "@/core/signup/slug";
-import { validateCpfCnpj } from "@/core/billing";
+import { effectiveCycle, planOffersAnnual, priceInvoice, validateCpfCnpj, type BillingCycle } from "@/core/billing";
+import { adoptCouponInTx, consumeCouponCycleInTx } from "@/modules/billing/coupons";
 import { normalizeBrPhoneToE164 } from "@/core/contact/br-phone";
 import {
   billingUrlFor,
@@ -101,6 +102,10 @@ export type SignUpInput = {
    * É normalizado para só dígitos com DDI (`558499998888`) em `Tenant.billingWhatsappE164`.
    */
   phone?: string | null;
+  /** Cobrança escolhida no cadastro; vale a partir da primeira fatura (a do fim do teste). Padrão: mensal. */
+  billingCycle?: BillingCycle;
+  /** Cupom digitado no cadastro (opcional). Inválido ou esgotado = erro `COUPON_*` e o cadastro não acontece. */
+  couponCode?: string;
 };
 
 export type SignUpResult = {
@@ -151,6 +156,8 @@ type CreateAccountInput = {
   planCode?: string;
   /** WhatsApp de cobrança já normalizado (só dígitos com DDI), ou `null`. */
   billingWhatsappE164?: string | null;
+  billingCycle?: BillingCycle;
+  couponCode?: string;
 };
 
 /**
@@ -177,6 +184,10 @@ async function createAccount(input: CreateAccountInput, gateway?: MercadoPagoGat
   const now = new Date();
   const trialEndsAt = newTrialEndsAt(now);
   const plan = await resolveSignupPlan(input.planCode);
+  if (input.billingCycle === "ANNUAL" && !planOffersAnnual(plan)) {
+    throw new DomainError("INVALID_CYCLE", "Este plano não tem cobrança anual. Escolha a mensal.");
+  }
+  const cycle = effectiveCycle(plan, input.billingCycle ?? "MONTHLY");
   const email = input.email;
   const slug = input.slug;
 
@@ -216,6 +227,9 @@ async function createAccount(input: CreateAccountInput, gateway?: MercadoPagoGat
 
     await tx.membership.create({ data: { userId: user.id, tenantId: tenant.id, role: "OWNER" } });
 
+    // Cupom: o resgate (único por empresa) e o uso atômico acontecem aqui dentro; cupom inválido derruba o cadastro inteiro.
+    const adopted = input.couponCode ? await adoptCouponInTx(tx, { code: input.couponCode, tenantId: tenant.id, planId: plan.id, cycle, now }) : null;
+
     const subscription = await tx.subscription.create({
       data: {
         tenantId: tenant.id,
@@ -223,13 +237,21 @@ async function createAccount(input: CreateAccountInput, gateway?: MercadoPagoGat
         status: "TRIALING",
         trialEndsAt,
         currentPeriodEnd: trialEndsAt, // o trial É o primeiro período (§7.3)
+        billingCycle: cycle,
+        couponId: adopted?.couponId ?? null,
+        couponCyclesRemaining: adopted?.cyclesRemaining ?? null,
       },
     });
 
+    // A fatura do fim do teste já nasce no ciclo escolhido e com o cupom aplicado (valor líquido).
+    const pricing = priceInvoice(plan, cycle, adopted ? { kind: adopted.kind, value: adopted.value } : null);
     const invoice = await tx.invoice.create({
       data: {
         subscriptionId: subscription.id,
-        amountCents: plan.priceCents,
+        amountCents: pricing.netCents,
+        discountCents: pricing.discountCents,
+        couponCode: adopted && pricing.discountCents > 0 ? adopted.code : null,
+        cycle: pricing.cycle,
         periodStart: now,
         periodEnd: trialEndsAt,
         dueAt: trialEndsAt,
@@ -237,6 +259,9 @@ async function createAccount(input: CreateAccountInput, gateway?: MercadoPagoGat
         isTrialConversion: true, // fatura do teste: fora de "a receber"/"vencido" no Admin → Cobrança
       },
     });
+    if (adopted) {
+      await consumeCouponCycleInTx(tx, { subscriptionId: subscription.id, tenantId: tenant.id, couponId: adopted.couponId, invoiceId: invoice.id, discountCents: pricing.discountCents });
+    }
 
     return { user, tenant, invoice };
   });
@@ -245,14 +270,14 @@ async function createAccount(input: CreateAccountInput, gateway?: MercadoPagoGat
   // existe (criada dentro da transação acima) — usamos `tryAttachPix` direto, não
   // `createInvoiceForPeriod`/`createInvoiceForPeriodTracked` (que trataria esta fatura recém-
   // criada como "já existe" pelo check de idempotência e nunca chamaria o Mercado Pago).
-  const invoiceWithPix = await tryAttachPix(created.invoice.id, email, generateInvoiceDescription(created.tenant.name), gateway);
+  const invoiceWithPix = await tryAttachPix(created.invoice.id, email, generateInvoiceDescription(created.tenant.name, cycle), gateway);
 
   await recordBillingEvent({
     tenantId: created.tenant.id,
     subscriptionId: created.invoice.subscriptionId,
     invoiceId: created.invoice.id,
     type: "INVOICE_CREATED",
-    metadata: { amountCents: created.invoice.amountCents, trial: true },
+    metadata: { amountCents: created.invoice.amountCents, trial: true, cycle, discountCents: created.invoice.discountCents },
   });
   const invoiceEmailSent = await sendInvoiceGeneratedEmail({
     toEmail: email,
@@ -262,6 +287,7 @@ async function createAccount(input: CreateAccountInput, gateway?: MercadoPagoGat
     dueAt: created.invoice.dueAt,
     pixCopyPaste: invoiceWithPix?.pixCopyPaste ?? null,
     timezone: created.tenant.timezone,
+    annual: cycle === "ANNUAL",
   });
   // O envio imediato do cadastro entra no outbox como `SENT`, para a régua não repetir "Sua fatura chegou".
   // Se o SMTP falhou, nenhuma linha é gravada e a etapa INVOICE_CREATED da régua reenvia na próxima rodada.
@@ -314,6 +340,8 @@ export async function signUp(input: SignUpInput, gateway?: MercadoPagoGateway): 
       passwordHash,
       emailVerified: false,
       billingWhatsappE164,
+      billingCycle: input.billingCycle,
+      couponCode: input.couponCode,
     },
     gateway,
   );
@@ -329,6 +357,8 @@ export type GoogleSignUpInput = {
   planCode?: string;
   /** Telefone do dono (mesma regra do cadastro por senha). */
   phone?: string | null;
+  billingCycle?: BillingCycle;
+  couponCode?: string;
 };
 
 /**
@@ -359,6 +389,8 @@ export async function signUpWithGoogle(input: GoogleSignUpInput, gateway?: Merca
       emailVerified: true,
       planCode: input.planCode,
       billingWhatsappE164,
+      billingCycle: input.billingCycle,
+      couponCode: input.couponCode,
     },
     gateway,
   );

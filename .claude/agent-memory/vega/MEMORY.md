@@ -61,3 +61,5 @@
 - [F7: monitor de cobrança](billing_f7_monitor_design.md) — down só por tick/e-mail preso/e-mail em sequência; e-mail ao admin com reserva atômica; armadilha do spyOn em delegate Prisma.
 - [Monitor de erros próprio (Melhoria 1)](error_monitor_design.md) — captura, janela de alerta de 15 min, timestamp sem fuso no SQL cru, auto-flush nos testes.
 - [2FA TOTP: login em 2 passos, gate do admin, E2E](two_factor_totp_design.md) — credentials recusa conta com 2FA; edição multi-linha em arquivo CRLF falha em silêncio.
+
+- [Plano anual + cupons (Melhoria 6)](annual_coupons_design.md) — ciclo da fatura manda, piso R$ 1, resgate atômico, lacunas assumidas (Google, VOID, termos).

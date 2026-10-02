@@ -6,7 +6,9 @@ import {
   billingEventLabel,
   DEFAULT_BILLING_TIMEZONE,
   effectiveStatus,
+  grossCentsFor,
   localDateOf,
+  mrrContributionCents,
   noticeTimelineLabel,
   safeTimezone,
   startOfLocalDay,
@@ -98,7 +100,8 @@ export async function getFinanceOverview(now: Date = new Date()): Promise<Financ
           cancelAtPeriodEnd: true,
           manualSuspendedAt: true,
           tenant: { select: { timezone: true } },
-          plan: { select: { priceCents: true } },
+          billingCycle: true,
+          plan: { select: { priceCents: true, annualPriceCents: true } },
         },
       }),
       prisma.subscription.count({ where: { canceledAt: { gte: start, lt: nextStart } } }),
@@ -139,17 +142,21 @@ export async function getFinanceOverview(now: Date = new Date()): Promise<Financ
 
     // MRR: quem paga (já pagou alguma vez) e está ACTIVE ou PAST_DUE. Teste e suspensas ficam de fora.
     const paying = s.firstPaidAt !== null;
-    if (paying && (status === "ACTIVE" || status === "PAST_DUE")) mrrCents += s.plan.priceCents;
+    // MRR: anual entra como preço anual / 12.
+    const cycle = s.billingCycle === "ANNUAL" ? "ANNUAL" : "MONTHLY";
+    if (paying && (status === "ACTIVE" || status === "PAST_DUE")) mrrCents += mrrContributionCents(s.plan, cycle);
 
     // Próximas renovações: ACTIVE pagante sem cancelamento agendado, pelo fim do período corrente (30 dias é cumulativo).
     if (paying && status === "ACTIVE" && !s.cancelAtPeriodEnd && s.currentPeriodEnd >= now) {
+      // Renovação é caixa: no anual, o valor cheio do ano (não o 1/12 do MRR).
+      const renewalCents = grossCentsFor(s.plan, cycle);
       if (s.currentPeriodEnd < in7) {
         upcoming.next7.count += 1;
-        upcoming.next7.cents += s.plan.priceCents;
+        upcoming.next7.cents += renewalCents;
       }
       if (s.currentPeriodEnd < in30) {
         upcoming.next30.count += 1;
-        upcoming.next30.cents += s.plan.priceCents;
+        upcoming.next30.cents += renewalCents;
       }
     }
   }
@@ -201,6 +208,8 @@ export type CompanyBilling = {
     name: string;
     slug: string;
     planName: string;
+    billingCycle: "MONTHLY" | "ANNUAL";
+    couponCode: string | null;
     status: SubscriptionStatus;
     currentPeriodEnd: string;
     firstPaidAt: string | null;
@@ -227,7 +236,7 @@ export async function getCompanyBilling(tenantId: string, now: Date = new Date()
       billingWhatsappE164: true,
       billingWhatsappOptOutAt: true,
       subscription: {
-        select: { status: true, trialEndsAt: true, currentPeriodEnd: true, firstPaidAt: true, cancelAtPeriodEnd: true, manualSuspendedAt: true, plan: { select: { name: true } } },
+        select: { status: true, trialEndsAt: true, currentPeriodEnd: true, firstPaidAt: true, cancelAtPeriodEnd: true, manualSuspendedAt: true, billingCycle: true, coupon: { select: { code: true } }, plan: { select: { name: true } } },
       },
     },
   });
@@ -246,6 +255,8 @@ export async function getCompanyBilling(tenantId: string, now: Date = new Date()
       name: tenant.name,
       slug: tenant.slug,
       planName: sub.plan.name,
+      billingCycle: sub.billingCycle === "ANNUAL" ? "ANNUAL" : "MONTHLY",
+      couponCode: sub.coupon?.code ?? null,
       status: effectiveStatus({ ...sub, timezone: tenant.timezone }, now),
       currentPeriodEnd: sub.currentPeriodEnd.toISOString(),
       firstPaidAt: sub.firstPaidAt?.toISOString() ?? null,

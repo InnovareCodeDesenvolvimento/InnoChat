@@ -10,6 +10,10 @@ export type PaymentHistoryItem = {
   periodEnd: string;
   status: "PAID" | "OPEN";
   paidAt: string | null;
+  /** Fatura de plano anual (12 meses) e desconto de cupom já abatido (opcionais: telas antigas seguem valendo). */
+  cycle?: "MONTHLY" | "ANNUAL";
+  discountCents?: number;
+  couponCode?: string | null;
 };
 
 const BRL = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
@@ -41,6 +45,10 @@ export function PaymentHistoryCard({ items, timezone }: { items: PaymentHistoryI
                 </span>
                 <span className="flex items-center gap-3">
                   <span className="font-medium tabular-nums text-text">{BRL.format(item.amountCents / 100)}</span>
+                  {item.cycle === "ANNUAL" ? <Badge variant="neutral">Anual</Badge> : null}
+                  {item.discountCents && item.discountCents > 0 ? (
+                    <span className="text-xs text-text-secondary">cupom {item.couponCode ?? ""}: {BRL.format(item.discountCents / 100)} de desconto</span>
+                  ) : null}
                   {item.status === "PAID" && item.paidAt ? (
                     <Badge variant="success">Paga em {formatInTimeZone(new Date(item.paidAt), timezone, "dd/MM/yyyy")}</Badge>
                   ) : (

@@ -36,6 +36,8 @@ export async function listPlansAction() {
 const updatePlanSchema = z.object({
   name: z.string().trim().min(1).max(80).optional(),
   priceCents: z.coerce.number().int().min(0).optional(),
+  // Preço do plano anual em centavos (positivo) ou `null` para tirar a opção anual.
+  annualPriceCents: z.coerce.number().int().min(1).nullable().optional(),
   maxWhatsappNumbers: z.coerce.number().int().min(1).optional(),
   maxProfessionals: z.coerce.number().int().min(1).nullable().optional(),
   active: z.boolean().optional(),

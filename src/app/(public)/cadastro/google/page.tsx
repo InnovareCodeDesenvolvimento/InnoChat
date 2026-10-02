@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { AuthShell } from "@/components/public/auth-shell";
+import { MetaTracking } from "@/components/public/meta-tracking";
 import { getGoogleSignUpPrefillAction } from "@/modules/signup/actions";
 import { GoogleSignupError, GoogleSignupForm } from "./google-signup-form";
 
@@ -35,6 +36,7 @@ export default async function CadastroGooglePage({ searchParams }: { searchParam
   return (
     <AuthShell {...SHELL}>
       <GoogleSignupForm token={t} email={prefill.data.email} name={prefill.data.name} />
+      <MetaTracking />
     </AuthShell>
   );
 }

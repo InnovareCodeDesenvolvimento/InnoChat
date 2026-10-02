@@ -3,7 +3,8 @@ import { getPrisma } from "@/lib/db/prisma";
 import { withAdvisoryLock } from "@/lib/db/advisory-lock";
 import { describeDbError, isTransactionTimeout } from "@/lib/db/prisma-errors";
 import { logger } from "@/lib/logger";
-import { effectiveStatus, validateCpfCnpj } from "@/core/billing";
+import { cycleMonths, effectiveStatus, validateCpfCnpj } from "@/core/billing";
+import { loadInvoiceCharge } from "./coupons";
 import {
   pixEnvironmentFor,
   createInvoiceForPeriodTracked,
@@ -313,7 +314,6 @@ async function generateUpcomingInvoices(
       }
 
       const periodStart = subscription.currentPeriodEnd;
-      const periodEnd = addMonths(periodStart, 1);
 
       // Downgrade agendado (`changePlan`, docs/arquitetura.md §7.2): o ciclo que está sendo
       // faturado AGORA (5 dias antes de começar) é o "próximo ciclo" em que ele entra em vigor —
@@ -323,16 +323,21 @@ async function generateUpcomingInvoices(
         await prisma.subscription.update({ where: { id: subscription.id }, data: { planId: subscription.pendingPlanId, pendingPlanId: null } });
       }
 
+      // Ciclo (mensal/anual) e cupom da assinatura: o valor e o período da fatura saem daqui.
+      const charge = await loadInvoiceCharge(subscription, billingPlan);
+      const periodEnd = addMonths(periodStart, cycleMonths(charge.cycle));
+
       const { invoice, created } = await createInvoiceForPeriodTracked({
         subscriptionId: subscription.id,
-        amountCents: billingPlan.priceCents,
+        amountCents: charge.netCents,
+        charge,
         periodStart,
         periodEnd,
         // Vence quando o período ATUAL acaba (= `periodStart`), que é quando o status efetivo muda. O vencimento
         // era gravado no fim do período NOVO (um mês depois), e a régua de lembretes e o banner mentiam a data.
         dueAt: periodStart,
         payerEmail,
-        description: generateInvoiceDescription(subscription.tenant.name),
+        description: generateInvoiceDescription(subscription.tenant.name, charge.cycle),
         gateway,
       });
 
@@ -343,7 +348,7 @@ async function generateUpcomingInvoices(
           subscriptionId: subscription.id,
           invoiceId: invoice.id,
           type: "INVOICE_CREATED",
-          metadata: { amountCents: invoice.amountCents },
+          metadata: { amountCents: invoice.amountCents, cycle: invoice.cycle, discountCents: invoice.discountCents },
         });
         // O aviso "fatura gerada" não é enviado aqui: o planejador da régua o enfileira nesta mesma rodada
         // (etapa INVOICE_CREATED) e o despachante reenvia se o SMTP falhar.
@@ -389,7 +394,7 @@ async function regenerateExpiredPix(
       const pix = await gateway.createPixPayment({
         externalReference: invoice.id,
         amountCents: invoice.amountCents,
-        description: generateInvoiceDescription(invoice.subscription.tenant.name),
+        description: generateInvoiceDescription(invoice.subscription.tenant.name, invoice.cycle === "ANNUAL" ? "ANNUAL" : "MONTHLY"),
         payerEmail,
         payerName: invoice.subscription.tenant.name,
         payerDocument: tenantDocument.valid ? tenantDocument.digits : null,
