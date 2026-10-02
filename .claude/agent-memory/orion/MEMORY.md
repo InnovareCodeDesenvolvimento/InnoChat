@@ -14,3 +14,4 @@
 - [Revisão correções régua 587730f](billing_regua_fixes_review_2026-10-01.md) — LIBERADO; SIM repetido sem trava, callers de effectiveStatus sem manualSuspendedAt
 - [Revisão F6 Financeiro/Envios](billing_f6_review_2026-10-02.md) — LIBERADO; reenvio de FAILED em retry duplica, retenção recipient vs anonimização 90d
 - [Revisão Onda 1 melhorias](onda1_melhorias_review_2026-10-02.md) — BLOQUEIA: token Google na URL com Pixel, 2FA admin só no layout; padrões
+- [Revisão final 8 melhorias](final_melhorias_review_2026-10-02.md) — LIBERA; auditoria expõe texto do admin ao dono, nome de cliente em log append-only, restore aceita dump em claro
