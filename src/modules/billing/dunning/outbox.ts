@@ -40,6 +40,18 @@ export function maskPhoneE164(e164: string): string {
   return `+${d.slice(0, 2)} ${ddd} ${sub.slice(0, 1)}****-${sub.slice(-4)}`;
 }
 
+/**
+ * Reenvio manual pelo Admin (F6): o aviso novo leva `<cycleKey original>:resend:<id do aviso reenviado>`. A chave única
+ * `(cycleKey, step, channel)` torna o reenvio idempotente (reenviar o MESMO aviso duas vezes não cria dois). O despachante
+ * reconfere "ainda é devido?" com a chave ORIGINAL, então reenviar nunca cobra quem já pagou nem uma etapa que já passou.
+ */
+export const RESEND_CYCLE_MARKER = ":resend:";
+
+export function baseCycleKey(cycleKey: string): string {
+  const index = cycleKey.indexOf(RESEND_CYCLE_MARKER);
+  return index === -1 ? cycleKey : cycleKey.slice(0, index);
+}
+
 type EnqueueSubject = { tenantId: string; subscriptionId: string };
 
 /**
@@ -87,10 +99,39 @@ export async function failExhaustedStuckNotices(stuckBefore: Date, maxAttempts: 
   return result.count;
 }
 
+export type NoticeRecipientKind = "OWNER" | "BILLING_EMAIL" | "BILLING_WHATSAPP";
+
+/** Teto do texto guardado no snapshot (o maior aviso tem ~2 mil caracteres; o resto é folga, não vira armazenamento ilimitado). */
+const SNAPSHOT_MAX_CHARS = 8000;
+
+/**
+ * F6: destino COMPLETO + snapshot do que foi enviado, para o registro global do Admin. Dado pessoal: só vai ao banco
+ * (nunca a log) e a manutenção zera depois de 12 meses (`purgeNoticePersonalData`).
+ */
+export type NoticeAuditFields = {
+  recipient?: string | null;
+  recipientKind?: NoticeRecipientKind | null;
+  renderedSubject?: string | null;
+  renderedText?: string | null;
+};
+
+function auditData(extra: NoticeAuditFields | undefined) {
+  if (!extra) return {};
+  return {
+    ...(extra.recipient !== undefined ? { recipient: extra.recipient?.slice(0, 500) ?? null } : {}),
+    ...(extra.recipientKind !== undefined ? { recipientKind: extra.recipientKind } : {}),
+    ...(extra.renderedSubject !== undefined ? { renderedSubject: extra.renderedSubject?.slice(0, 300) ?? null } : {}),
+    ...(extra.renderedText !== undefined ? { renderedText: extra.renderedText?.slice(0, SNAPSHOT_MAX_CHARS) ?? null } : {}),
+  };
+}
+
+/** Separador entre as mensagens de um mesmo aviso de WhatsApp (texto + Pix copia e cola) dentro de `renderedText`. */
+export const RENDERED_PARTS_SEPARATOR = "\n\n<<<mensagem-seguinte>>>\n\n";
+
 export async function markNoticeSent(
   id: string,
   now: Date,
-  data: { recipientMasked: string | null; providerMessageId?: string | null; platformConnectionId?: string | null; senderPhoneE164?: string | null },
+  data: { recipientMasked: string | null; providerMessageId?: string | null; platformConnectionId?: string | null; senderPhoneE164?: string | null } & NoticeAuditFields,
 ): Promise<void> {
   await getPrisma().billingNotice.updateMany({
     where: { id, status: "SENDING" },
@@ -103,6 +144,7 @@ export async function markNoticeSent(
       providerMessageId: data.providerMessageId ?? null,
       platformConnectionId: data.platformConnectionId ?? null,
       senderPhoneE164: data.senderPhoneE164 ?? null,
+      ...auditData(data),
     },
   });
 }
@@ -121,7 +163,14 @@ export async function markNoticeSentSafely(...args: Parameters<typeof markNotice
     logger.error("billing.notice.mark_sent_failed", { noticeId: id, errorName: error instanceof Error ? error.name : "unknown" });
   }
   try {
-    await markNoticeSent(id, now, { recipientMasked: data.recipientMasked, providerMessageId: data.providerMessageId });
+    await markNoticeSent(id, now, {
+      recipientMasked: data.recipientMasked,
+      providerMessageId: data.providerMessageId,
+      recipient: data.recipient,
+      recipientKind: data.recipientKind,
+      renderedSubject: data.renderedSubject,
+      renderedText: data.renderedText,
+    });
     return;
   } catch (error) {
     logger.error("billing.notice.mark_sent_retry_failed", { noticeId: id, errorName: error instanceof Error ? error.name : "unknown" });
@@ -135,15 +184,15 @@ export async function markNoticeSentSafely(...args: Parameters<typeof markNotice
   }
 }
 
-export async function markNoticeSkipped(id: string, reason: SkipReason, extra: { recipientMasked?: string | null } = {}): Promise<void> {
+export async function markNoticeSkipped(id: string, reason: SkipReason, extra: { recipientMasked?: string | null } & NoticeAuditFields = {}): Promise<void> {
   await getPrisma().billingNotice.updateMany({
     where: { id, status: "SENDING" },
-    data: { status: "SKIPPED", skippedReason: reason, ...(extra.recipientMasked !== undefined ? { recipientMasked: extra.recipientMasked } : {}) },
+    data: { status: "SKIPPED", skippedReason: reason, ...(extra.recipientMasked !== undefined ? { recipientMasked: extra.recipientMasked } : {}), ...auditData(extra) },
   });
 }
 
 /** Falhou nesta tentativa: espera crescente até o teto de tentativas ou o prazo do aviso. Só o CÓDIGO do erro é gravado. */
-export async function markNoticeFailed(id: string, now: Date, attemptsBefore: number, errorCode: string): Promise<void> {
+export async function markNoticeFailed(id: string, now: Date, attemptsBefore: number, errorCode: string, extra?: NoticeAuditFields): Promise<void> {
   const attempts = attemptsBefore + 1;
   await getPrisma().billingNotice.updateMany({
     where: { id, status: "SENDING" },
@@ -152,6 +201,7 @@ export async function markNoticeFailed(id: string, now: Date, attemptsBefore: nu
       attempts,
       lastErrorCode: errorCode.slice(0, 60),
       nextAttemptAt: new Date(now.getTime() + retryDelayMinutes(attempts) * 60_000),
+      ...auditData(extra),
     },
   });
 }
@@ -188,7 +238,7 @@ export async function suppressAutoCancelNotices(tenantId: string, subscriptionId
  * "Fatura gerada" enviada NA HORA pelo cadastro: grava a linha já como `SENT` (chave `invoiceId + INVOICE_CREATED +
  * EMAIL`, a mesma do planejador e do backfill), para a régua não mandar o mesmo aviso de novo. Idempotente.
  */
-export async function recordInlineInvoiceNotice(args: { tenantId: string; subscriptionId: string; invoiceId: string; expiresAt: Date; recipientMasked: string }): Promise<void> {
+export async function recordInlineInvoiceNotice(args: { tenantId: string; subscriptionId: string; invoiceId: string; expiresAt: Date; recipientMasked: string; recipient?: string | null }): Promise<void> {
   const now = new Date();
   await getPrisma().billingNotice.createMany({
     data: [
@@ -206,6 +256,8 @@ export async function recordInlineInvoiceNotice(args: { tenantId: string; subscr
         nextAttemptAt: now,
         sentAt: now,
         recipientMasked: args.recipientMasked,
+        recipient: args.recipient ?? null,
+        recipientKind: args.recipient ? "OWNER" : null,
       },
     ],
     skipDuplicates: true,

@@ -396,6 +396,118 @@ const HELP_ENTRIES = {
     tip: "Um chip só para os avisos isola o risco: se for bloqueado, o WhatsApp do seu atendimento não é afetado. Número novo envia menos por hora nos 3 primeiros dias.",
     warning: "Não use o WhatsApp comercial do site nem o número do bot de uma empresa: o sistema recusa.",
   },
+  "pagina.adminFinanceiro": {
+    title: "Painel financeiro",
+    purpose: "Mostra quanto a plataforma fatura, quem está pagando em dia, quem atrasou e quanto dinheiro está para entrar. Os valores do mês seguem o horário de Brasília.",
+    steps: [
+      "Leia os cartões de cima para baixo: receita, recebido, atrasos e cancelamentos.",
+      "Cada cartão tem um \"i\" que explica como o número é calculado.",
+      "Para levar as faturas para uma planilha, use \"Baixar faturas (CSV)\" lá embaixo.",
+    ],
+    examples: [
+      "A receita mensal está em R$ 4.200 e o recebido no mês em R$ 2.900: ainda faltam faturas para vencer neste mês.",
+      "O cartão de atrasos mostra 3 faturas com mais de 30 dias: vale ligar para essas empresas antes de elas serem canceladas.",
+    ],
+  },
+  "admin.receitaMensal": {
+    title: "Receita mensal recorrente",
+    purpose: "É a soma da mensalidade das empresas que pagam e estão em dia ou atrasadas. Empresas em teste e suspensas não entram.",
+    examples: [
+      "10 empresas no plano de R$ 59,90 dão R$ 599,00 por mês.",
+      "Se uma delas for suspensa, o valor cai R$ 59,90 no mesmo instante.",
+    ],
+  },
+  "admin.assinantes": {
+    title: "Assinantes por situação",
+    purpose: "Conta as empresas em cada situação: em teste, ativas (pagando), com fatura atrasada e suspensas.",
+    examples: [
+      "12 em teste, 30 ativas, 2 atrasadas e 1 suspensa: 33 empresas pagam ou já pagaram, e 12 ainda estão experimentando.",
+    ],
+    tip: "Empresa atrasada ainda usa o sistema normalmente. A suspensa fica só para leitura.",
+  },
+  "admin.recebidoMes": {
+    title: "Recebido no mês",
+    purpose: "É o total das faturas pagas neste mês, contado pela data do pagamento, e a comparação com o mês passado.",
+    examples: [
+      "Recebido R$ 2.900 contra R$ 2.600 no mês passado: sobe 11,5%.",
+      "Uma fatura paga no dia 31 às 23h30 conta nesse mês, no horário de Brasília.",
+    ],
+  },
+  "admin.proximosVencimentos": {
+    title: "Próximos vencimentos",
+    purpose: "Mostra quantas faturas vencem nos próximos 7 e 30 dias e quanto dinheiro isso representa. Só entram empresas ativas que não pediram cancelamento.",
+    examples: ["7 dias: 4 faturas, R$ 239,60. 30 dias: 18 faturas, R$ 1.078,20."],
+  },
+  "admin.inadimplencia": {
+    title: "Faturas atrasadas",
+    purpose: "Soma as faturas vencidas e ainda abertas de empresas que já pagaram alguma vez. Quem está no período de teste não entra aqui.",
+    examples: [
+      "3 faturas atrasadas, R$ 179,70 no total, 1 delas há mais de 30 dias: essa é a que merece contato direto.",
+    ],
+    warning: "Depois do prazo de carência, a empresa é suspensa e, mais adiante, cancelada.",
+  },
+  "admin.cancelamentos": {
+    title: "Cancelamentos do mês",
+    purpose: "Conta as empresas canceladas no mês e separa quem pediu para sair de quem foi cancelada por falta de pagamento. A taxa compara com as empresas que pagavam no começo do mês.",
+    examples: [
+      "4 cancelamentos: 1 pediu para sair e 3 por falta de pagamento. Com 40 pagantes no começo do mês, a taxa é 10%.",
+      "Sem pagantes no começo do mês, a taxa aparece como \"sem base\".",
+    ],
+  },
+  "admin.recuperados": {
+    title: "Recuperados pelos avisos",
+    purpose: "Conta os pagamentos feitos por empresas que estavam atrasadas ou suspensas. É a forma de saber se os avisos de cobrança estão funcionando.",
+    examples: ["5 empresas pagaram depois de atrasar, somando R$ 299,50: esse dinheiro teria ficado parado sem os avisos."],
+  },
+  "admin.baixarFaturas": {
+    title: "Baixar faturas em planilha",
+    purpose: "Gera um arquivo CSV com as faturas de um período, que abre no Excel ou no Google Planilhas.",
+    steps: [
+      "Escolha a data inicial e a final do vencimento.",
+      "Se quiser, escolha só pagas, só abertas ou só anuladas.",
+      "Clique em \"Baixar faturas (CSV)\".",
+    ],
+    examples: ["De 01/09 a 30/09, só pagas: serve para conferir com o extrato do Mercado Pago."],
+    warning: "O período pode ter no máximo 12 meses por arquivo.",
+  },
+  "pagina.adminEnvios": {
+    title: "Envios de cobrança",
+    purpose: "É o registro de cada aviso que o sistema mandou (ou tentou mandar) às empresas: lembrete de vencimento, atraso, suspensão e pagamento. Mostra para quem foi, por qual canal e se chegou.",
+    steps: [
+      "Use os filtros de período, empresa, canal, etapa e situação. \"Só falhas\" mostra apenas o que não saiu.",
+      "Clique em \"Ver mensagem\" para ler o texto que a empresa recebeu.",
+      "Nos avisos que falharam, \"Reenviar\" tenta de novo.",
+    ],
+    examples: [
+      "Uma empresa diz que não recebeu o lembrete: filtre por ela e veja o e-mail ou telefone exato para onde foi.",
+      "\"Não enviado: sem número de WhatsApp conectado\" significa que o aviso nem saiu por falta de um número da plataforma.",
+    ],
+    tip: "O e-mail sempre é tentado. O WhatsApp só sai para quem aceitou receber.",
+  },
+  "admin.enviosFiltros": {
+    title: "Filtros dos envios",
+    purpose: "Reduzem a lista para o que você quer conferir. Os totais no topo acompanham os filtros.",
+    examples: [
+      "Período de 01/10 a 07/10 e situação \"Falhou\": todos os avisos que não saíram nessa semana.",
+      "Canal WhatsApp e empresa \"Studio Bela\": confere se o aviso chegou no telefone dela.",
+    ],
+  },
+  "pagina.adminEmpresaCobranca": {
+    title: "Cobrança da empresa",
+    purpose: "Reúne num lugar só o plano, a situação da assinatura, as faturas e tudo o que aconteceu com essa empresa na cobrança.",
+    examples: [
+      "A empresa ligou dizendo que pagou: confira a fatura e veja na linha do tempo se o pagamento foi confirmado.",
+      "Ela diz que nunca recebeu aviso: a linha do tempo mostra cada mensagem enviada, com e-mail ou telefone mascarado.",
+    ],
+  },
+  "admin.linhaDoTempo": {
+    title: "Linha do tempo da cobrança",
+    purpose: "Mistura os avisos enviados com o que aconteceu na assinatura (pagamento, suspensão, cancelamento), do mais novo para o mais antigo.",
+    examples: [
+      "Você lê: \"Lembrete da véspera enviado por WhatsApp\", depois \"Fatura paga\": o aviso funcionou.",
+      "Se aparece \"Suspensa por falta de pagamento\" sem nenhum aviso antes, vale checar o canal de envio.",
+    ],
+  },
   "config.retomada": {
     title: "Quando o bot volta a responder",
     purpose: "Quando o cliente pede para falar com uma pessoa, o bot fica em silêncio. Aqui você escolhe quanto tempo de silêncio da equipe faz o bot voltar a responder sozinho.",

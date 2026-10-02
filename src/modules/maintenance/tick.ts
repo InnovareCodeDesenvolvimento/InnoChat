@@ -1,3 +1,4 @@
+import { clearExpiredNoticePersonalData } from "@/lib/db/billing-notice-queries";
 import { getPrisma } from "@/lib/db/prisma";
 import { logger } from "@/lib/logger";
 import { CANCELED_RETENTION_DAYS } from "@/core/billing";
@@ -36,6 +37,8 @@ const CHAT_MESSAGE_RETENTION_DAYS = 90;
 const CHAT_PURGE_BATCH = 5000;
 const CHAT_PURGE_MAX_BATCHES = 20;
 const BILLING_EMAIL_MARK_RETENTION_DAYS = 90;
+/** Destino completo e texto enviado dos avisos de cobrança (registro do Admin): 12 meses, depois só fica o mascarado. */
+const BILLING_NOTICE_PERSONAL_DATA_RETENTION_DAYS = 365;
 
 export type MaintenanceTickSummary = {
   inboundEventsPurged: number;
@@ -135,6 +138,15 @@ export async function runMaintenanceTick(now: Date = new Date()): Promise<Mainte
     await prisma.providerEvent.deleteMany({ where: { provider: "billing-email", processedAt: { not: null, lt: billingEmailCutoff } } });
   } catch (error) {
     logger.warn("maintenance.billing_email_marks_purge_failed", { errorMessage: error instanceof Error ? error.message : String(error) });
+  }
+
+  // Registro de envios da régua (F6): o destino completo (e-mail/telefone) e o texto enviado saem depois de 12 meses.
+  // Falha isolada; não entra no summary (contrato do tick estável).
+  try {
+    const noticeCutoff = new Date(now.getTime() - BILLING_NOTICE_PERSONAL_DATA_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+    await clearExpiredNoticePersonalData(noticeCutoff);
+  } catch (error) {
+    logger.warn("maintenance.billing_notice_personal_data_purge_failed", { errorMessage: error instanceof Error ? error.message : String(error) });
   }
 
   const summary: MaintenanceTickSummary = {

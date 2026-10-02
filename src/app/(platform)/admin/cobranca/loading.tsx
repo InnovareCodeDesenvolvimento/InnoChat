@@ -7,7 +7,7 @@ export default function Loading() {
   return (
     <PageLoading
       icon={navIconFor("admin/cobranca")}
-      title="Cobrança"
+      title="Cobranças"
       description="Faturas de todas as empresas, totais do mês e inadimplência."
     >
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">

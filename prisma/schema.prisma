@@ -1104,6 +1104,14 @@ model BillingNotice {
   recipientMasked   String?
   providerMessageId String?
 
+  // F6 (registro global do Admin). `recipient` = destino COMPLETO (dado pessoal, só no banco, nunca em log; a manutenção zera
+  // após 12 meses junto com `renderedText`). `recipientKind`: OWNER | BILLING_EMAIL | BILLING_WHATSAPP (CHECK).
+  // `renderedSubject`/`renderedText` = snapshot do que foi enviado (ou tentado). Avisos anteriores à F6 ficam nulos.
+  recipient       String?
+  recipientKind   String?
+  renderedSubject String?
+  renderedText    String?
+
   // WhatsApp: qual conexão da plataforma enviou e cópia do número no instante do envio (trocar de número
   // não apaga o histórico). A conexão nunca é apagada depois de usada; `SetNull` só cobre o descarte de
   // uma conexão PENDING.
@@ -1123,6 +1131,8 @@ model BillingNotice {
   @@index([status, nextAttemptAt])
   // Linha do tempo da empresa (Admin).
   @@index([tenantId, createdAt])
+  // Registro global do Admin: ordem por última mudança + id (cursor).
+  @@index([updatedAt, id])
   @@map("billing_notices")
 }
 

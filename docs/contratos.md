@@ -844,9 +844,11 @@ Todas guardadas por `requirePlatformAdmin()`.
 - `listPlansAction(): Result<Plan[]>`.
 - `updatePlanAction(planId, input): Result<Plan>` — `input` parcial de `{ name, priceCents,
   maxWhatsappNumbers, maxProfessionals: number | null, active, sortOrder }`.
-- `listCompaniesAction({ cursor?, limit? }): Result<{ items: CompanyListItem[]; nextCursor:
-  string | null }>` — paginado (`limit` máx. 100, padrão 30), cursor por `tenantId`. Cada item
-  traz `persistedStatus` E `effectiveStatus` (podem divergir até o próximo tick).
+- `listCompaniesAction({ page?, pageSize? }): Result<{ items: CompanyListItem[]; page; pageSize;
+  totalItems; totalPages }>` — paginação POR PÁGINA (F6, 2026-10-02; antes era cursor): `page`
+  1-based, `pageSize` só `10 | 25 | 50 | 100` (padrão 25; outro valor → `INVALID_PAYLOAD`), `page`
+  fora do intervalo devolve a última página, `page < 1` vira 1. Ordem estável por `tenantId`. Cada
+  item traz `persistedStatus` E `effectiveStatus` (podem divergir até o próximo tick).
 - `suspendCompanyAction(tenantId): Result<{ tenantId }>` — força `SUSPENDED` mesmo antes do
   vencimento (empurra `currentPeriodEnd` para o passado — ver comentário em
   `admin-service.ts`; um pagamento futuro sempre conta a partir de `paidAt`, então isso nunca
@@ -1560,9 +1562,11 @@ integração (`service.ts`, sempre mascaradas), a leitura devolve tudo em claro.
 Tudo em `src/modules/billing/admin-service.ts`/`admin-actions.ts` (mesmo arquivo dos planos e
 empresas, §9) — guardado por `requirePlatformAdmin()`.
 
-- `listInvoicesAdminAction({ status?, tenantId?, fromDate?, toDate?, cursor?, limit? }):
-  Result<{ items: AdminInvoiceListItem[]; nextCursor: string | null }>` — faturas de TODAS as
-  empresas, paginadas por cursor (`limit` máx. 100, padrão 30; nunca "todas de uma vez").
+- `listInvoicesAdminAction({ status?, tenantId?, fromDate?, toDate?, page?, pageSize? }):
+  Result<{ items: AdminInvoiceListItem[]; page; pageSize; totalItems; totalPages }>` — faturas de
+  TODAS as empresas, paginadas POR PÁGINA (F6, 2026-10-02; antes era cursor): `page` 1-based,
+  `pageSize` `10 | 25 | 50 | 100` (padrão 25), `totalItems` conta com os MESMOS filtros, ordem por
+  `id` desc, página fora do intervalo devolve a última (nunca "todas de uma vez").
   `fromDate`/`toDate` filtram por `dueAt` (vencimento), não por criação. Um único `findMany`
   com `include` (join) resolve `tenantName`/`tenantSlug` — sem N+1. Cada item:
   `{ id, tenantId, tenantName, tenantSlug, amountCents, status, periodStart, periodEnd, dueAt,
@@ -2076,3 +2080,57 @@ Uma etapa por vez (a mais recente da régua), id `bill:<subscriptionId>:<etapa>:
 
 ### Cadastro (senha e Google) salva o telefone
 `signUpAction` (campo opcional `phone`) e `completeGoogleSignUpAction` (`phone`, que já existia) passam o telefone para `Tenant.billingWhatsappE164`, normalizado por `normalizeBrPhoneToE164` (só dígitos com DDI). Inválido: `INVALID_PHONE` e nada é criado. O aviso "fatura gerada" do cadastro é enviado na hora e gravado no outbox como `SENT`; se o SMTP falhou, a régua reenvia.
+
+
+## Régua de cobrança, F6: visão financeira e registro de envios do Admin (2026-10-02)
+
+Plano em `docs/regua-de-cobranca.md` §3 e F6. Tudo atrás de `requirePlatformAdmin()` (empresa nunca chega aqui; não logado → `UNAUTHENTICATED`, não admin → `FORBIDDEN`). Código: `src/modules/billing/finance-service.ts`, `notice-register.ts`, `finance-csv.ts`, `paging.ts`, actions em `finance-actions.ts` (`"use server"`, retorno `Result<T>`). Rótulos em português em `src/core/billing/dunning-labels.ts`.
+
+### Paginação por página (todas as listas do Admin)
+Entrada `{ page?: number /* 1-based, padrão 1 */, pageSize?: 10 | 25 | 50 | 100 /* padrão 25 */ }`; saída `{ items, page, pageSize, totalItems, totalPages }`. `pageSize` fora dos 4 valores → `INVALID_PAYLOAD`. `page` maior que o total devolve a ÚLTIMA página válida (com `page` = a última); `page < 1` vira 1; lista vazia devolve `page: 1, totalPages: 1, items: []`. `count` usa exatamente os mesmos filtros da lista. Ordem estável (instante desc, id desc): o mesmo registro nunca cai em duas páginas. Vale para `listBillingNoticesAction`, `listCompanyBillingTimelineAction`, `listCompaniesAction` e `listInvoicesAdminAction`.
+
+### `getFinanceOverviewAction(): Result<FinanceOverview>`
+Mês e "hoje" no fuso `America/Sao_Paulo` (corrige o R14: antes o mês era o do servidor). Campos do contrato do §3.1, mais extras que a tela pode ignorar:
+- `mrrCents`: preço do plano de quem JÁ PAGOU alguma vez (`firstPaidAt` não nulo) e está `ACTIVE` ou `PAST_DUE` no status EFETIVO. Teste, suspensas e canceladas ficam de fora; cancelamento agendado ainda conta (paga até o fim do período).
+- `subscribers`: por status efetivo (`trialing | active | pastDue | suspended`); `canceledThisMonth` = `Subscription.canceledAt` no mês.
+- `receivedThisMonthCents` / `receivedLastMonthCents`: faturas `PAID` com `paidAt` no mês local (a de 31/10 23:00 em SP entra em outubro; a de 01/11 00:00 em SP, não).
+- `upcoming.next7` / `next30` (cumulativo: `next30` inclui `next7`): `ACTIVE` pagante, sem cancelamento agendado, por `currentPeriodEnd`, valor = preço do plano.
+- `delinquency`: faturas `OPEN` vencidas, não de teste, de quem já pagou e não está cancelada; `over30DaysCount` = vencidas há mais de 30 dias.
+- `churn`: `canceledCount` = eventos `CANCELED` do mês; `voluntary` = `cancelSource OWNER`; `involuntary` = `AUTO_SUSPENDED`, `TRIAL_NOT_CONVERTED` e `ADMIN` (a decisão não foi do cliente). Extras: `payingCanceledCount` (cancelamentos de quem já tinha pago, o numerador) e `baseAtMonthStart` (já pagaram e não estavam cancelados no dia 1º, o denominador). `ratePct` = `payingCanceledCount / baseAtMonthStart`, 1 casa decimal, `null` sem base. Teste não convertido NÃO entra na taxa (nunca foi pagante), mas entra em `canceledCount`/`involuntary`.
+- `recoveredThisMonth`: eventos `PAYMENT_CONFIRMED` do mês com `fromStatus` `PAST_DUE` ou `SUSPENDED` (`metadata.amountCents`).
+- `approximateHistory.hasBackfilledEvents`: `true` se existem eventos da carga inicial (`metadata.backfill`). A tela deve avisar que o churn de períodos anteriores ao deploy é estimado.
+
+Carga inicial (migration `20261007100100_regua_f6_backfill_billing_events`): deriva `CANCELED` (origem deduzida: `cancelAtPeriodEnd`/`cancelRequestedAt` = `OWNER`, nunca pagou = `TRIAL_NOT_CONVERTED`, senão `AUTO_SUSPENDED`) e `PAYMENT_CONFIRMED` (sem `fromStatus`, então nunca conta como "recuperado") de assinaturas e faturas antigas, com `metadata.backfill = true`. Só `INSERT`, idempotente.
+
+### `getCompanyBillingAction(tenantId): Result<CompanyBilling>`
+`{ company: { id, name, slug, planName, status /* efetivo */, currentPeriodEnd, firstPaidAt, billingEmailMasked, billingWhatsappMasked, whatsappOptIn }, invoices: AdminInvoiceListItem[] /* até 100, mais novas primeiro */, lifetimeValueCents }`. `whatsappOptIn` = tem número e não pediu para sair (WhatsApp ativo para todos, com opt-out, D5). Empresa inexistente → `NOT_FOUND`.
+
+### `listCompanyBillingTimelineAction(tenantId, { page?, pageSize? }): Result<{ items, page, pageSize, totalItems, totalPages }>`
+Avisos (`BillingNotice`, sem as marcas `LEGACY_SENT`) e eventos (`BillingEvent`) juntos, do mais novo ao mais antigo. Item: `{ id, at, kind: "NOTICE" | "EVENT", label }` (frase pronta: "Lembrete da véspera enviado por WhatsApp", "Pagamento baixado manualmente pelo admin") mais, em `NOTICE`: `noticeId, step, channel, status, skipReason, recipientMasked, recipient /* completo, só avisos novos */, attempts`; em `EVENT`: `type, from, to, actor: "SYSTEM" | "OWNER" | "ADMIN"`.
+
+### `GET /api/admin/finance/invoices.csv?from=YYYY-MM-DD&to=YYYY-MM-DD&status=OPEN|PAID|VOID|EXPIRED`
+`src/app/api/admin/finance/invoices.csv/route.ts`. Período pelo VENCIMENTO, datas inclusivas no fuso de São Paulo; padrão = últimos 12 meses terminando hoje; teto de 12 meses por arquivo. `text/csv; charset=utf-8`, BOM, separador `;`, valor com vírgula decimal ("49,90"), `Content-Disposition: attachment; filename="faturas-<de>_a_<ate>.csv"`, `Cache-Control: no-store`. Colunas: Empresa, Documento, Plano, Competência (`AAAA-MM` do início do período), Vencimento, Valor, Status, Pago em, Forma (`PIX | MANUAL`, só paga), Id da fatura, Id do pagamento MP. Toda célula passa por `csvCell` (`src/lib/csv.ts`): começar com `= + - @` (ou tab/CR) ganha apóstrofo, e `;`/aspas/quebra de linha vão entre aspas. Mais de 20 mil linhas → recusa em vez de truncar. Erros em JSON `{ error: { code, message } }`: `401 UNAUTHENTICATED`, `403 FORBIDDEN`, `400 INVALID_PAYLOAD` (data inválida, `from` depois de `to`, mais de 12 meses, status inválido), `413 EXPORT_TOO_LARGE`, `500 INTERNAL_ERROR` genérico. Cada exportação gera log `billing.finance.csv_exported` (só id do admin e contagem).
+
+### Registro global de envios: `listBillingNoticesAction(filters)`
+Responde "quais mensagens de cobrança e lembrete foram enviadas, para quem". Entrada: `{ from?, to? /* AAAA-MM-DD, inclusivas, SP; filtram pela última mudança do aviso */, tenantQuery? /* nome da empresa, contém */, tenantId?, channel?: "EMAIL" | "WHATSAPP", status?: "PENDING" | "SENDING" | "SENT" | "FAILED" | "SKIPPED", step? /* uma de DUNNING_STEPS */, onlyFailures?: boolean, page?, pageSize? }`. `onlyFailures` = `FAILED` mais "não enviado" por problema de entrega (`NO_PLATFORM_NUMBER`, `CHANNEL_DOWN`, `PERMANENT_REJECTION`, `NO_RECIPIENT`). Saída: `{ items, page, pageSize, totalItems, totalPages, totals: { sent, failed, skipped, pending } }`; `totals` conta o MESMO recorte (período, empresa, canal, etapa) SEM o filtro de situação (alimenta os cartões; `pending` = na fila + enviando; `failed` conta só `FAILED`). As marcas `SKIPPED/LEGACY_SENT` (migração do motor antigo) ficam fora.
+
+Item: `{ id, at /* sentAt ou updatedAt */, tenant: { id, name, slug }, step, stepLabel, channel, status, statusLabel, skippedReason?, skippedReasonLabel?, recipient, recipientDisplay, recipientIsMasked, recipientNote?, recipientKind, senderPhoneDisplay?, attempts, lastErrorCode?, lastErrorLabel?, hasSnapshot, canResend, invoice?: { id, amountCents, dueAt } }`.
+- `recipient`: destino COMPLETO (e-mail, ou telefone só com dígitos e DDI) para o admin saber para quem foi. Com mais de um e-mail (financeiro + dono), vêm separados por vírgula. `recipientDisplay`: telefone formatado ("+55 84 99999-0001"); e-mail igual a `recipient`.
+- `recipientIsMasked: true` = registro ANTERIOR à F6 (ou já apagado pela retenção): `recipient` traz só o valor mascarado ("jo***@gmail.com") e `recipientNote` explica ("Registro anterior..."). A tela mostra a indicação "registro anterior". `recipient: null` = ainda sem destino definido (na fila ou "sem destinatário").
+- `recipientKind`: `OWNER` (dono), `BILLING_EMAIL` (e-mail do financeiro) ou `BILLING_WHATSAPP`; `null` quando não dá para saber (aviso antigo de e-mail).
+- Aviso de e-mail para um contato do financeiro ainda não confirmado: 1 por dia; o excedente cai no dono (por isso o `recipientKind` pode ser `OWNER` mesmo com financeiro cadastrado).
+- `canResend`: `FAILED`, ou `SKIPPED` por `NO_PLATFORM_NUMBER`, `CHANNEL_DOWN`, `OUT_OF_WINDOW_EXPIRED`, `UNCONFIRMED_DAILY_LIMIT`, `NO_RECIPIENT`.
+
+### Armazenamento do destino e do texto (migration `20261007100000_regua_f6_registro_de_envios`, aditiva)
+`BillingNotice` ganhou `recipient`, `recipientKind` (CHECK), `renderedSubject`, `renderedText` (todas nulas) e o índice `(updatedAt, id)`. O despachante grava o destino completo e o SNAPSHOT do texto no envio (`SENT`), também na tentativa que falhou (`FAILED`) e, no WhatsApp, no "não enviado" (destino). Mensagens de WhatsApp de um mesmo aviso (texto + Pix copia e cola) ficam em `renderedText` separadas por `RENDERED_PARTS_SEPARATOR`. O envio "fatura gerada" do cadastro grava só o destino. Decisão: snapshot em vez de remontar, porque é o que realmente saiu e é auditável; o admin da plataforma é o controlador do dado, que vive só no banco e NUNCA em log (os logs continuam só com códigos e ids).
+
+**Retenção (LGPD):** a manutenção (`POST /api/internal/v1/maintenance/tick`) zera `recipient`, `renderedSubject` e `renderedText` dos avisos com última mudança há mais de 12 meses (SQL cru em `clearExpiredNoticePersonalData`, para não reescrever `updatedAt` e jogar linhas antigas para o topo do registro). Fica o `recipientMasked`. Isolado por try/catch e fora do `summary` do tick.
+
+### `getBillingNoticePreviewAction(noticeId): Result<NoticePreview>`
+`{ noticeId, channel, step, stepLabel, subject /* só e-mail */, text, messages: string[], source: "SNAPSHOT" | "REBUILT", approximate: boolean, approximateReason?, recipient, recipientIsMasked }`. Com snapshot: `source: "SNAPSHOT"`, `approximate: false`, o texto EXATO que saiu (e-mail: assunto + texto puro; WhatsApp: `messages` = uma por mensagem enviada, `text` = unidas por linha em branco). Sem snapshot (aviso antigo, ainda na fila, ou apagado pela retenção): remonta com `dunning-copy` e os dados DE HOJE, marca `source: "REBUILT"`, `approximate: true` e `approximateReason`; nunca gera Pix novo (usa o que a fatura tem, se ainda vale). Erros: `NOT_FOUND`; `PREVIEW_UNAVAILABLE` (etapa extinta, assinatura apagada, etapa sem texto para o canal).
+
+### `resendBillingNoticeAction(noticeId): Result<{ noticeId, alreadyQueued, status }>`
+Reenvio manual de aviso `FAILED` ou `SKIPPED` temporário (`canResend`). Cria um aviso NOVO (a chave do ciclo vira `<original>:resend:<id do aviso reenviado>`) e tenta enviar na hora, até 10 s. Idempotente pela chave única: reenviar o MESMO aviso de novo devolve o aviso já criado (`alreadyQueued: true`) sem mandar outra mensagem. O despachante é o mesmo da régua: respeita opt-out, janela de horário, ritmo e limites, e RECONFERE se ainda é devido com a chave original (quem pagou entre o erro e o reenvio vira `SKIPPED/PAID`; etapa que já passou vira `SKIPPED/STATUS_CHANGED`). `status` é o estado do aviso novo depois da tentativa (`SENT`, `SKIPPED`, `PENDING`...). O original continua como estava. Erros: `NOT_FOUND`, `NOT_RESENDABLE` (já enviado, já pago, mudou de situação, bloqueio de loop, suspensão manual), `OPTED_OUT` (WhatsApp, o cliente pediu para sair). Log `billing.notice.manual_resend` com id do admin e dos avisos, sem dado pessoal.
+
+### Testes
+`tests/integration/billing-finance-f6.integration.test.ts`: acesso (admin/não admin/sem sessão, actions e CSV), números do overview por cenário controlado (comparados por diferença antes/depois, banco compartilhado) incluindo as bordas do mês em SP, registro (destino completo, snapshot, filtros, só falhas, totais, antigos mascarados), prévia exata x remontada, reenvio (idempotência, opt-out, pagou depois do erro), linha do tempo, paginação por página (1ª, do meio, última, `pageSize`, fora do intervalo, filtro + página) em envios, linha do tempo, empresas e faturas, retenção, carga inicial e CSV (fórmula, aspas, teto de 12 meses, HTTP 400/401/403).

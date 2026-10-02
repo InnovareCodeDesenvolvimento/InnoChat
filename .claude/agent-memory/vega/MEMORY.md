@@ -55,3 +55,4 @@
 - [F4: WhatsApp da plataforma (cobrança) trocável](platform_whatsapp_f4_design.md) — troca atômica, ProviderEvent como estado auxiliar, travas anti-loop, armadilhas de edição/teste.
 - [F2 da régua: motor, carência 3/1, vencimento 23:59, bug do dueAt](regua_f2_motor.md) — 2026-10-01; planejador puro + outbox; FK da conexão, relógio injetado, CRLF.
 - [Revisão do Órion à régua: 6 correções](regua_orion_review_fixes.md) — manualSuspendedAt, Pix duplicado, posse do contato (gt, não gte), retenção, SENDING preso, LEGACY_SENT.
+- [F6: visão financeira + registro de envios + reenvio](billing_f6_finance_and_notice_register.md) — snapshot/destino completo, retenção por SQL cru, ":resend:", paginação por página, armadilhas.

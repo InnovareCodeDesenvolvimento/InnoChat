@@ -22,6 +22,7 @@ import {
   type DelinquentCompany,
 } from "./admin-service";
 import { reconcileInvoicePayment, type ReconcileOutcome } from "./reconcile";
+import { pagingInputShape, type PageInfo, type PageSize } from "./paging";
 
 /** Server Actions do admin da plataforma para planos e empresas (docs/contratos.md, Fase 7). */
 
@@ -49,13 +50,14 @@ export async function updatePlanAction(planId: string, input: unknown) {
   });
 }
 
-const listCompaniesSchema = z.object({ cursor: z.string().min(1).optional(), limit: z.coerce.number().int().min(1).max(100).optional() });
+const listCompaniesSchema = z.object(pagingInputShape);
 
-export async function listCompaniesAction(input?: unknown): Promise<Result<{ items: CompanyListItem[]; nextCursor: string | null }>> {
+/** Empresas, por página: `{ page (1-based), pageSize 10|25|50|100 (padrão 25) }` → `{ items, page, pageSize, totalItems, totalPages }`. */
+export async function listCompaniesAction(input?: unknown): Promise<Result<{ items: CompanyListItem[] } & PageInfo>> {
   return runAction(async () => {
     await requirePlatformAdmin();
     const data = listCompaniesSchema.parse(input ?? {});
-    return listCompanies(data);
+    return listCompanies(data as { page?: number; pageSize?: PageSize });
   });
 }
 
@@ -97,15 +99,15 @@ const listInvoicesAdminSchema = z.object({
   tenantId: z.string().min(1).optional(),
   fromDate: z.coerce.date().optional(),
   toDate: z.coerce.date().optional(),
-  cursor: z.string().min(1).optional(),
-  limit: z.coerce.number().int().min(1).max(100).optional(),
+  ...pagingInputShape,
 });
 
-export async function listInvoicesAdminAction(input?: unknown): Promise<Result<{ items: AdminInvoiceListItem[]; nextCursor: string | null }>> {
+/** Faturas, por página, com os filtros de situação, empresa e período de vencimento. Mesmo formato de paginação das empresas. */
+export async function listInvoicesAdminAction(input?: unknown): Promise<Result<{ items: AdminInvoiceListItem[] } & PageInfo>> {
   return runAction(async () => {
     await requirePlatformAdmin();
     const data = listInvoicesAdminSchema.parse(input ?? {});
-    return listInvoicesAdmin(data);
+    return listInvoicesAdmin(data as Parameters<typeof listInvoicesAdmin>[0]);
   });
 }
 

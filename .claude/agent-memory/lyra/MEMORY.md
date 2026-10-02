@@ -32,3 +32,4 @@
 - [Landing: rede, 3D, jornada, botão](landing-melhorias-3d-jornada-rede.md) — view() preso a overflow:hidden (usar clip), sentinelas, FAB x CTA, números do Lighthouse.
 - [Landing pública](landing-publica.md) — decisões, armadilhas (build paralelo, Playwright x animação) e prova social desligada.
 - [Fase 3 cobrança no painel](fase3-cobranca-painel-banner-e-contato.md) — banner com contador via core, pedido do WhatsApp, Contato; overflow do Pix, carência 3 dias nos E2E, eslint só em src/tests.
+- [Telas F6 do Admin](admin-financeiro-envios-f6.md) — URL como estado, paginação, banco isolado p/ E2E, pkill não funciona no Windows.

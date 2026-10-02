@@ -23,5 +23,10 @@ export default async function AdminEmpresasPage() {
     currentPeriodEnd: new Date(item.currentPeriodEnd).toISOString(),
   }));
 
-  return <AdminEmpresasClient initialItems={items} initialNextCursor={result.data.nextCursor} />;
+  return (
+    <AdminEmpresasClient
+      initialItems={items}
+      initialPaging={{ page: result.data.page, pageSize: result.data.pageSize, totalItems: result.data.totalItems, totalPages: result.data.totalPages }}
+    />
+  );
 }

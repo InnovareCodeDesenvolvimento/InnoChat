@@ -306,7 +306,8 @@ describe("runBillingTick — teste não convertido (decisão do dono, 2026-09-29
     expect(after.status).toBe("VOID");
     expect(after.pixCopyPaste).toBeNull();
     expect(await prisma.billingNotice.count({ where: { invoiceId: invoice.id } })).toBe(0);
-    expect(sentEmails.slice(mailsBefore).some((e) => e.to.startsWith("it-tick-trial-void-quiet-"))).toBe(false);
+    // Só o LEMBRETE de vencimento é proibido: o e-mail "conta cancelada" (AUTO_CANCELED) pode sair, conforme a hora do dia (janela 08h-20h).
+    expect(sentEmails.slice(mailsBefore).some((e) => e.to.startsWith("it-tick-trial-void-quiet-") && /vence/i.test(e.subject))).toBe(false);
   });
 
   it("conta cancelada pelo dono (não pelo tick) também tem a fatura de teste anulada na rodada seguinte", async () => {

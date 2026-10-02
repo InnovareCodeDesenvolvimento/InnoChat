@@ -17,6 +17,8 @@ export type NoticeRecipients = {
   whatsappOptedOut: boolean;
   /** O assinante respondeu SIM ao número da plataforma (`Tenant.billingWhatsappConfirmedAt`). */
   whatsappConfirmed: boolean;
+  /** `BILLING_EMAIL` quando o e-mail do financeiro está entre os destinos; senão o dono (`OWNER`). */
+  emailKind: "OWNER" | "BILLING_EMAIL";
 };
 
 function clean(email: string | null | undefined): string | null {
@@ -64,5 +66,6 @@ export async function resolveNoticeRecipients(tenantId: string, step: DunningSte
     whatsappE164: tenant?.billingWhatsappE164 ?? null,
     whatsappOptedOut: tenant?.billingWhatsappOptOutAt != null,
     whatsappConfirmed: tenant?.billingWhatsappConfirmedAt != null,
+    emailKind: billing ? "BILLING_EMAIL" : "OWNER",
   };
 }

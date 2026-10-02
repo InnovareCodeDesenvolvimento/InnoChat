@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Ban, CalendarPlus, ChevronDown, RotateCcw, Timer, X } from "lucide-react";
+import Link from "next/link";
+import { Ban, CalendarPlus, ReceiptText, RotateCcw, Timer, X } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { navIconFor } from "@/components/shell/nav-items";
 import { Card } from "@/components/ui/card";
@@ -13,6 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Alert } from "@/components/ui/alert";
+import { Pagination } from "@/components/ui/pagination";
 import { useToast } from "@/components/ui/toast";
 import { formatDateTimeLabel } from "@/components/lib/format-date";
 import {
@@ -51,31 +53,29 @@ const STATUS_LABEL: Record<string, string> = {
 
 type ConfirmAction = { type: "suspend" | "reactivate"; company: CompanyRow };
 
+type Paging = { page: number; pageSize: number; totalItems: number; totalPages: number };
+
 export function AdminEmpresasClient({
   initialItems,
-  initialNextCursor,
+  initialPaging,
 }: {
   initialItems: CompanyRow[];
-  initialNextCursor: string | null;
+  initialPaging: Paging;
 }) {
   const { notify } = useToast();
   const [items, setItems] = useState<CompanyRow[]>(initialItems);
-  const [nextCursor, setNextCursor] = useState<string | null>(initialNextCursor);
+  const [paging, setPaging] = useState<Paging>(initialPaging);
   const [isPending, startTransition] = useTransition();
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
   const [extendTarget, setExtendTarget] = useState<CompanyRow | null>(null);
   const [extraDays, setExtraDays] = useState("1");
   const [dialogError, setDialogError] = useState<string | null>(null);
 
-  function loadMore() {
-    if (!nextCursor) return;
-    setIsLoadingMore(true);
+  function goToPage(page: number, pageSize: number) {
     startTransition(async () => {
-      const result = await listCompaniesAction({ cursor: nextCursor });
-      setIsLoadingMore(false);
+      const result = await listCompaniesAction({ page, pageSize });
       if (!result.ok) {
-        notify({ variant: "error", title: "Não foi possível carregar mais empresas", description: result.error.message });
+        notify({ variant: "error", title: "Não foi possível carregar as empresas", description: result.error.message });
         return;
       }
       const mapped = result.data.items.map((item) => ({
@@ -83,8 +83,8 @@ export function AdminEmpresasClient({
         trialEndsAt: item.trialEndsAt ? new Date(item.trialEndsAt).toISOString() : null,
         currentPeriodEnd: new Date(item.currentPeriodEnd).toISOString(),
       }));
-      setItems((prev) => [...prev, ...mapped]);
-      setNextCursor(result.data.nextCursor);
+      setItems(mapped);
+      setPaging({ page: result.data.page, pageSize: result.data.pageSize, totalItems: result.data.totalItems, totalPages: result.data.totalPages });
     });
   }
 
@@ -159,7 +159,12 @@ export function AdminEmpresasClient({
                   <div className="flex items-center gap-2.5">
                     <Avatar id={company.tenantId} name={company.name} size="sm" />
                     <div>
-                      <p className="font-medium text-text">{company.name}</p>
+                      <Link
+                        href={`/admin/empresas/${company.tenantId}`}
+                        className="font-medium text-text hover:text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                      >
+                        {company.name}
+                      </Link>
                       <p className="text-xs text-text-secondary">/{company.slug}</p>
                     </div>
                   </div>
@@ -183,6 +188,11 @@ export function AdminEmpresasClient({
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-1">
+                    <Button asChild variant="ghost" size="icon">
+                      <Link href={`/admin/empresas/${company.tenantId}`} aria-label={`Ver cobrança de ${company.name}`} title="Ver cobrança">
+                        <ReceiptText className="h-4 w-4" aria-hidden="true" />
+                      </Link>
+                    </Button>
                     {company.effectiveStatus === "TRIALING" ? (
                       <Button variant="ghost" size="icon" aria-label={`Estender trial de ${company.name}`} onClick={() => openExtend(company)}>
                         <Timer className="h-4 w-4" aria-hidden="true" />
@@ -216,13 +226,17 @@ export function AdminEmpresasClient({
         </Table>
       </Card>
 
-      {nextCursor ? (
-        <div className="mt-4 flex justify-center">
-          <Button icon={ChevronDown} variant="secondary" onClick={loadMore} isLoading={isLoadingMore} loadingText="Carregando…">
-            Carregar mais
-          </Button>
-        </div>
-      ) : null}
+      <Pagination
+        label="Paginação das empresas"
+        page={paging.page}
+        pageSize={paging.pageSize}
+        totalItems={paging.totalItems}
+        totalPages={paging.totalPages}
+        isPending={isPending}
+        onPageChange={(p) => goToPage(p, paging.pageSize)}
+        onPageSizeChange={(size) => goToPage(1, size)}
+        className="mt-4"
+      />
 
       <Dialog open={!!confirmAction} onOpenChange={(open) => !open && setConfirmAction(null)}>
         <DialogContent>

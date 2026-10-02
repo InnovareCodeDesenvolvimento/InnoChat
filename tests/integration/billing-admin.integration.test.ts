@@ -101,7 +101,7 @@ async function makeTenantWithSubscriptionAndInvoice(params: {
 }
 
 describe("listInvoicesAdmin", () => {
-  it("lista faturas de todas as empresas, filtra por status e paginação por cursor", async () => {
+  it("lista faturas de todas as empresas, filtra por status e pagina por página", async () => {
     const { tenant, invoice } = await makeTenantWithSubscriptionAndInvoice({ label: "list-open", invoiceStatus: "OPEN" });
     const { invoice: paidInvoice } = await makeTenantWithSubscriptionAndInvoice({ label: "list-paid", invoiceStatus: "PAID", paidAt: new Date() });
 
@@ -112,9 +112,10 @@ describe("listInvoicesAdmin", () => {
     const paidOnly = await listInvoicesAdmin({ status: "PAID" });
     expect(paidOnly.items.some((i) => i.id === paidInvoice.id)).toBe(true);
 
-    // Paginação: limit=1 sempre devolve nextCursor quando há mais de 1 resultado no total.
-    const page1 = await listInvoicesAdmin({ limit: 1 });
-    expect(page1.items).toHaveLength(1);
+    // Paginação por página: pageSize mínimo de 10; com mais de 1 fatura no total, `totalItems` conta todas.
+    const page1 = await listInvoicesAdmin({ page: 1, pageSize: 10 });
+    expect(page1.items.length).toBeGreaterThanOrEqual(1);
+    expect(page1.totalItems).toBeGreaterThanOrEqual(2);
   });
 });
 
@@ -203,9 +204,9 @@ describe("Teste não convertido no Admin → Cobrança (decisão do dono, 2026-0
     });
     const { invoice: regular } = await makeTenantWithSubscriptionAndInvoice({ label: "regular-kind", invoiceStatus: "OPEN" });
 
-    const voids = await listInvoicesAdmin({ status: "VOID", limit: 100 });
+    const voids = await listInvoicesAdmin({ status: "VOID", pageSize: 100 });
     expect(voids.items.find((i) => i.id === invoice.id)).toMatchObject({ kind: "TRIAL", status: "VOID" });
-    const opens = await listInvoicesAdmin({ status: "OPEN", limit: 100 });
+    const opens = await listInvoicesAdmin({ status: "OPEN", pageSize: 100 });
     expect(opens.items.find((i) => i.id === regular.id)?.kind).toBe("REGULAR");
   });
 

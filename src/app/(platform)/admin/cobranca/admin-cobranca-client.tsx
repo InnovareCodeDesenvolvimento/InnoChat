@@ -1,7 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
-import { AlertTriangle, Banknote, Check, ChevronDown, Filter, FlaskConical, QrCode, ReceiptText, RefreshCw, TrendingUp, X } from "lucide-react";
+import { AlertTriangle, Banknote, Check, Filter, FlaskConical, QrCode, ReceiptText, RefreshCw, Send, TrendingUp, Wallet, X } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { navIconFor } from "@/components/shell/nav-items";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -16,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert } from "@/components/ui/alert";
+import { Pagination } from "@/components/ui/pagination";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/components/lib/cn";
@@ -50,6 +52,8 @@ const STATUS_BADGE: Record<InvoiceRow["status"], BadgeProps["variant"]> = {
   VOID: "neutral",
 };
 
+type Paging = { page: number; pageSize: number; totalItems: number; totalPages: number };
+
 function StatBlock({
   icon,
   label,
@@ -83,19 +87,20 @@ type MarkPaidTarget = { invoice: InvoiceRow };
 export function AdminCobrancaClient({
   totals,
   initialItems,
-  initialNextCursor,
+  initialPaging,
   delinquents,
 }: {
   totals: BillingMonthlyTotals;
   initialItems: InvoiceRow[];
-  initialNextCursor: string | null;
+  initialPaging: Paging;
   delinquents: DelinquentCompany[];
 }) {
   const { notify } = useToast();
   const [items, setItems] = useState<InvoiceRow[]>(initialItems);
-  const [nextCursor, setNextCursor] = useState<string | null>(initialNextCursor);
+  const [paging, setPaging] = useState<Paging>(initialPaging);
+  // Filtros JÁ aplicados (o que a lista mostra); o formulário pode estar adiante, até o clique em "Filtrar".
+  const [appliedFilters, setAppliedFilters] = useState<{ status: InvoiceRow["status"] | ""; from: string; to: string }>({ status: "", from: "", to: "" });
   const [isPending, startTransition] = useTransition();
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
   const [checkingId, setCheckingId] = useState<string | null>(null);
 
@@ -114,15 +119,17 @@ export function AdminCobrancaClient({
     return items.filter((i) => i.tenantName.toLowerCase().includes(needle) || i.tenantSlug.toLowerCase().includes(needle));
   }, [items, companyFilter]);
 
-  function applyFilters() {
+  function loadInvoices(filters: { status: InvoiceRow["status"] | ""; from: string; to: string }, page: number, pageSize: number) {
     startTransition(async () => {
       const result = await listInvoicesAdminAction({
-        status: statusFilter || undefined,
-        fromDate: fromDate || undefined,
-        toDate: toDate || undefined,
+        status: filters.status || undefined,
+        fromDate: filters.from || undefined,
+        toDate: filters.to || undefined,
+        page,
+        pageSize,
       });
       if (!result.ok) {
-        notify({ variant: "error", title: "Não foi possível filtrar as faturas", description: result.error.message });
+        notify({ variant: "error", title: "Não foi possível carregar as faturas", description: result.error.message });
         return;
       }
       setItems(
@@ -135,38 +142,13 @@ export function AdminCobrancaClient({
           createdAt: new Date(item.createdAt).toISOString(),
         })),
       );
-      setNextCursor(result.data.nextCursor);
+      setAppliedFilters(filters);
+      setPaging({ page: result.data.page, pageSize: result.data.pageSize, totalItems: result.data.totalItems, totalPages: result.data.totalPages });
     });
   }
 
-  function loadMore() {
-    if (!nextCursor) return;
-    setIsLoadingMore(true);
-    startTransition(async () => {
-      const result = await listInvoicesAdminAction({
-        status: statusFilter || undefined,
-        fromDate: fromDate || undefined,
-        toDate: toDate || undefined,
-        cursor: nextCursor,
-      });
-      setIsLoadingMore(false);
-      if (!result.ok) {
-        notify({ variant: "error", title: "Não foi possível carregar mais faturas", description: result.error.message });
-        return;
-      }
-      setItems((prev) => [
-        ...prev,
-        ...result.data.items.map((item) => ({
-          ...item,
-          periodStart: new Date(item.periodStart).toISOString(),
-          periodEnd: new Date(item.periodEnd).toISOString(),
-          dueAt: new Date(item.dueAt).toISOString(),
-          paidAt: item.paidAt ? new Date(item.paidAt).toISOString() : null,
-          createdAt: new Date(item.createdAt).toISOString(),
-        })),
-      ]);
-      setNextCursor(result.data.nextCursor);
-    });
+  function applyFilters() {
+    loadInvoices({ status: statusFilter, from: fromDate, to: toDate }, 1, paging.pageSize);
   }
 
   function handleRegeneratePix(invoice: InvoiceRow) {
@@ -257,7 +239,27 @@ export function AdminCobrancaClient({
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader icon={navIconFor("admin/cobranca")} title="Cobrança" description="Faturas de todas as empresas, totais do mês e inadimplência." />
+      <PageHeader
+        icon={navIconFor("admin/cobranca")}
+        title="Cobranças"
+        description="Faturas de todas as empresas, totais do mês e inadimplência."
+        action={
+          <div className="flex flex-wrap gap-2">
+            <Button asChild variant="secondary">
+              <Link href="/admin/financeiro">
+                <Wallet className="h-4 w-4 shrink-0" aria-hidden="true" />
+                Financeiro
+              </Link>
+            </Button>
+            <Button asChild variant="secondary">
+              <Link href="/admin/envios">
+                <Send className="h-4 w-4 shrink-0" aria-hidden="true" />
+                Envios de cobrança
+              </Link>
+            </Button>
+          </div>
+        }
+      />
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <StatBlock icon={<Banknote aria-hidden="true" />} label="Recebido no mês" value={formatCentsBRL(totals.receivedCents)} tone="success" />
@@ -333,7 +335,7 @@ export function AdminCobrancaClient({
               />
             )}
           </Field>
-          <Button icon={Filter} type="button" variant="secondary" onClick={applyFilters} isLoading={isPending && !isLoadingMore} className="w-full sm:col-span-2 lg:col-span-1 lg:w-auto" loadingText="Filtrando…">
+          <Button icon={Filter} type="button" variant="secondary" onClick={applyFilters} isLoading={isPending} className="w-full sm:col-span-2 lg:col-span-1 lg:w-auto" loadingText="Filtrando…">
               Filtrar
             </Button>
           </div>
@@ -438,13 +440,16 @@ export function AdminCobrancaClient({
         </Card>
       )}
 
-      {nextCursor ? (
-        <div className="flex justify-center">
-          <Button icon={ChevronDown} variant="secondary" onClick={loadMore} isLoading={isLoadingMore} loadingText="Carregando…">
-            Carregar mais
-          </Button>
-        </div>
-      ) : null}
+      <Pagination
+        label="Paginação das faturas"
+        page={paging.page}
+        pageSize={paging.pageSize}
+        totalItems={paging.totalItems}
+        totalPages={paging.totalPages}
+        isPending={isPending}
+        onPageChange={(p) => loadInvoices(appliedFilters, p, paging.pageSize)}
+        onPageSizeChange={(size) => loadInvoices(appliedFilters, 1, size)}
+      />
 
       <Dialog open={!!markPaidTarget} onOpenChange={(open) => !open && setMarkPaidTarget(null)}>
         <DialogContent>

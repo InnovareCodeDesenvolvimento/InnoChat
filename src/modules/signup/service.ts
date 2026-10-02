@@ -272,6 +272,7 @@ async function createAccount(input: CreateAccountInput, gateway?: MercadoPagoGat
       invoiceId: created.invoice.id,
       expiresAt: created.invoice.dueAt,
       recipientMasked: maskEmail(email),
+      recipient: email,
     }).catch((error) => {
       logger.warn("signup.invoice_notice_record_failed", { errorName: error instanceof Error ? error.name : "unknown" });
     });

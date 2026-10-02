@@ -7,3 +7,4 @@ export * from "./dunning";
 export * from "./dunning-copy";
 export * from "./trial-usage";
 export * from "./dunning-bell";
+export * from "./dunning-labels";

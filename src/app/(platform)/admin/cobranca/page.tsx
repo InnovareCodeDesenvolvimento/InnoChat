@@ -16,7 +16,7 @@ export default async function AdminCobrancaPage() {
     const error = !totalsResult.ok ? totalsResult.error : !invoicesResult.ok ? invoicesResult.error : (delinquentsResult as { ok: false; error: { message: string } }).error;
     return (
       <div>
-        <PageHeader icon={navIconFor("admin/cobranca")} title="Cobrança" description="Faturas abertas, vencidas e eventos do Mercado Pago." />
+        <PageHeader icon={navIconFor("admin/cobranca")} title="Cobranças" description="Faturas abertas, vencidas e eventos do Mercado Pago." />
         <EmptyState icon={Receipt} title="Não deu para carregar a cobrança" description={error.message} />
       </div>
     );
@@ -35,7 +35,7 @@ export default async function AdminCobrancaPage() {
     <AdminCobrancaClient
       totals={totalsResult.data}
       initialItems={invoices}
-      initialNextCursor={invoicesResult.data.nextCursor}
+      initialPaging={{ page: invoicesResult.data.page, pageSize: invoicesResult.data.pageSize, totalItems: invoicesResult.data.totalItems, totalPages: invoicesResult.data.totalPages }}
       delinquents={delinquentsResult.data}
     />
   );

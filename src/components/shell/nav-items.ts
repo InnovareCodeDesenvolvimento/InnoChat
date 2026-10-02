@@ -14,9 +14,11 @@ import {
   Receipt,
   Rocket,
   Scissors,
+  Send,
   Settings,
   UserRound,
   Users,
+  Wallet,
 } from "lucide-react";
 
 export type NavItem = {
@@ -125,7 +127,16 @@ const ADMIN_GROUPS_DEF: { id: string; label: string; items: { label: string; hre
     label: "Operação",
     items: [
       { label: "Empresas", href: "/admin/empresas", icon: Building2 },
-      { label: "Cobrança", href: "/admin/cobranca", icon: Receipt },
+    ],
+  },
+  {
+    // Decisão do dono (2026-10-02): "Financeiro" com Cobranças e Envios de cobrança como submenu.
+    id: "financeiro",
+    label: "Financeiro",
+    items: [
+      { label: "Visão geral", href: "/admin/financeiro", icon: Wallet },
+      { label: "Cobranças", href: "/admin/cobranca", icon: Receipt },
+      { label: "Envios de cobrança", href: "/admin/envios", icon: Send },
     ],
   },
   {

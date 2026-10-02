@@ -71,3 +71,18 @@ export async function claimDueBillingNotices(args: {
            n."attempts", n."notBefore", n."expiresAt", n."createdAt"
   `);
 }
+
+/**
+ * Retenção de dado pessoal do registro de envios (F6): zera o destino COMPLETO e o snapshot do texto dos avisos com
+ * última mudança anterior a `before`. Fica o `recipientMasked` (já mascarado). SQL cru de propósito: um `updateMany`
+ * do Prisma reescreveria `updatedAt` (`@updatedAt`) e jogaria avisos antigos para o topo do registro do Admin.
+ */
+export async function clearExpiredNoticePersonalData(before: Date): Promise<number> {
+  const cutoff = before.toISOString();
+  return getPrisma().$executeRaw(Prisma.sql`
+    UPDATE "billing_notices"
+       SET "recipient" = NULL, "renderedSubject" = NULL, "renderedText" = NULL
+     WHERE "updatedAt" < ${cutoff}::timestamp
+       AND ("recipient" IS NOT NULL OR "renderedSubject" IS NOT NULL OR "renderedText" IS NOT NULL)
+  `);
+}

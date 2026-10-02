@@ -29,7 +29,9 @@ import {
   markNoticeSkipped,
   maskEmail,
   maskPhoneE164,
+  baseCycleKey,
   releaseNotice,
+  RENDERED_PARTS_SEPARATOR,
   type SkipReason,
 } from "./outbox";
 import { resolveNoticeRecipients } from "./recipients";
@@ -165,14 +167,17 @@ function skip(summary: DispatchSummary): Outcome {
 /** Por que o aviso deixou de ser devido (nunca "cobrar quem já pagou"). */
 async function skipReasonFor(notice: ClaimedBillingNotice, subject: DunningSubject): Promise<SkipReason> {
   const sub = subject.input.subscription;
-  if (notice.invoiceId) {
-    const invoice = await getPrisma().invoice.findUnique({ where: { id: notice.invoiceId }, select: { status: true } });
+  const cycleKey = baseCycleKey(notice.cycleKey);
+  // Aviso de fatura sem `invoiceId` gravado: a chave do ciclo É o id da fatura (as chaves de assinatura têm ":").
+  const invoiceId = notice.invoiceId ?? (cycleKey.includes(":") ? null : cycleKey);
+  if (invoiceId) {
+    const invoice = await getPrisma().invoice.findUnique({ where: { id: invoiceId }, select: { status: true } });
     if (invoice?.status === "PAID") return "PAID";
   }
-  if (notice.cycleKey.endsWith(":trial")) {
+  if (cycleKey.endsWith(":trial")) {
     if (sub.firstPaidAt !== null) return "PAID";
-  } else if (notice.cycleKey.startsWith(`${sub.id}:`)) {
-    const periodEnd = notice.cycleKey.slice(sub.id.length + 1);
+  } else if (cycleKey.startsWith(`${sub.id}:`)) {
+    const periodEnd = cycleKey.slice(sub.id.length + 1);
     if (sub.currentPeriodEnd.toISOString() > periodEnd) return "PAID";
   }
   if (subject.input.manualSuspension) return "MANUAL_SUSPENSION";
@@ -202,7 +207,7 @@ async function processNotice(notice: ClaimedBillingNotice, now: Date, summary: D
       await markNoticeSkipped(notice.id, "STATUS_CHANGED");
       return skip(summary);
     }
-  } else if (!isNoticeStillDue(subject.input, now, { step, channel, cycleKey: notice.cycleKey })) {
+  } else if (!isNoticeStillDue(subject.input, now, { step, channel, cycleKey: baseCycleKey(notice.cycleKey) })) {
     await markNoticeSkipped(notice.id, await skipReasonFor(notice, subject));
     return skip(summary);
   }
@@ -263,7 +268,7 @@ async function processNotice(notice: ClaimedBillingNotice, now: Date, summary: D
     copy.data.pixCopyPaste = await ensureFreshPix(copy.invoice, recipients.emails[0] ?? null, now, deps.gateway);
   }
 
-  if (channel === "EMAIL") return sendEmail(notice, step, copy, recipients.emails, now, summary);
+  if (channel === "EMAIL") return sendEmail(notice, step, copy, recipients.emails, recipients.emailKind, now, summary);
   return sendWhatsapp(notice, step, subject, copy, recipients.whatsappE164 as string, now, summary, deps, recipients.whatsappConfirmed);
 }
 
@@ -296,6 +301,7 @@ async function sendEmail(
   step: DunningStep,
   copy: Awaited<ReturnType<typeof buildNoticeCopyContext>>,
   emails: string[],
+  emailKind: "OWNER" | "BILLING_EMAIL",
   now: Date,
   summary: DispatchSummary,
 ): Promise<Outcome> {
@@ -304,17 +310,19 @@ async function sendEmail(
     await markNoticeSkipped(notice.id, "STATUS_CHANGED");
     return skip(summary);
   }
+  // Snapshot do que vai sair e para quem (registro do Admin). Dado pessoal: só no banco, nunca em log.
+  const audit = { recipient: emails.join(", "), recipientKind: emailKind, renderedSubject: mail.subject, renderedText: mail.text };
   let delivered = 0;
   for (const to of emails) {
     if (await sendBillingMail({ to, subject: mail.subject, html: mail.html, text: mail.text }, "billing.notice.email_not_sent")) delivered += 1;
   }
   if (delivered === 0) {
-    await markNoticeFailed(notice.id, now, notice.attempts, "EMAIL_NOT_SENT");
+    await markNoticeFailed(notice.id, now, notice.attempts, "EMAIL_NOT_SENT", audit);
     summary.failed += 1;
     summary.emailsFailed += 1;
     return "FAILED";
   }
-  await markNoticeSentSafely(notice.id, now, { recipientMasked: emails.map(maskEmail).join(", ") });
+  await markNoticeSentSafely(notice.id, now, { recipientMasked: emails.map(maskEmail).join(", "), ...audit });
   summary.sent += 1;
   summary.emailsSent += 1;
   summary.emailSentSteps.push(step);
@@ -342,6 +350,7 @@ ${CONFIRM_OWNERSHIP_FOOTER}`;
   }
   const send = deps.sendWhatsapp ?? sendPlatformWhatsapp;
   const masked = maskPhoneE164(toE164);
+  const audit = { recipient: toE164, recipientKind: "BILLING_WHATSAPP" as const, renderedText: messages.join(RENDERED_PARTS_SEPARATOR) };
   const first = await send({ toE164, text: messages[0], tenantId: subject.tenantId, noticeId: notice.id });
 
   if (first.outcome === "SENT") {
@@ -361,6 +370,7 @@ ${CONFIRM_OWNERSHIP_FOOTER}`;
       providerMessageId: first.providerMessageId,
       platformConnectionId: first.connectionId,
       senderPhoneE164: first.senderPhoneE164,
+      ...audit,
     });
     summary.sent += 1;
     return "SENT";
@@ -377,16 +387,16 @@ ${CONFIRM_OWNERSHIP_FOOTER}`;
         return "DEFERRED";
       }
     }
-    await markNoticeSkipped(notice.id, first.outcome, { recipientMasked: masked });
+    await markNoticeSkipped(notice.id, first.outcome, { recipientMasked: masked, recipient: toE164, recipientKind: "BILLING_WHATSAPP" });
     return skip(summary);
   }
 
   if (first.outcome === "BLOCKED_LOOP") {
-    await markNoticeSkipped(notice.id, "BLOCKED_LOOP", { recipientMasked: masked });
+    await markNoticeSkipped(notice.id, "BLOCKED_LOOP", { recipientMasked: masked, recipient: toE164, recipientKind: "BILLING_WHATSAPP" });
     return skip(summary);
   }
 
-  await markNoticeFailed(notice.id, now, notice.attempts, "WHATSAPP_SEND_FAILED");
+  await markNoticeFailed(notice.id, now, notice.attempts, "WHATSAPP_SEND_FAILED", audit);
   summary.failed += 1;
   return "FAILED";
 }

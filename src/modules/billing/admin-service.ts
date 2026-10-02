@@ -7,6 +7,7 @@ import { recordBillingEvent } from "./dunning/events";
 import { applyInvoicePayment, findBillingRecipientEmail, regeneratePixForInvoice as regeneratePixForInvoiceService } from "./service";
 import type { MercadoPagoGateway } from "./mercadopago";
 import type { InvoiceStatus } from "@/lib/db/types";
+import { DEFAULT_PAGE_SIZE, pageInfoOf, resolvePage, type PageInfo, type PageSize } from "./paging";
 
 /**
  * Admin de planos e empresas (docs/arquitetura.md §9, Fase 7). Guardado por
@@ -52,25 +53,22 @@ export type CompanyListItem = {
   currentPeriodEnd: Date;
 };
 
-const COMPANIES_PAGE_MAX = 100;
-const COMPANIES_PAGE_DEFAULT = 30;
-
-/** Sempre paginado (nunca "todas as empresas" de uma vez) — cursor pelo `tenantId`. */
-export async function listCompanies(params: { cursor?: string; limit?: number }): Promise<{ items: CompanyListItem[]; nextCursor: string | null }> {
-  const limit = Math.min(params.limit ?? COMPANIES_PAGE_DEFAULT, COMPANIES_PAGE_MAX);
+/** Sempre paginado por página (nunca "todas as empresas" de uma vez): ordem estável por `tenantId`. */
+export async function listCompanies(params: { page?: number; pageSize?: PageSize } = {}): Promise<{ items: CompanyListItem[] } & PageInfo> {
+  const prisma = getPrisma();
   const now = new Date();
+  const totalItems = await prisma.subscription.count();
+  const info = resolvePage(params.page, params.pageSize ?? DEFAULT_PAGE_SIZE, totalItems);
 
-  const subscriptions = await getPrisma().subscription.findMany({
-    take: limit + 1,
-    ...(params.cursor ? { cursor: { tenantId: params.cursor }, skip: 1 } : {}),
+  const page = await prisma.subscription.findMany({
+    skip: info.skip,
+    take: info.pageSize,
     orderBy: { tenantId: "asc" },
     include: { tenant: true, plan: true },
   });
 
-  const hasMore = subscriptions.length > limit;
-  const page = hasMore ? subscriptions.slice(0, limit) : subscriptions;
-
   return {
+    ...pageInfoOf(info),
     items: page.map((s) => ({
       tenantId: s.tenantId,
       slug: s.tenant.slug,
@@ -81,7 +79,6 @@ export async function listCompanies(params: { cursor?: string; limit?: number })
       trialEndsAt: s.trialEndsAt,
       currentPeriodEnd: s.currentPeriodEnd,
     })),
-    nextCursor: hasMore ? page[page.length - 1]!.tenantId : null,
   };
 }
 
@@ -227,12 +224,9 @@ export type ListInvoicesAdminParams = {
   /** Filtra por `dueAt` dentro de `[fromDate, toDate)` — período de vencimento, não de criação. */
   fromDate?: Date;
   toDate?: Date;
-  cursor?: string;
-  limit?: number;
+  page?: number;
+  pageSize?: PageSize;
 };
-
-const INVOICES_PAGE_MAX = 100;
-const INVOICES_PAGE_DEFAULT = 30;
 
 /**
  * Faturas de TODAS as empresas, paginadas por cursor (nunca "todas de uma vez" — a base pode
@@ -240,8 +234,8 @@ const INVOICES_PAGE_DEFAULT = 30;
  * `tenantName`/`tenantSlug` — sem N+1 (nunca um `findUnique` de tenant por fatura dentro de um
  * loop).
  */
-export async function listInvoicesAdmin(params: ListInvoicesAdminParams): Promise<{ items: AdminInvoiceListItem[]; nextCursor: string | null }> {
-  const limit = Math.min(params.limit ?? INVOICES_PAGE_DEFAULT, INVOICES_PAGE_MAX);
+export async function listInvoicesAdmin(params: ListInvoicesAdminParams = {}): Promise<{ items: AdminInvoiceListItem[] } & PageInfo> {
+  const prisma = getPrisma();
 
   const where = {
     ...(params.status ? { status: params.status } : {}),
@@ -256,19 +250,20 @@ export async function listInvoicesAdmin(params: ListInvoicesAdminParams): Promis
       : {}),
   };
 
-  const invoices = await getPrisma().invoice.findMany({
+  // `count` com os MESMOS filtros da lista; ordem estável por id (cuid, mais novo primeiro).
+  const totalItems = await prisma.invoice.count({ where });
+  const info = resolvePage(params.page, params.pageSize ?? DEFAULT_PAGE_SIZE, totalItems);
+  const invoices = await prisma.invoice.findMany({
     where,
-    take: limit + 1,
-    ...(params.cursor ? { cursor: { id: params.cursor }, skip: 1 } : {}),
+    skip: info.skip,
+    take: info.pageSize,
     orderBy: { id: "desc" },
     include: { subscription: { include: { tenant: { select: { id: true, name: true, slug: true } } } } },
   });
 
-  const hasMore = invoices.length > limit;
-  const page = hasMore ? invoices.slice(0, limit) : invoices;
-
   return {
-    items: page.map((invoice) => ({
+    ...pageInfoOf(info),
+    items: invoices.map((invoice) => ({
       id: invoice.id,
       tenantId: invoice.subscription.tenant.id,
       tenantName: invoice.subscription.tenant.name,
@@ -284,7 +279,6 @@ export async function listInvoicesAdmin(params: ListInvoicesAdminParams): Promis
       createdAt: invoice.createdAt,
       kind: invoice.isTrialConversion ? "TRIAL" : "REGULAR",
     })),
-    nextCursor: hasMore ? page[page.length - 1]!.id : null,
   };
 }
 
