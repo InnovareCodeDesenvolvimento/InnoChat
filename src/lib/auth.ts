@@ -4,6 +4,7 @@ import Credentials from "next-auth/providers/credentials";
 import Google from "next-auth/providers/google";
 import { cookies } from "next/headers";
 import { verifyCredentials } from "@/modules/auth/service";
+import { completeTwoFactorLogin, loadVerifiedLoginUser, rejectIfTwoFactorEnabled } from "@/modules/two-factor/login";
 import { getGoogleRuntimeCredentials } from "@/modules/google-auth/config";
 import { GOOGLE_INVITE_COOKIE } from "@/modules/google-auth/invite-cookie";
 import { resolveGoogleSignIn } from "@/modules/google-auth/signin";
@@ -57,6 +58,13 @@ export class GoogleAccountSignin extends CredentialsSignin {
   code = "google_account";
 }
 
+/** Segundo fator do login: `code` identifica o motivo (`loginAction`/`verifyTwoFactorLoginAction` leem). */
+export class TwoFactorSignin extends CredentialsSignin {
+  constructor(public code: "challenge_invalid" | "code_invalid" | "rate_limited") {
+    super();
+  }
+}
+
 const OPERATOR_AUTH_URL = process.env.AUTH_URL;
 export const SESSION_MAX_AGE_S = 30 * 24 * 60 * 60;
 export const SESSION_UPDATE_AGE_S = 24 * 60 * 60;
@@ -99,13 +107,49 @@ async function buildConfig(): Promise<NextAuthConfig> {
         async authorize(credentials) {
           const ip = await clientIp();
           try {
-            return await verifyCredentials({
+            const user = await verifyCredentials({
               email: String(credentials?.email ?? ""),
               password: String(credentials?.password ?? ""),
               ip,
             });
+            // Rota pública: conta com 2FA ligada NUNCA abre sessão só com a senha (o login normal
+            // passa por `two-factor`, abaixo).
+            if (user && (await rejectIfTwoFactorEnabled(user.id))) return null;
+            return user;
           } catch (error) {
             if (isDomainError(error) && error.code === "GOOGLE_ONLY_ACCOUNT") throw new GoogleAccountSignin();
+            throw error;
+          }
+        },
+      }),
+      // Sessão para quem acabou de provar a senha em `loginAction` (conta SEM 2FA): a prova assinada
+      // de 60 s nasce e é consumida na mesma action; evita conferir (e contar no rate limit) a senha duas vezes.
+      Credentials({
+        id: "verified-login",
+        credentials: { proof: { label: "Prova", type: "text" } },
+        async authorize(credentials) {
+          return loadVerifiedLoginUser(String(credentials?.proof ?? ""));
+        },
+      }),
+      // Segundo fator do login por senha: desafio assinado (emitido só depois da senha certa) + código
+      // do app ou de recuperação. Ver `src/modules/two-factor/login.ts`.
+      Credentials({
+        id: "two-factor",
+        credentials: { challenge: { label: "Desafio", type: "text" }, code: { label: "Código", type: "text" } },
+        async authorize(credentials) {
+          const ip = await clientIp();
+          try {
+            return await completeTwoFactorLogin({
+              challenge: String(credentials?.challenge ?? ""),
+              code: String(credentials?.code ?? ""),
+              ip,
+            });
+          } catch (error) {
+            if (isDomainError(error)) {
+              if (error.code === "TWO_FACTOR_CODE_INVALID") throw new TwoFactorSignin("code_invalid");
+              if (error.code === "TWO_FACTOR_RATE_LIMITED") throw new TwoFactorSignin("rate_limited");
+              if (error.code === "TWO_FACTOR_CHALLENGE_INVALID") throw new TwoFactorSignin("challenge_invalid");
+            }
             throw error;
           }
         },

@@ -2,10 +2,16 @@
 
 import { redirect } from "next/navigation";
 import { AuthError } from "next-auth";
+import { isDomainError } from "@/lib/errors";
 import { signIn } from "@/lib/auth";
+import { clientIp } from "@/lib/http/client-ip";
+import { startPasswordLogin } from "@/modules/two-factor/login";
 
-export type LoginState = { error: string | null };
+/** `challenge` preenchido = senha certa, falta o código da verificação em 2 etapas. */
+export type LoginState = { error: string | null; challenge?: string | null };
+export type TwoFactorLoginState = { error: string | null; expired?: boolean };
 
+const EXPIRED_ERROR = "A verificação expirou. Entre com a senha de novo.";
 const GENERIC_ERROR = "E-mail ou senha inválidos.";
 // Conta criada só pelo Google (sem senha) — `src/lib/auth.ts#GoogleAccountSignin`.
 const GOOGLE_ACCOUNT_ERROR = "Esta conta usa login com Google. Entre com o Google, ou use “Esqueci minha senha” para definir uma senha.";
@@ -33,10 +39,37 @@ export async function loginAction(_prevState: LoginState, formData: FormData): P
   }
 
   try {
-    await signIn("credentials", { email, password, redirect: false });
+    // A senha é conferida AQUI (uma vez, com o rate limit de sempre). Sem 2FA, a prova assinada
+    // abre a sessão pelo provedor `verified-login`; com 2FA, sai um desafio e a sessão só nasce em
+    // `verifyTwoFactorLoginAction`.
+    const outcome = await startPasswordLogin({ email, password, ip: await clientIp() });
+    if (!outcome) return { error: GENERIC_ERROR };
+    if (outcome.kind === "challenge") return { error: null, challenge: outcome.challenge };
+    await signIn("verified-login", { proof: outcome.proof, redirect: false });
+  } catch (err) {
+    if (err instanceof AuthError) return { error: GENERIC_ERROR };
+    if (isDomainError(err) && err.code === "GOOGLE_ONLY_ACCOUNT") return { error: GOOGLE_ACCOUNT_ERROR };
+    throw err;
+  }
+
+  redirect("/pos-login");
+}
+
+/** Segundo passo do login: desafio (hidden) + código do app ou de recuperação. */
+export async function verifyTwoFactorLoginAction(_prev: TwoFactorLoginState, formData: FormData): Promise<TwoFactorLoginState> {
+  const challenge = String(formData.get("challenge") ?? "");
+  const code = String(formData.get("code") ?? "").trim();
+  if (!challenge) return { error: EXPIRED_ERROR, expired: true };
+  if (!code) return { error: "Digite o código do app." };
+
+  try {
+    await signIn("two-factor", { challenge, code, redirect: false });
   } catch (err) {
     if (err instanceof AuthError) {
-      return { error: (err as { code?: string }).code === "google_account" ? GOOGLE_ACCOUNT_ERROR : GENERIC_ERROR };
+      const kind = (err as { code?: string }).code;
+      if (kind === "challenge_invalid") return { error: EXPIRED_ERROR, expired: true };
+      if (kind === "rate_limited") return { error: "Muitas tentativas. Espere alguns minutos e tente de novo." };
+      return { error: "Código errado, vencido ou já usado. Confira no app e tente de novo." };
     }
     throw err;
   }

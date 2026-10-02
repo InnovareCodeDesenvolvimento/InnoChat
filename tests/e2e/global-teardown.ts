@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import { prisma } from "./fixtures/db";
 import { SEED_TENANT_SLUG, STABLE_MARKER, loadRunFixtures } from "./fixtures/test-data";
+import { disableTwoFactorForSeedOwner } from "./fixtures/two-factor";
 
 /**
  * Limpa TUDO que o E2E criou (global-setup + o que as specs criaram por Server Action durante o
@@ -26,6 +27,9 @@ export default async function globalTeardown() {
   await prisma.service.deleteMany({ where: { name: { contains: STABLE_MARKER } } });
   await prisma.professional.deleteMany({ where: { name: { contains: STABLE_MARKER } } });
   await prisma.scheduleException.deleteMany({ where: { reason: { contains: STABLE_MARKER } } });
+
+  // Desliga a 2FA de teste do dono de seed (o global-setup ligou).
+  await disableTwoFactorForSeedOwner();
 
   // Devolve o override de limite de profissionais que o `global-setup.ts` levantou.
   await prisma.tenant.updateMany({ where: { slug: SEED_TENANT_SLUG }, data: { maxProfessionalsOverride: null } });

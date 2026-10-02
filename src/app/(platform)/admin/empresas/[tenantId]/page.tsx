@@ -13,6 +13,8 @@ import { getCompanyBillingAction, listCompanyBillingTimelineAction } from "@/mod
 import { SUBSCRIPTION_STATUS_LABEL, SUBSCRIPTION_STATUS_VARIANT } from "@/components/admin/billing-labels";
 import { formatCentsBRL, formatDateBR } from "@/modules/billing/format";
 import { parsePageSize, parsePositiveInt } from "@/components/lib/pagination";
+import { TwoFactorResetList } from "@/components/admin/two-factor-reset-list";
+import { listCompanyTwoFactorAction } from "@/modules/two-factor/actions";
 import { CompanyInvoices } from "./company-invoices";
 import { CompanyTimeline } from "./company-timeline";
 
@@ -27,9 +29,10 @@ export default async function AdminEmpresaCobrancaPage({
   const sp = await searchParams;
   const page = parsePositiveInt(sp.pagina, 1);
   const pageSize = parsePageSize(sp.porPagina);
-  const [billing, timeline] = await Promise.all([
+  const [billing, timeline, team] = await Promise.all([
     getCompanyBillingAction(tenantId),
     listCompanyBillingTimelineAction(tenantId, { page, pageSize }),
+    listCompanyTwoFactorAction(tenantId),
   ]);
 
   if (!billing.ok) {
@@ -117,6 +120,16 @@ export default async function AdminEmpresaCobrancaPage({
           kind: inv.kind,
         }))}
       />
+
+      {team.ok ? (
+        <Card className="rounded-hero">
+          <CardHeader help="admin.doisFatores">
+            <CardTitle>Equipe e verificação em 2 etapas</CardTitle>
+            <CardDescription>Quem acessa esta empresa. Redefina a verificação de quem perdeu o celular.</CardDescription>
+          </CardHeader>
+          <TwoFactorResetList rows={team.data} emptyText="Esta empresa ainda não tem pessoas cadastradas." />
+        </Card>
+      ) : null}
 
       <Card className="rounded-hero">
         <CardHeader help="admin.linhaDoTempo">

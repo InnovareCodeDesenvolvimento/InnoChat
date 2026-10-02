@@ -2,6 +2,7 @@ import fs from "node:fs";
 import { chromium } from "@playwright/test";
 import { prisma, hashPassword, ensureBotPlan } from "./fixtures/db";
 import { loginAndWaitForPanel } from "./fixtures/auth";
+import { SEED_OWNER_TOTP_SECRET, enableTwoFactorForSeedOwner } from "./fixtures/two-factor";
 import {
   SEED_TENANT_SLUG,
   SEED_OWNER_EMAIL,
@@ -34,6 +35,10 @@ export default async function globalSetup() {
     where: { email: SEED_OWNER_EMAIL, onboardingTourCompletedAt: null },
     data: { onboardingTourCompletedAt: new Date() },
   });
+
+  // O dono de seed é admin da plataforma, e o admin é obrigado a ter a verificação em 2 etapas: liga a
+  // dele com um segredo de teste fixo (o `global-teardown` desliga) e os logins pela UI geram o código.
+  await enableTwoFactorForSeedOwner();
 
   // Empresa B — isolada, com seu próprio OWNER.
   const tenantB = await prisma.tenant.create({
@@ -107,7 +112,7 @@ export default async function globalSetup() {
   try {
     const ownerContext = await browser.newContext({ baseURL: process.env.E2E_BASE_URL ?? "http://localhost:3000" });
     const ownerPage = await ownerContext.newPage();
-    await loginAndWaitForPanel(ownerPage, SEED_OWNER_EMAIL, SEED_OWNER_PASSWORD, SEED_TENANT_SLUG);
+    await loginAndWaitForPanel(ownerPage, SEED_OWNER_EMAIL, SEED_OWNER_PASSWORD, SEED_TENANT_SLUG, SEED_OWNER_TOTP_SECRET);
     await ownerContext.storageState({ path: OWNER_STORAGE_STATE });
     await ownerContext.close();
 

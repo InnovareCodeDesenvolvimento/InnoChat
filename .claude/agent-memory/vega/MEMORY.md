@@ -59,3 +59,5 @@
 - [Correções do Órion à F6](billing_f6_orion_fixes.md) — reenvio só de FAILED esgotado + bloqueio por chave base, retenção seguindo cancelamento 90d, período por sentAt.
 - ["Enviado" só significava SMTP aceitou](email_sent_means_only_smtp_accepted.md) — 2026-10-02; evidência gravada, e-mail de teste no Admin, MIME comparado sem diferença, DNS do domínio.
 - [F7: monitor de cobrança](billing_f7_monitor_design.md) — down só por tick/e-mail preso/e-mail em sequência; e-mail ao admin com reserva atômica; armadilha do spyOn em delegate Prisma.
+- [Monitor de erros próprio (Melhoria 1)](error_monitor_design.md) — captura, janela de alerta de 15 min, timestamp sem fuso no SQL cru, auto-flush nos testes.
+- [2FA TOTP: login em 2 passos, gate do admin, E2E](two_factor_totp_design.md) — credentials recusa conta com 2FA; edição multi-linha em arquivo CRLF falha em silêncio.

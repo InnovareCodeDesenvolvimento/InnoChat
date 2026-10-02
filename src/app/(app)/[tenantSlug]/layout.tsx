@@ -8,10 +8,14 @@ import { effectiveStatus } from "@/core/billing";
 import { resolveBillingBanner } from "@/components/shell/billing-banner-state";
 import { updateBillingContactAction } from "@/modules/billing/contact-actions";
 import { ToastProvider } from "@/components/ui/toast";
+import { ClientErrorReporter } from "@/components/error-monitor/client-error-reporter";
 import { HelpVisibilityProvider } from "@/components/help/help-visibility";
 import { NavigationProgress } from "@/components/shell/navigation-progress";
 import { PanelShell } from "@/components/shell/panel-shell";
 import { getOnboardingStateAction } from "@/modules/onboarding/actions";
+import { TwoFactorCard } from "@/components/account/two-factor-card";
+import { TwoFactorNudge } from "@/components/account/two-factor-nudge";
+import { getTwoFactorStatus } from "@/modules/two-factor/service";
 
 export const metadata: Metadata = { title: "InnoChat · Painel" };
 
@@ -120,7 +124,10 @@ export default async function TenantLayout({
       // `emailVerifiedAt` nunca vem da sessão (não é lido no `session.user`) — relido aqui, direto
       // do banco, para o banner discreto de "confirme seu e-mail" (mesma regra de
       // `requireVerifiedEmail`, src/lib/auth/guards.ts).
-      getPrisma().user.findUnique({ where: { id: session.user.id }, select: { emailVerifiedAt: true, name: true } }),
+      getPrisma().user.findUnique({
+        where: { id: session.user.id },
+        select: { emailVerifiedAt: true, name: true, totpEnabledAt: true, twoFactorRequired: true },
+      }),
       // Tour guiado do Inno: abre sozinho só no 1º acesso deste usuário (`tourCompletedAt` nulo).
       // Falha ao ler o estado NÃO abre o tour (melhor não mostrar do que repetir a cada página).
       getOnboardingStateAction(tenantSlug),
@@ -134,11 +141,17 @@ export default async function TenantLayout({
   const whatsappStatus: "connected" | "disconnected" | "none" =
     connectedWhatsappCount > 0 ? "connected" : totalWhatsappCount > 0 ? "disconnected" : "none";
   const emailVerified = !!sessionUserRecord?.emailVerifiedAt;
+  // 2FA: exigida para o usuário (flag individual) e ainda não ligada => só a tela de ativação.
+  // Dono sem 2FA (opcional) => convite discreto no topo. O admin da plataforma é barrado em /admin.
+  const twoFactorEnabled = !!sessionUserRecord?.totpEnabledAt;
+  const twoFactorGate = sessionUserRecord?.twoFactorRequired && !twoFactorEnabled ? await getTwoFactorStatus(session.user.id) : null;
+  const showTwoFactorNudge = membership.role === "OWNER" && !twoFactorEnabled && !twoFactorGate;
 
   return (
     <html lang="pt-BR" data-theme={membership.tenant.theme} className={fontVariables}>
       <body>
         <NavigationProgress />
+        <ClientErrorReporter />
         <ToastProvider>
           <HelpVisibilityProvider>
           <PanelShell
@@ -158,7 +171,14 @@ export default async function TenantLayout({
             emailVerified={emailVerified}
             tourAutoStart={tourAutoStart}
           >
-            {children}
+            {twoFactorGate ? (
+              <TwoFactorCard status={twoFactorGate} forced />
+            ) : (
+              <>
+                {showTwoFactorNudge ? <TwoFactorNudge href={`/${tenantSlug}/minha-conta`} /> : null}
+                {children}
+              </>
+            )}
           </PanelShell>
           </HelpVisibilityProvider>
         </ToastProvider>

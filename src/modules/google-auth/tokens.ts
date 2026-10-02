@@ -16,7 +16,7 @@ import { DomainError } from "@/lib/errors";
  * Formato: `base64url(json).base64url(hmac)`. Nunca logue o token.
  */
 
-export type GoogleTokenPurpose = "google-signup" | "google-login";
+export type GoogleTokenPurpose = "google-signup" | "google-login" | "login-verified" | "two-factor-challenge";
 
 type Claims = { purpose: GoogleTokenPurpose; jti: string; iat: number; exp: number } & Record<string, unknown>;
 

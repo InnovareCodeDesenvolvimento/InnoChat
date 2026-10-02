@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test";
 import { login } from "./fixtures/auth";
 import { SEED_TENANT_SLUG, SEED_OWNER_EMAIL, SEED_OWNER_PASSWORD, loadRunFixtures } from "./fixtures/test-data";
 import { OWNER_STORAGE_STATE } from "./fixtures/storage-state";
+import { SEED_OWNER_TOTP_SECRET, resetSeedOwnerReplayGuard } from "./fixtures/two-factor";
 
 /**
  * Único spec (com `csp.spec.ts` "login: sem violação de CSP") que ainda loga de VERDADE pela UI
@@ -13,7 +14,10 @@ import { OWNER_STORAGE_STATE } from "./fixtures/storage-state";
  */
 test.describe("Autenticação e proteção de rota (docs/contratos.md Fase 1)", () => {
   test("login com credenciais corretas leva ao painel da empresa", async ({ page }) => {
-    await login(page, SEED_OWNER_EMAIL, SEED_OWNER_PASSWORD);
+    // O dono de seed é admin: tem 2FA ligada pelo global-setup. O marcador anti-replay é zerado porque
+    // o global-setup já usou o código desta janela de 30 s.
+    await resetSeedOwnerReplayGuard();
+    await login(page, SEED_OWNER_EMAIL, SEED_OWNER_PASSWORD, SEED_OWNER_TOTP_SECRET);
     // A página Início (docs/plano-implementacao.md Etapa B) passou a ser o destino pós-login —
     // `pos-login/page.tsx` redireciona para `/inicio`, não mais direto para `/agenda`.
     await expect(page).toHaveURL(new RegExp(`/${SEED_TENANT_SLUG}/inicio`));
