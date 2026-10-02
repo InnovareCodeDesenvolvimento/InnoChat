@@ -1675,6 +1675,56 @@ de alertas no topo quando `alerts.length > 0`.
   os MESMOS dados que já apareceriam em claro em `/termos`/`/privacidade`, mas vale o segundo
   olhar).
 
+## Monitor de saúde da cobrança: `/api/health/billing` (F7, 2026-10-02)
+
+Rota **pública** (sem autenticação) e **sem dado pessoal**, consultada a cada 5 minutos por um monitor externo (UptimeRobot, Better Stack, etc.) para saber se o tick de cobrança está parado. Implementação: `src/app/api/health/billing/route.ts`, `src/core/billing/billing-health.ts`.
+
+```bash
+GET /api/health/billing
+```
+
+**Resposta HTTP 200 quando `ok` ou `degraded`; 503 quando `down`.**
+
+```json
+{
+  "status": "ok",
+  "lastTickAt": "2026-10-02T14:05:23Z",
+  "minutesSinceLastTick": 5,
+  "lastTickResult": {
+    "sent": 42,
+    "failed": 3,
+    "skippedByLock": false,
+    "deadlineReached": false
+  },
+  "pendingOverdue": 2,
+  "failedLast24h": 12,
+  "emailFailing": false,
+  "platformWhatsapp": "connected",
+  "reasons": []
+}
+```
+
+Campos:
+- `status`: `"ok"` (tudo funciona) | `"degraded"` (aviso: WhatsApp caído, deadline atingido, mas cobrança funciona) | `"down"` (tick parado > 3h, avisos presos, e-mail em sequência de falhas).
+- `lastTickAt`: ISO 8601 UTC quando o tick rodou pela última vez; `null` se nunca rodou.
+- `minutesSinceLastTick`: quantos minutos desde a última execução (`null` se nunca rodou).
+- `lastTickResult`: resumo da última rodada (números de avisos enviados/falhados, flags opcionais se deadline atingido ou lock estorou). `null` se nunca rodou.
+- `pendingOverdue`: avisos que passaram da hora de enviar há mais de 2h (travados).
+- `failedLast24h`: avisos com falha nas últimas 24h.
+- `emailFailing`: `true` se há e-mail de cobrança falhando em sequência.
+- `platformWhatsapp`: `"connected"` | `"disconnected"` | `"missing"` (nunca foi conectado) | `"disabled"` (feature desligada).
+- `reasons`: array com códigos dos motivos (`TICK_STALE`, `NOTICES_STUCK_EMAIL`, `EMAIL_FAILING_IN_SEQUENCE`, `PLATFORM_WHATSAPP_DOWN`, etc.), só para `down`/`degraded`.
+
+**Fluxo de decisão do status:**
+1. Se tick nunca rodou E há empresa criada há > 3h → `TICK_NEVER_RAN` → `down`.
+2. Se tick parou há > 3h → `TICK_STALE` → `down`.
+3. Se há avisos vencidos e presos (> 2h) → `NOTICES_STUCK_EMAIL` → `down`.
+4. Se e-mail falhando em sequência (≥3 tentativas) sem sucesso na última 3h → `EMAIL_FAILING_IN_SEQUENCE` → `down`.
+5. Se alguma das acima → `down`; senão, se deadline atingido ou WhatsApp caído → `degraded`; senão → `ok`.
+
+**Headers:** `Cache-Control: no-store, max-age=0` (sempre medição ao vivo, nunca cache).
+
+**Quando o status vira `down`:** o servidor notifica o admin por e-mail no máximo 1 vez a cada 6 horas (trigger aproveitando a consulta do monitor, sem depender do n8n). Logs: `health.billing.unavailable` (erro técnico) ou silencioso quando funciona.
 
 ---
 

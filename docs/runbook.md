@@ -181,6 +181,145 @@ A cobrança depende de uma rotina que roda de hora em hora no n8n. Se ela para, 
 
 ---
 
+## Operação da cobrança no dia a dia
+
+O motor da cobrança é autônomo: planejador + despachante rodam a cada hora, os avisos saem por e-mail e WhatsApp conforme o cronograma, e o painel mostra tudo. Neste tópico, a operação manual que o dono pode fazer quando necessário.
+
+### Conectar ou trocar o chip de cobrança
+
+O número do WhatsApp de avisos é gerenciado sem deploy. Ele pode estar desligado (cobrança só por e-mail), ativo ou trocado por outro.
+
+**Primeira conexão:**
+1. Vá em **Admin → Configurações da plataforma** → card **"WhatsApp da plataforma"**.
+2. Clique em **"Conectar novo número"** (ou "Trocar número" se já houver um).
+3. Um QR code apareça na tela. Escaneie com o WhatsApp do novo chip.
+4. Quando conectar, o card mostra o número mascarado (últimos 4 dígitos: `+55 84 9****-1234`) e o status muda para **"Conectado"**.
+
+**Trocar para outro número (sem perder avisos):**
+1. Na mesma tela, clique em **"Trocar número"**.
+2. O número atual continua enviando enquanto o novo conecta (sem intervalo sem canal).
+3. Quando o novo conectar, a transição é atômica: o antigo vira "Antigo (chip anterior)" e o novo fica ativo.
+4. Os avisos que o número antigo já enviou não são reenviados (chave única por ciclo/etapa/canal).
+
+**Se o número caiu (reconexão):**
+1. O status mostrará **"Desconectado"**. Um novo QR aparecerá na mesma linha.
+2. Escaneie com o mesmo chip que caiu ou com outro (o sistema detecta a mudança e mantém o histórico).
+3. Sem reconexão em 30 min, a tentativa vira "Abandonada" e o sistema manda avisos só por e-mail até conectar de novo.
+
+**Desligar o WhatsApp de avisos:**
+1. Clique em **"Desconectar"** (pedirá confirmação).
+2. A cobrança continua 100% por e-mail e painel. WhatsApp para assinantes não sai mais.
+3. Para ligar novamente, conecte um número novo.
+
+### Ler Envios de cobrança (auditoria e reenvio)
+
+Cada aviso enviado (ou tentado, ou preso) aparece em **Admin → Financeiro → Envios de cobrança**.
+
+**Colunas principais:**
+- **Empresa:** qual cliente recebeu o aviso.
+- **Etapa:** `Fatura criada`, `Véspera`, `Vence hoje`, `Venceu`, `Suspensão`, `Aviso x dias antes de cancelar`, etc.
+- **Canal:** `E-mail` | `WhatsApp` | (sino = `Painel`).
+- **Para quem:** e-mail ou telefone completo de quem recebeu. Avisos de antes da v1.5.0 aparecem mascarados, com a nota "registro anterior".
+- **Situação:** `Enviado` | `Falhado` | `Preso` | `Pulado`.
+- **Motivo (se pulado):** `Já pagou`, `Etapa não se aplica mais`, `Sem contato de cobrança`, `Opt-out de WhatsApp`, `Sem número de cobrança conectado`, etc.
+
+**Filtros:** por empresa, etapa, canal, período (por data de envio, não criação).
+
+**Ver a mensagem exata:**
+1. Clique em **"Ver mensagem"** (ou no aviso).
+2. Mostra assunto (e-mail) + corpo exato que foi enviado ou tentado. Se for antigo (> 12 meses ou > 90 dias após cancelamento), mostra `[texto apagado por retenção de privacidade]`. Você vê só a etapa, canal e para quem foi.
+
+### Quando reenviar
+
+Um aviso pode ser reenviado se ficou **`FALHADO`** ou **`PRESO`** (passou da hora). O botão **"Reenviar"** fica visível quando é possível. Reenvio é idempotente: mandar de novo o mesmo aviso cria uma única fila (não duplica mensagens).
+
+**Caso de uso 1: SMTP falhou ontem à noite**
+1. A empresa não recebeu o e-mail de "Vence hoje".
+2. Em Envios, você vê a linha com `Situação: Falhado` e `Motivo: Erro no servidor de e-mail`.
+3. Clique em **"Reenviar"**. O aviso entra na fila e sai na próxima oportunidade (respeitando a janela de horário).
+
+**Caso de uso 2: WhatsApp de cobrança caiu por algumas horas**
+1. Vários avisos de WhatsApp ficaram `PRESO` porque o número não estava conectado.
+2. Depois de reconectar, você pode reenviar os presos do dia em lote: filtro por canal (WhatsApp) + período (hoje) + situação (Preso).
+3. Selecione vários e clique em **"Reenviar"** (em desenvolvimento: seleção em massa). Por enquanto, reenvie um a um.
+4. Cada um respeita opt-out e horário (09h-19h seg-sab; domingo só críticos).
+
+**Avisos que NÃO podem ser reenviados:**
+- **Enviado com sucesso:** já saiu, não faz sentido reenviar.
+- **Pulado por "já pagou":** a empresa já pagou, aviso não é mais devido.
+- **Pulado por "etapa mudou":** a fatura foi paga ou o cancelamento foi desfeito entre o erro e agora.
+- **Suspensão manual:** se o admin suspendeu a empresa manualmente (não por falta de pagamento), esses avisos não são reenviáveis por segurança.
+
+### Motivos de "Não enviado" e próximos passos
+
+**NO_RECIPIENT**: não há endereço de e-mail.  
+→ Verificar em Admin → Empresas → contato da empresa → "E-mail de cobrança" (deve estar preenchido) ou dono está com e-mail errado.
+
+**OPTED_OUT**: empresa pediu para não receber avisos de cobrança por WhatsApp.  
+→ Ela respondeu "SAIR" a uma mensagem ou desligou manualmente em Assinatura. Reativar em Assinatura se desejar receber de novo (opt-out = empresa decide, não sistema).
+
+**NO_PLATFORM_NUMBER**: sem número de cobrança conectado.  
+→ Admin não conectou um chip ainda. Conectar em Configurações (passo acima).
+
+**CHANNEL_DOWN**: há número conectado, mas caiu entre o planejamento e o envio.  
+→ Esperar reconexão automática (12h no máximo) ou reconectar manualmente.
+
+**OUT_OF_WINDOW_EXPIRED**: aviso esperou a janela de horário, mas expirou (não faz mais sentido enviar).  
+→ Exemplo: aviso de "Vence hoje" planejado para sair à 09h, mas o seu agendador (n8n) caiu todo dia 3h-19h. Aviso expirou = etapa passou. Normal; nada a fazer.
+
+**PERMANENT_REJECTION**: servidor de e-mail recusou (ex.: endereço não existe no banco do cliente).  
+
+**UNCONFIRMED_DAILY_LIMIT**: o WhatsApp ou o e-mail do financeiro ainda não foi confirmado e já recebeu 1 aviso nas últimas 24 horas. O próximo espera o dia seguinte; se perder o prazo, fica assim. Peça para a empresa responder SIM no WhatsApp de cobrança.  
+→ Verificar e-mail com o cliente. Trocar em Admin → Empresas ou em Assinatura.
+
+### Teste do servidor de e-mail
+
+Em **Admin → Configurações da plataforma** → SMTP, há um botão **"Enviar e-mail de teste"**.
+
+1. Digite um e-mail (seu, para receber).
+2. Clique no botão.
+3. A resposta mostra: `Enviado com sucesso` + id da mensagem, ou o código de erro do servidor.
+4. Serve para validar credenciais, certificado SSL, rate limit, etc. Sem afeta clientes (e-mail de teste não é de cobrança).
+
+### Quando a Saúde ficar vermelha
+
+**Admin → Saúde** mostra o status do tick de cobrança. Se virar **VERMELHO** ("Cobrança parada" ou "Avisos presos"):
+
+1. **Leia o motivo no card "Cobrança":**
+   - "Não rodou há X horas" → vá para §"Diagnóstico de tick parado" abaixo.
+   - "Avisos presos há > 2h" → há fila que passou da hora. Reenvie os `FALHADO` (button acima) ou espere o tick tentar de novo.
+   - "E-mail falhando em sequência" → algo errado com SMTP. Teste a conexão (botão acima) ou entre em contato com o provedor.
+
+2. **O UptimeRobot também vai avisar** por e-mail/app se o monitor externo detectar 503 em `/api/health/billing`.
+
+3. **Rode o tick à mão (último recurso):**
+   ```bash
+   curl -X POST https://innochat.innovarecode.com.br/api/internal/v1/billing/tick \
+     -H "Authorization: Bearer <seu segredo interno>"
+   ```
+   Se voltar `{ "noticesSent": 10, "noticesFailed": 0 }` etc., o painel está bem; o problema é o agendador (n8n).  
+   Se voltar 500 ou sem resposta, há algo mais grave (banco fora, painel travado).
+
+### Suspensões manuais antigas e revisão de segurança
+
+**Context:** antes da v1.4.1, o admin podia suspender uma empresa manualmente, mas o sistema podia depois "desuspender" por atraso (carência), criando confusão. Desde v1.4.1, suspensão manual é marcada em `manualSuspendedAt` e nunca vira atraso.
+
+**Se você tem empresas suspensas ANTES de 2026-10-02:**
+- Se o motivo foi "pagamento pendente", você pode deixar como está (a régua continuará tentando cobrar, normalmente).
+- Se suspendeu por outro motivo (manutenção, fraude, etc.), a suspensão não vira "atraso". Está segura.
+- **Recomendado:** abra **Admin → Empresas**, procure por empresas em `SUSPENDED`, clique em cada uma e veja o motivo no banco (não há coluna visual, consulte o Cronos se duvidoso).
+
+### DMARC, SPF e DKIM para cobrança
+
+**Situação atual:** e-mail de cobrança sai pelo seu SMTP com SPF e DKIM (se configurados). DMARC está em `p=none` (monitor, não rejeita). As operadoras respeitam SPF/DKIM mas podem marcar como spam se DMARC for mais rigoroso.
+
+**Avaliação em 2-4 semanas (decisão do dono, 2026-10-02):**
+- Monitorar taxa de rejeição e spam (via logs do SMTP).
+- Se taxa for baixa, considerar `p=quarantine` ou `p=reject` no DMARC para endurecê-lo (menos falso-positivo, mais seguro contra falsificação).
+- Atualmente: `p=none` = o banco aceita, não rejeita. Bom para começar; endurecer depois de validar.
+
+---
+
 ## Incidentes comuns
 
 ### Incidente 1: Bot parou de responder

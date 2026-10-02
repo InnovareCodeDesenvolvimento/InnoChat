@@ -1,7 +1,43 @@
 # Régua de cobrança e visão financeira (plano)
 
 Autora: Nova (arquitetura). Data: 2026-10-01. Base: HEAD `322525f` (v1.3.1).
-Status: **plano, nada implementado**. As decisões da §6 são do dono.
+Status: **plano atualizado com implementação** (v1.6.0, commit e267960). As decisões da §6 foram confirmadas pelo dono.
+
+---
+
+## Estado atual (v1.6.0)
+
+A régua de cobrança foi implementada em fases paralelas (F0–F7) concluídas entre 2026-10-01 e 2026-10-02:
+
+| Fase | O quê | Versão | Status | Onde está | Divergências do plano |
+|---|---|---|---|---|---|
+| **F0** | Correções urgentes: ler resposta de `sendMail`, "vence hoje" em 24h, e-mail no cancelamento, `pg_try_advisory_lock`, sem travessão no Pix | v1.3.2 | ✅ Pronto | `src/modules/billing/tick.ts`, `mailer.ts`, `service.ts` | Nenhuma; escopo de segurança/confiabilidade |
+| **F1** | Migrations: `BillingNotice`, `BillingEvent`, `PlatformWhatsappConnection`, campos de cobrança no Tenant | v1.4.0 | ✅ Pronto | `prisma/schema.prisma`, `20261004100000_regua_f1_schema` | Campo `skippedReason` (não `skipReason`); `recipient`, `renderedText`, `providerResponse` adicionados para retenção (LGPD) |
+| **F2** | Motor da régua: planejador puro + despachante + templates de e-mail completos | v1.4.0 | ✅ Pronto | `src/core/billing/dunning.ts`, `dunning-policy.ts`, `src/lib/email/templates.ts` | Nenhuma; motor em produção |
+| **F3** | Painel da empresa: sino derivado, banner com contador, histórico de pagamentos, contato de cobrança | v1.4.0 | ✅ Pronto | `src/components/shell/panel-shell.tsx`, `src/modules/billing/admin-service.ts`, `assinatura/page.tsx` | Nenhuma; telas implementadas |
+| **F4** | WhatsApp da plataforma: conectar e trocar número, QR no Admin, webhook próprio com token por conexão | v1.4.0 | ✅ Pronto | `src/modules/platform/platform-whatsapp-actions.ts`, `PlatformWhatsappConnection` model, `/api/webhooks/platform-whatsapp/[token]` | Nenhuma; funcionalidade completa |
+| **F5** | Canal WhatsApp na régua: resolução de conexão ativa no claim, janela 09h-19h (seg-sab), opt-in, fallback para e-mail críticos | v1.4.0 | ✅ Pronto | `src/core/billing/dunning.ts`, `src/modules/billing/whatsapp.ts` | Nenhuma; integrada ao motor |
+| **F6** | Visão financeira: `/admin/financeiro` com MRR, receita mensal, inadimplência, churn, linha do tempo, CSV, privacidade | v1.5.0 | ✅ Pronto | `src/modules/billing/admin-service.ts`, `/admin/financeiro`, `BillingEvent` append-only | Nenhuma; métricas e auditoria completas |
+| **F7** | Monitor externo: `/api/health/billing` (ok/degraded/down, 200/503), UptimeRobot no runbook, alertas no sino/e-mail do admin | v1.6.0 | ✅ Pronto | `src/app/api/health/billing/route.ts`, `src/core/billing/billing-health.ts`, runbook §3 | Nenhuma; monitoramento ativo |
+
+### Divergências confirmadas entre plano e código
+
+1. **Campo `skippedReason` em vez de `skipReason`** (F1, BillingNotice)  
+   → Plano dizia `skipReason`; código implementa `skippedReason` (mais descritivo, usado em `BillingNotice` modelo). Sem impacto funcional; convenção de nomenclatura.
+
+2. **Campos adicionais em BillingNotice para auditoria e LGPD** (F1, F6)  
+   → Plano mencionava `recipient` e `renderedText` na seção F6; código implementa desde F1 para retenção coordenada: `recipient` (completo, pessoal, só no banco), `recipientKind` (OWNER|BILLING_EMAIL|BILLING_WHATSAPP), `renderedSubject`, `renderedText`, `providerResponse` (resposta do SMTP).
+
+3. **Suspensão manual rastreada** (F1, F2)  
+   → Coluna `Subscription.manualSuspendedAt` (não mencionada no plano original) marca quando o admin suspendeu a empresa. Nunca vira "atraso" pela carência. Implementado na v1.4.1 como revisão de segurança.
+
+4. **Retenção automática (LGPD)** (F6, maintenance/tick)  
+   → Plano menciona "12 meses / 90 dias após cancelamento"; código implementa em `src/modules/maintenance/tick.ts`: apaga `recipient`, `renderedText`, `providerResponse` de `BillingNotice` após 12 meses (ou 90 dias após `Subscription.canceledAt`). Sem exclusão de linhas; dados pessoais apenas mascarados.
+
+5. **Opt-in de WhatsApp ativado por padrão** (F5, v1.4.0)  
+   → Plano §6 (D5) recomendava "pedir na tela"; dono confirmou em 2026-10-01 "ativado para todos". Implementação: toggle na tela Assinatura, começando ligado (com opt-out fácil).
+
+---
 
 Pedido do dono: "já fizemos alguma coisa para lembrar ao nosso cliente que a mensalidade dele está
 próxima de vencer? [...] por e-mail, por WhatsApp, por notificação no sistema [...] mecanismo
