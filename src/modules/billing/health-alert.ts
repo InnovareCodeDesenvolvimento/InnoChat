@@ -46,7 +46,7 @@ export type BillingDownAlertResult =
   | { sent: true; recipients: number };
 
 /** Destinatários: os usuários admin da plataforma; sem nenhum, o contato de Dados da empresa. Nunca vai a log. */
-async function loadRecipients(): Promise<string[]> {
+export async function loadRecipients(): Promise<string[]> {
   const prisma = getPrisma();
   const admins = await prisma.user.findMany({
     where: { isPlatformAdmin: true },

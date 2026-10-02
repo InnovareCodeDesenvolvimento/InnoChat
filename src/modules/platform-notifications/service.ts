@@ -3,6 +3,7 @@ import { DomainError } from "@/lib/errors";
 import { GRACE_DAYS_PAYING, subscriptionBoundaries } from "@/core/billing";
 import type { AdminNotification } from "./types";
 import { loadPlatformWhatsappItems } from "./platform-whatsapp-items";
+import { loadBackupLateNotification } from "@/modules/backup/service";
 import { BILLING_TICK_DOWN_AFTER_MINUTES, BILLING_NOTICE_STUCK_AFTER_MINUTES } from "@/core/billing/billing-health";
 import { stuckNoticesWhere } from "@/modules/billing/health";
 
@@ -29,7 +30,7 @@ const TRIAL_WARN_MS = DAY_MS;
 // Mesma regra da tela Saúde (`health-service.ts`): billing 2h, maintenance 26h.
 const BILLING_TICK_STALE_MS = 2 * 60 * 60 * 1000;
 const MAINTENANCE_TICK_STALE_MS = 26 * 60 * 60 * 1000;
-const KEY_PATTERN = /^(signup|pay|susp|cancel|cancelreq|pvoid|pdup|trial|wa|mpwh|tick|pwa):[A-Za-z0-9_:.-]{1,100}$/;
+const KEY_PATTERN = /^(signup|pay|susp|cancel|cancelreq|pvoid|pdup|trial|wa|mpwh|tick|pwa|bkp|err):[A-Za-z0-9_:.-]{1,100}$/;
 
 type Item = Omit<AdminNotification, "read">;
 
@@ -363,6 +364,40 @@ async function loadItems(now: Date, from: Date): Promise<Item[]> {
 
   // WhatsApp de cobrança da plataforma (sem número, caído, resposta de assinante).
   items.push(...(await loadPlatformWhatsappItems(now, from)));
+
+  // Backup atrasado (Melhoria 2): derivado de BackupConfig, fora da janela de 30 dias (vale enquanto atrasado).
+  const backupLate = await loadBackupLateNotification(now);
+  if (backupLate) {
+    items.push({
+      id: backupLate.id,
+      kind: "BACKUP_LATE",
+      severity: "danger",
+      title: "O backup do banco está atrasado",
+      body: backupLate.body,
+      href: "/admin/backup",
+      createdAt: backupLate.createdAt.toISOString(),
+    });
+  }
+
+  // Monitor de erros (Melhoria 1): um item por erro NOVO ainda aberto (grupo criado na janela de 30 dias). Derivado do
+  // próprio grupo, sem depender do e-mail: resolver ou ignorar na tela Erros some com o item. Limitado a ERROR_SOURCE_CAP.
+  const newErrors = await prisma.errorGroup.findMany({
+    where: { status: "OPEN", firstSeenAt: { gte: from } },
+    orderBy: { firstSeenAt: "desc" },
+    take: SOURCE_CAP,
+    select: { id: true, type: true, message: true, source: true, firstSeenAt: true },
+  });
+  for (const e of newErrors) {
+    items.push({
+      id: `err:${e.id}`,
+      kind: "NEW_ERROR",
+      severity: "danger",
+      title: e.source === "CLIENT" ? "Erro novo no navegador" : "Erro novo no servidor",
+      body: `${e.type}: ${e.message.length > 160 ? `${e.message.slice(0, 159)}…` : e.message}`,
+      href: "/admin/erros",
+      createdAt: e.firstSeenAt.toISOString(),
+    });
+  }
 
   return items;
 }

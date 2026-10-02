@@ -5,6 +5,7 @@ import {
   CalendarPlus,
   CalendarX,
   CheckCircle2,
+  DatabaseBackup,
   Building2,
   Headset,
   Hourglass,
@@ -66,6 +67,8 @@ export const ADMIN_KIND_ICON: Record<AdminNotificationKind, LucideIcon> = {
   PLATFORM_WHATSAPP_MISSING: WifiOff,
   PLATFORM_WHATSAPP_DISCONNECTED: WifiOff,
   PLATFORM_WHATSAPP_REPLY: MessageCircle,
+  BACKUP_LATE: DatabaseBackup,
+  NEW_ERROR: TriangleAlert,
 };
 
 /**

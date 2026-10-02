@@ -5,6 +5,8 @@ import { CANCELED_RETENTION_DAYS } from "@/core/billing";
 import { recordMaintenanceTickRun } from "@/modules/platform/health-service";
 import { loadBillingHealth } from "@/modules/billing/health";
 import { notifyAdminBillingDown } from "@/modules/billing/health-alert";
+import { purgeOldErrorEvents } from "@/modules/error-monitor/service";
+import { flushErrorAlerts } from "@/modules/error-monitor/alert";
 
 /**
  * `POST /api/internal/v1/maintenance/tick` (docs/contratos.md — "Segurança"). Aplica a
@@ -156,6 +158,15 @@ export async function runMaintenanceTick(now: Date = new Date()): Promise<Mainte
   } catch (error) {
     logger.warn("maintenance.billing_notice_canceled_purge_failed", { errorMessage: error instanceof Error ? error.message : String(error) });
   }
+
+  // Monitor de erros (Melhoria 1): ocorrências com mais de 30 dias saem (o grupo e o contador ficam) e, de carona, tenta o
+  // e-mail de erro novo que ficou pendente (SMTP que voltou, janela que passou). Falhas isoladas; fora do summary.
+  try {
+    await purgeOldErrorEvents(now);
+  } catch (error) {
+    logger.warn("maintenance.error_events_purge_failed", { errorMessage: error instanceof Error ? error.message : String(error) });
+  }
+  await flushErrorAlerts(now);
 
   const summary: MaintenanceTickSummary = {
     inboundEventsPurged: purged.count,

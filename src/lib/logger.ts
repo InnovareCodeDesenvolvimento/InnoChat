@@ -37,16 +37,40 @@ export function redact(fields: LogFields): LogFields {
   return safe;
 }
 
+/**
+ * Gancho opcional para `logger.error` (monitor de erros). Guardado em `globalThis` por Symbol: o código de
+ * instrumentação e o das rotas podem ser bundles distintos, cada um com a SUA cópia deste módulo.
+ * O sink recebe os campos já redigidos e nunca pode lançar nem chamar `logger.error` (loop).
+ */
+export type ErrorSink = (event: string, fields: LogFields) => void;
+const SINK_KEY = Symbol.for("innochat.logger.errorSink");
+
+export function setErrorSink(sink: ErrorSink | null): void {
+  (globalThis as Record<symbol, unknown>)[SINK_KEY] = sink ?? undefined;
+}
+
 function emit(level: Level, message: string, fields?: LogFields) {
+  const safeFields = fields ? redact(fields) : {};
   const entry = {
     level,
     message,
     time: new Date().toISOString(),
-    ...(fields ? redact(fields) : {}),
+    ...safeFields,
   };
 
   const line = process.env.NODE_ENV === "production" ? JSON.stringify(entry) : entry;
   console[level === "debug" ? "log" : level](line);
+
+  if (level === "error") {
+    const sink = (globalThis as Record<symbol, unknown>)[SINK_KEY] as ErrorSink | undefined;
+    if (sink) {
+      try {
+        sink(message, safeFields);
+      } catch {
+        // O monitor jamais pode quebrar quem loga.
+      }
+    }
+  }
 }
 
 export const logger = {

@@ -15,7 +15,9 @@ export type PlatformNotificationKind =
   | "BILLING_NOTICES_STUCK"
   | "PLATFORM_WHATSAPP_MISSING"
   | "PLATFORM_WHATSAPP_DISCONNECTED"
-  | "PLATFORM_WHATSAPP_REPLY";
+  | "PLATFORM_WHATSAPP_REPLY"
+  | "BACKUP_LATE"
+  | "NEW_ERROR";
 
 export type PlatformNotificationSeverity = "info" | "success" | "warning" | "danger";
 
