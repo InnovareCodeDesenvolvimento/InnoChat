@@ -7,6 +7,13 @@ Versão semântica (`MAJOR.MINOR.PATCH`), lida do `version` do `package.json` e 
 
 Toda publicação em produção sobe a versão e ganha uma entrada aqui.
 
+## v1.5.1 — 2026-10-02
+
+### Correções
+- Um aviso por e-mail só conta como "Enviado" quando o servidor aceita o destinatário. Se recusar, aparece como "Falhou", com a resposta do servidor.
+- Em Envios de cobrança, cada e-mail mostra o id da mensagem e a resposta do servidor de e-mail, para investigar entregas.
+- Admin → Configurações → SMTP: botão "Enviar e-mail de teste", que mostra a resposta do servidor.
+
 ## v1.5.0 — 2026-10-02
 
 ### Novidades: Financeiro no Admin
