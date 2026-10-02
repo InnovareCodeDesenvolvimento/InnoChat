@@ -61,6 +61,8 @@ export const ADMIN_KIND_ICON: Record<AdminNotificationKind, LucideIcon> = {
   MP_WEBHOOK_REJECTED: ShieldAlert,
   TICK_LATE: Timer,
   BILLING_EMAIL_FAILING: ShieldAlert,
+  BILLING_TICK_STALE: Timer,
+  BILLING_NOTICES_STUCK: TriangleAlert,
   PLATFORM_WHATSAPP_MISSING: WifiOff,
   PLATFORM_WHATSAPP_DISCONNECTED: WifiOff,
   PLATFORM_WHATSAPP_REPLY: MessageCircle,

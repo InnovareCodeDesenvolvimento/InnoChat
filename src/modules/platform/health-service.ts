@@ -2,6 +2,8 @@ import { getPrisma } from "@/lib/db/prisma";
 import type { SubscriptionStatus, WhatsappInstanceStatus } from "@/lib/db/types";
 import { getActiveMercadoPagoCredentials } from "./mercadopago-config";
 import { formatPhoneDisplay } from "@/core/platform-whatsapp/rules";
+import type { BillingHealthReport } from "@/core/billing/billing-health";
+import { loadBillingHealth } from "@/modules/billing/health";
 import { loadPlatformSettingsRow, readGenericSecret } from "./secrets";
 import { testEvolutionConnection, testMercadoPagoConnection, testN8nConnection, testSmtpConnection, type ConnectionTestResult } from "./connection-tests";
 
@@ -150,6 +152,8 @@ export type PlatformHealth = {
   integrations: IntegrationsHealth;
   mercadoPagoWebhook: MercadoPagoWebhookHealth;
   billingTick: TickHealth;
+  /** Monitor de cobrança (F7): o mesmo veredito de `GET /api/health/billing`. */
+  billingMonitor: BillingHealthReport;
   maintenanceTick: TickHealth;
   whatsappInstancesByStatus: Record<WhatsappInstanceStatus, number>;
   companiesBySubscriptionStatus: Record<SubscriptionStatus, number>;
@@ -168,7 +172,7 @@ function tickHealthFrom(lastRunAt: Date | null, lastResult: unknown, now: Date, 
 export async function getPlatformHealth(now: Date = new Date()): Promise<PlatformHealth> {
   const prisma = getPrisma();
 
-  const [integrations, settings, whatsappGroups, subscriptionGroups, inboundEventsLast24h, platformConnection] = await Promise.all([
+  const [integrations, settings, whatsappGroups, subscriptionGroups, inboundEventsLast24h, platformConnection, billingMonitor] = await Promise.all([
     getIntegrationsHealth(),
     prisma.platformSettings.findUnique({
       where: { id: 1 },
@@ -185,6 +189,7 @@ export async function getPlatformHealth(now: Date = new Date()): Promise<Platfor
     prisma.subscription.groupBy({ by: ["status"], _count: { _all: true } }),
     prisma.inboundEvent.count({ where: { createdAt: { gte: new Date(now.getTime() - 24 * 60 * 60 * 1000) } } }),
     prisma.platformWhatsappConnection.findFirst({ where: { role: "ACTIVE" }, select: { label: true, status: true, phoneE164: true, disconnectedAt: true } }),
+    loadBillingHealth(now),
   ]);
 
   const whatsappInstancesByStatus = Object.fromEntries(WHATSAPP_STATUSES.map((s) => [s, 0])) as Record<WhatsappInstanceStatus, number>;
@@ -241,6 +246,7 @@ export async function getPlatformHealth(now: Date = new Date()): Promise<Platfor
     platformWhatsapp,
     mercadoPagoWebhook,
     billingTick,
+    billingMonitor,
     maintenanceTick,
     whatsappInstancesByStatus,
     companiesBySubscriptionStatus,

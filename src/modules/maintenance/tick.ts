@@ -3,6 +3,8 @@ import { getPrisma } from "@/lib/db/prisma";
 import { logger } from "@/lib/logger";
 import { CANCELED_RETENTION_DAYS } from "@/core/billing";
 import { recordMaintenanceTickRun } from "@/modules/platform/health-service";
+import { loadBillingHealth } from "@/modules/billing/health";
+import { notifyAdminBillingDown } from "@/modules/billing/health-alert";
 
 /**
  * `POST /api/internal/v1/maintenance/tick` (docs/contratos.md — "Segurança"). Aplica a
@@ -167,6 +169,16 @@ export async function runMaintenanceTick(now: Date = new Date()): Promise<Mainte
   await recordMaintenanceTickRun(summary, now).catch((error) => {
     logger.warn("maintenance.tick.record_run_failed", { errorMessage: error instanceof Error ? error.message : String(error) });
   });
+
+  // Monitor de cobrança (F7): segundo gatilho do e-mail "cobrança parada" ao admin (o primeiro é a consulta do monitor
+  // externo a /api/health/billing). Roda aqui porque o billing/tick, parado, não pode avisar que parou. No máximo 1 e-mail
+  // a cada 6 h; falha isolada, nunca derruba a manutenção.
+  try {
+    const report = await loadBillingHealth(now);
+    if (report.status === "down") await notifyAdminBillingDown(report, now);
+  } catch (error) {
+    logger.warn("maintenance.billing_monitor_failed", { errorName: error instanceof Error ? error.name : "unknown" });
+  }
 
   return summary;
 }

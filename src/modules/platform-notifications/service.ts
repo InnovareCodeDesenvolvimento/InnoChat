@@ -3,6 +3,8 @@ import { DomainError } from "@/lib/errors";
 import { GRACE_DAYS_PAYING, subscriptionBoundaries } from "@/core/billing";
 import type { AdminNotification } from "./types";
 import { loadPlatformWhatsappItems } from "./platform-whatsapp-items";
+import { BILLING_TICK_DOWN_AFTER_MINUTES, BILLING_NOTICE_STUCK_AFTER_MINUTES } from "@/core/billing/billing-health";
+import { stuckNoticesWhere } from "@/modules/billing/health";
 
 /**
  * Central de notificações do ADMIN da plataforma — mesmo desenho da central do tenant
@@ -296,6 +298,47 @@ async function loadItems(now: Date, from: Date): Promise<Item[]> {
       severity: "warning",
       title: `${t.label} atrasado`,
       body: t.at ? `O ${t.label} não roda há mais de ${t.hours}h. Confira o cron no n8n.` : `O ${t.label} nunca rodou. Confira o cron no n8n.`,
+      href: "/admin/saude",
+      createdAt: since.toISOString(),
+    });
+  }
+
+  // Monitor de cobrança (F7): rotina parada há mais de 3 h (mesmo limite que vira 503 em /api/health/billing). Escalada do
+  // "atrasado" de 2 h acima: id próprio, então volta como não lida e em vermelho. Também fora da janela de 30 dias.
+  const billingDownMs = BILLING_TICK_DOWN_AFTER_MINUTES * 60_000;
+  const billingLastAt = settings?.lastBillingTickAt ?? null;
+  let billingStaleSince: Date | null = null;
+  if (billingLastAt) {
+    if (now.getTime() - billingLastAt.getTime() > billingDownMs) billingStaleSince = new Date(billingLastAt.getTime() + billingDownMs);
+  } else {
+    const first = await prisma.tenant.findFirst({ orderBy: { createdAt: "asc" }, select: { createdAt: true } });
+    if (first && now.getTime() - first.createdAt.getTime() > billingDownMs) billingStaleSince = new Date(first.createdAt.getTime() + billingDownMs);
+  }
+  if (billingStaleSince) {
+    items.push({
+      id: `tick:billing-stale:${billingLastAt ? billingLastAt.getTime() : "never"}`,
+      kind: "BILLING_TICK_STALE",
+      severity: "danger",
+      title: "A cobrança parou de rodar",
+      body: billingLastAt
+        ? `A rotina de cobrança não roda há mais de ${BILLING_TICK_DOWN_AFTER_MINUTES / 60} horas. Nenhum aviso de mensalidade sai e as assinaturas não andam. Confira o fluxo do cron no n8n e a tela Saúde.`
+        : "A rotina de cobrança nunca rodou. Nenhum aviso de mensalidade sai. Confira o fluxo do cron no n8n e a tela Saúde.",
+      href: "/admin/saude",
+      createdAt: billingStaleSince.toISOString(),
+    });
+  }
+
+  // Avisos vencidos que não saíram (PENDING, ou nova tentativa liberada, com a hora de enviar passada há mais de 2 h).
+  // Derivado do outbox; um item por dia, some quando a fila anda.
+  const stuck = await prisma.billingNotice.aggregate({ where: stuckNoticesWhere(now), _count: { _all: true }, _min: { nextAttemptAt: true } });
+  if (stuck._count._all > 0 && stuck._min.nextAttemptAt) {
+    const since = new Date(Math.min(now.getTime(), stuck._min.nextAttemptAt.getTime() + BILLING_NOTICE_STUCK_AFTER_MINUTES * 60_000));
+    items.push({
+      id: `tick:stuck:${now.toISOString().slice(0, 10)}`,
+      kind: "BILLING_NOTICES_STUCK",
+      severity: "danger",
+      title: "Avisos de cobrança presos",
+      body: `${stuck._count._all} aviso(s) passaram da hora de sair há mais de ${BILLING_NOTICE_STUCK_AFTER_MINUTES / 60} horas e continuam na fila. Veja a tela Saúde e o registro de envios.`,
       href: "/admin/saude",
       createdAt: since.toISOString(),
     });

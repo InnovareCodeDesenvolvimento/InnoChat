@@ -411,6 +411,21 @@ const HELP_ENTRIES = {
     tip: "\"Aceito pelo servidor\" quer dizer que o servidor pegou a mensagem. Só você, olhando a caixa, confirma que ela chegou.",
     warning: "Cada administrador pode mandar 5 testes a cada 10 minutos.",
   },
+  "admin.saudeCobranca": {
+    title: "Cobrança na Saúde",
+    purpose: "Mostra se a cobrança das assinaturas está andando: quando foi a última rodada, quantos avisos saíram, quantos falharam e se algum ficou parado na fila.",
+    steps: [
+      "Olhe o selo de cada linha: verde está bem, amarelo pede atenção, vermelho quer dizer parado.",
+      "Se a última rodada passou de 2 horas, veja se o fluxo que roda de hora em hora está ligado. Passou de 3 horas, o sistema já avisa por e-mail e pelo sino.",
+      "Se houver avisos presos ou e-mails falhando, confira o servidor de e-mail em Configurações e rode o teste de envio.",
+    ],
+    examples: [
+      "A última rodada foi há 4 horas e o selo está vermelho: ninguém está recebendo aviso de mensalidade agora. O fluxo que roda de hora em hora provavelmente parou.",
+      "O WhatsApp de cobrança caiu e o selo está amarelo: os avisos seguem por e-mail, só falta o WhatsApp. Leia o QR de novo em Configurações.",
+    ],
+    tip: "Há um endereço público com este mesmo resultado, feito para um monitor externo (o guia do UptimeRobot está no runbook). Ele avisa você até se o sistema inteiro cair.",
+    warning: "O e-mail de aviso sai pelo mesmo servidor de e-mail da cobrança. Se o problema for esse servidor, só o monitor externo avisa.",
+  },
   "pagina.adminFinanceiro": {
     title: "Painel financeiro",
     purpose: "Mostra quanto a plataforma fatura, quem está pagando em dia, quem atrasou e quanto dinheiro está para entrar. Os valores do mês seguem o horário de Brasília.",

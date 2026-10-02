@@ -336,6 +336,9 @@ model PlatformSettings {
   lastMaintenanceTickAt     DateTime?
   lastMaintenanceTickResult Json?
 
+  // Monitor de cobrança (F7): quando saiu o último e-mail de "cobrança parada" ao admin. Limita a 1 e-mail a cada 6 h.
+  lastBillingDownAlertAt    DateTime?
+
   // Diagnóstico do webhook do Mercado Pago (Admin → Saúde): último recebido (qualquer desfecho) e
   // última rejeição com o motivo. JSON pequeno `{ outcome|reason, environment, type }` — NUNCA o
   // corpo da notificação nem segredo/assinatura.

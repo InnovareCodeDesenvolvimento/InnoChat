@@ -127,6 +127,58 @@ Resposta esperada:
 
 Se o banco ou n8n estiver indisponível, o status fica `degraded` ou `error`.
 
+### Monitor externo da cobrança (UptimeRobot)
+
+A cobrança depende de uma rotina que roda de hora em hora no n8n. Se ela para, ninguém é cobrado e nada avisa por dentro do sistema: o aviso por e-mail e o sino do Admin dependem do próprio InnoChat e do mesmo n8n. Por isso existe um monitor **de fora**, que não passa por este sistema. **Ele é a garantia real.** O e-mail e o sino são reforço.
+
+**O que ele vigia:** `GET https://innochat.innovarecode.com.br/api/health/billing`. Endereço público, sem login e sem dado de cliente: só o status e números somados. Resposta:
+
+| Campo | Significado |
+|---|---|
+| `status` | `ok`, `degraded` (aviso) ou `down` (parado) |
+| `lastTickAt`, `minutesSinceLastTick` | quando foi a última rodada de cobrança e há quantos minutos |
+| `lastTickResult` | `sent` e `failed` da última rodada (e `deadlineReached` se parou por tempo) |
+| `pendingOverdue` | avisos que passaram da hora de sair há mais de 2 horas |
+| `failedLast24h` | avisos com falha nas últimas 24 horas |
+| `emailFailing` | `true` se há e-mail de cobrança falhando |
+| `platformWhatsapp` | `connected`, `disconnected`, `missing` ou `disabled` |
+| `reasons` | códigos do motivo (por exemplo `TICK_STALE`) |
+
+- **HTTP 200** quando `ok` ou `degraded`. O WhatsApp de cobrança caído é só aviso, porque os avisos seguem por e-mail.
+- **HTTP 503** quando `down`: a rotina não roda há mais de 3 horas, há aviso de e-mail vencido e preso (mais de 2 horas), ou os e-mails estão falhando rodada após rodada. O 503 também sai se o banco não responder.
+
+**Criar o monitor (quem faz é o dono, a conta é dele):**
+
+1. Crie a conta grátis em uptimerobot.com e confirme o e-mail.
+2. Clique em **Add New Monitor** (ou **+ New monitor**).
+3. Em **Monitor Type**, escolha **HTTP(s)**.
+4. **Friendly Name:** `InnoChat - Cobrança`.
+5. **URL:** `https://innochat.innovarecode.com.br/api/health/billing`
+6. **Monitoring Interval:** **5 minutes** (é o mais curto do plano grátis).
+7. Em **Alert Contacts To Notify**, marque o seu **e-mail**. Para o celular, instale o app **UptimeRobot** (Android ou iPhone), entre com a mesma conta e ative as notificações do aplicativo. Ele aparece como contato de alerta por push; marque-o também.
+8. Salve com **Create Monitor**. Em alguns minutos o monitor deve ficar **Up**. O UptimeRobot trata qualquer resposta que não seja 2xx (como o 503) como **Down** e avisa.
+9. Confira que o monitor está **Up** e mande uma notificação de teste para o seu e-mail e para o celular (a tela de **Alert Contacts** tem a opção de enviar teste). Parar o fluxo no n8n por mais de 3 horas só para testar não vale a pena.
+
+**Quando o alerta chegar (503):**
+
+1. Abra `https://innochat.innovarecode.com.br/api/health/billing` no navegador e leia `reasons`:
+   - `TICK_STALE` ou `TICK_NEVER_RAN`: a rotina não está rodando. Vá ao passo 2.
+   - `NOTICES_STUCK_EMAIL`: a rotina roda, mas avisos de e-mail ficaram na fila. Vá ao passo 4.
+   - `EMAIL_FAILING_IN_SEQUENCE`: o servidor de e-mail está recusando. Vá ao passo 4.
+2. **Olhe o n8n.** Abra o fluxo `innochat-cron`. Ele está ligado (publicado)? A última execução deu erro? Se o fluxo estiver desligado, ligue. Se deu erro, abra a execução e veja em qual passo parou (credencial vencida, segredo interno trocado, painel fora do ar).
+3. **Rode o tick à mão** para confirmar que o painel responde (use o segredo interno que o n8n usa; o painel guarda só o hash dele e não mostra o valor. Não cole o segredo em chat nem em ticket):
+   ```bash
+   curl -X POST https://innochat.innovarecode.com.br/api/internal/v1/billing/tick -H "Authorization: Bearer <segredo interno>"
+   ```
+   Resposta 200 com os contadores = painel e banco estão bem, o problema é o agendamento no n8n. Resposta 401 = o segredo do n8n não bate com o do painel (veja "Rotação de segredos"). Resposta 500 ou sem resposta = olhe os logs do painel no Easypanel (`billing.tick.route.unexpected_error`).
+4. **Abra Admin > Saúde**, seção **Cobrança**: veja a última rodada, os avisos presos e as falhas. Depois **Admin > Financeiro > Envios de cobrança** para ver quais avisos falharam e o código do erro. Se for e-mail, teste o servidor em **Configurações > E-mail de teste**.
+5. Depois de rodar o tick, espere até 5 minutos: o monitor volta a **Up** sozinho quando o status deixar de ser `down`.
+
+**Além do monitor, o sistema também avisa por dentro (reforço):**
+- **Sino do Admin:** "A cobrança parou de rodar" (mais de 3 horas) e "Avisos de cobrança presos".
+- **E-mail ao admin da plataforma** quando o status vira `down`: no máximo **1 a cada 6 horas** enquanto durar. Quem dispara é a própria consulta do monitor ao `/api/health/billing` e a manutenção diária (`maintenance/tick`). Os dois dependem de o painel estar no ar, e o e-mail sai pelo mesmo servidor de e-mail da cobrança: se esse servidor for o problema, o e-mail não chega. Se o n8n inteiro cair, a manutenção diária também não roda. **Só o UptimeRobot avisa nesses casos.**
+- O e-mail vai para os usuários administradores da plataforma; se não houver nenhum, para o e-mail de contato de **Admin > Dados da empresa**.
+
 ---
 
 ## Incidentes comuns

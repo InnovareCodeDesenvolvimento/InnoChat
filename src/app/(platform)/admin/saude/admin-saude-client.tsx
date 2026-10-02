@@ -13,6 +13,7 @@ import { formatRelativeTimeLabel } from "@/components/lib/format-date";
 import { useToast } from "@/components/ui/toast";
 import { getPlatformHealthAction } from "@/modules/platform/actions";
 import { InteractiveTestCard } from "./interactive-test-card";
+import { BILLING_TICK_DOWN_AFTER_MINUTES, BILLING_TICK_WARN_AFTER_MINUTES, type BillingHealthReport } from "@/core/billing/billing-health";
 import type { IntegrationHealth, MercadoPagoWebhookHealth, PlatformHealth, PlatformWhatsappHealth, TickHealth } from "@/modules/platform/health-service";
 
 const WHATSAPP_STATUS_LABEL: Record<string, string> = {
@@ -147,6 +148,94 @@ function TickCard({ title, tick }: { title: string; tick: TickHealth }) {
   );
 }
 
+type Seal = { variant: BadgeProps["variant"]; label: string };
+const SEAL_OK: Seal = { variant: "success", label: "ok" };
+const SEAL_WARN: Seal = { variant: "warning", label: "atenção" };
+const SEAL_DOWN: Seal = { variant: "danger", label: "parado" };
+
+/** Quanto tempo desde a última rodada, em palavras (a Saúde mostra "há 3h", aqui precisa de minutos também). */
+function minutesLabel(minutes: number | null): string {
+  if (minutes === null) return "Nunca rodou";
+  if (minutes < 1) return "Agora mesmo";
+  if (minutes < 60) return `Há ${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest === 0 ? `Há ${hours}h` : `Há ${hours}h${String(rest).padStart(2, "0")}`;
+}
+
+function tickSeal(report: BillingHealthReport): Seal {
+  if (report.reasons.includes("TICK_STALE") || report.reasons.includes("TICK_NEVER_RAN")) return SEAL_DOWN;
+  if (report.minutesSinceLastTick !== null && report.minutesSinceLastTick > BILLING_TICK_WARN_AFTER_MINUTES) return SEAL_WARN;
+  return SEAL_OK;
+}
+
+function stuckSeal(report: BillingHealthReport): Seal {
+  if (report.reasons.includes("NOTICES_STUCK_EMAIL")) return SEAL_DOWN;
+  return report.pendingOverdue > 0 ? SEAL_WARN : SEAL_OK;
+}
+
+function failuresSeal(report: BillingHealthReport): Seal {
+  if (report.reasons.includes("EMAIL_FAILING_IN_SEQUENCE")) return SEAL_DOWN;
+  return report.failedLast24h > 0 || report.emailFailing ? SEAL_WARN : SEAL_OK;
+}
+
+const PLATFORM_WHATSAPP_ROW: Record<BillingHealthReport["platformWhatsapp"], { seal: Seal; text: string }> = {
+  connected: { seal: SEAL_OK, text: "Conectado." },
+  disconnected: { seal: SEAL_WARN, text: "Caiu. Os avisos seguem por e-mail. Leia o QR de novo em Configurações." },
+  missing: { seal: SEAL_WARN, text: "Ligado, mas sem número. Os avisos seguem por e-mail." },
+  disabled: { seal: { variant: "neutral", label: "desligado" }, text: "Desligado. Os avisos vão por e-mail e pelo painel." },
+};
+
+function BillingRow({ label, seal, children }: { label: string; seal: Seal; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1 rounded-card border border-border bg-bg p-3 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <p className="text-sm font-medium text-text-secondary">{label}</p>
+        <p className="text-sm text-text">{children}</p>
+      </div>
+      <Badge variant={seal.variant} className="self-start sm:self-center">{seal.label}</Badge>
+    </div>
+  );
+}
+
+function BillingMonitorCard({ report }: { report: BillingHealthReport }) {
+  const down = report.status === "down";
+  const whatsapp = PLATFORM_WHATSAPP_ROW[report.platformWhatsapp];
+  const lastResult = report.lastTickResult;
+  return (
+    <Card className="rounded-hero" data-testid="saude-cobranca">
+      <CardHeader help="admin.saudeCobranca">
+        <CardTitle>Cobrança</CardTitle>
+        <CardDescription>
+          {down
+            ? `Parada. Se a última rodada passa de ${BILLING_TICK_DOWN_AFTER_MINUTES / 60} horas, ou há aviso preso, o sistema avisa você por e-mail e pelo sino.`
+            : "A rotina roda de hora em hora e manda os avisos de mensalidade."}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <BillingRow label="Última rodada" seal={tickSeal(report)}>
+          {minutesLabel(report.minutesSinceLastTick)}
+        </BillingRow>
+        <BillingRow label="Enviados e falhas na última rodada" seal={lastResult && lastResult.failed > 0 ? SEAL_WARN : SEAL_OK}>
+          {lastResult
+            ? `${lastResult.sent} enviado(s), ${lastResult.failed} com falha${lastResult.deadlineReached ? ". Parou por falta de tempo, o resto sai na próxima" : ""}`
+            : "Ainda sem resultado"}
+        </BillingRow>
+        <BillingRow label="Falhas nas últimas 24 horas" seal={failuresSeal(report)}>
+          {report.failedLast24h === 0 ? "Nenhuma" : `${report.failedLast24h} aviso(s) com falha`}
+          {report.emailFailing ? ". E-mail falhando" : ""}
+        </BillingRow>
+        <BillingRow label="Avisos vencidos presos" seal={stuckSeal(report)}>
+          {report.pendingOverdue === 0 ? "Nenhum" : `${report.pendingOverdue} aviso(s) passaram da hora há mais de 2 horas`}
+        </BillingRow>
+        <BillingRow label="WhatsApp de cobrança" seal={whatsapp.seal}>
+          {whatsapp.text}
+        </BillingRow>
+      </CardContent>
+    </Card>
+  );
+}
+
 function CountRow({ label, counts, labels, badges }: { label: string; counts: Record<string, number>; labels: Record<string, string>; badges: Record<string, BadgeProps["variant"]> }) {
   return (
     <div>
@@ -213,6 +302,8 @@ export function AdminSaudeClient({ initialHealth }: { initialHealth: PlatformHea
         <IntegrationCard icon={<Wallet aria-hidden="true" />} label="Mercado Pago" health={health.integrations.mercadoPago} />
         <IntegrationCard icon={<MessageCircle aria-hidden="true" />} label="WhatsApp de cobrança" health={platformWhatsappAsHealth(health.platformWhatsapp)} />
       </div>
+
+      <BillingMonitorCard report={health.billingMonitor} />
 
       <MercadoPagoWebhookCard webhook={health.mercadoPagoWebhook} />
 
