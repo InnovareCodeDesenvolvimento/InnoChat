@@ -15,7 +15,7 @@ import { totpCode } from "../../../src/modules/two-factor/totp";
 export const SEED_OWNER_TOTP_SECRET = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP";
 
 /** O runner do Playwright não lê o `.env`; o segredo do app (que cifra o TOTP) vem de lá. Nunca é impresso. */
-function ensureAuthSecret() {
+export function ensureAuthSecret() {
   if (process.env.AUTH_SECRET) return;
   const content = fs.readFileSync(path.join(process.cwd(), ".env"), "utf-8");
   const match = content.match(/^AUTH_SECRET=(.+)$/m);

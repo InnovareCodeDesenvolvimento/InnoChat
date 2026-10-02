@@ -20,4 +20,5 @@
 - [QA Atendimento humano 2026-09-30](atendimento_humano_qa_2026_09_30.md) — Evolution fake prova o envio; armadilhas: toast duplicado aria-live, bolha otimista, waJid obrigatório, limite 4000
 - [QA pausa única + hint 2026-09-30](qa_pausa_unica_hint_2026_09_30.md) — REPROVADO: hint ausente p/ cliente da fila no Atendimento; tour falha em dev StrictMode; mutation da pausa
 - [QA ajuda ⓘ + favicon 2026-09-30](qa_ajuda_favicon_2026_09_30.md) — APROVADO; medição do selo, flakes, lint cru varre worktrees, integração sem expor credencial
+- [QA Onda 1 2026-10-02](qa_onda1_2026_10_02.md) — Map em memória duplicado action x rota Auth.js, overflow Admin Erros 390px, pollution PlatformSettings, armadilhas E2E
 - [QA landing 2026-10-01](qa_landing_2026_10_01.md) — cópia isolada do HEAD p/ gates; prazo 24h falso na demo; armadilhas E2E_BASE_URL, publicBaseUrl 3700, limpeza .ps1

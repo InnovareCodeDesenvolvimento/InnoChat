@@ -46,7 +46,7 @@ test.describe("Admin → Cobrança", () => {
     const { tenant, invoice } = await makeOpenInvoiceTenant("marcar-paga");
 
     await page.goto("/admin/cobranca");
-    await page.getByLabel("Empresa", { exact: false }).fill(tenant.name);
+    await page.getByLabel("Empresa", { exact: true }).fill(tenant.name);
     await page.getByRole("button", { name: "Filtrar" }).click();
     await expect(page.getByText(tenant.name).first()).toBeVisible();
 
@@ -89,7 +89,7 @@ test.describe("Admin → Cobrança", () => {
     const { tenant } = await makeOpenInvoiceTenant("regerar-pix");
 
     await page.goto("/admin/cobranca");
-    await page.getByLabel("Empresa", { exact: false }).fill(tenant.name);
+    await page.getByLabel("Empresa", { exact: true }).fill(tenant.name);
     await page.getByRole("button", { name: "Filtrar" }).click();
     await expect(page.getByText(tenant.name).first()).toBeVisible();
 

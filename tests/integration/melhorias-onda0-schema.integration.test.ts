@@ -137,9 +137,14 @@ describe("item 4 — auditoria append-only", () => {
 });
 
 describe("item 5 — pixel do Meta", () => {
-  it("metaEnabled nasce false e o Pixel ID só aceita dígitos", async () => {
-    const s = await prisma.platformSettings.findUniqueOrThrow({ where: { id: 1 } });
-    expect(s.metaEnabled).toBe(false);
+  it("metaEnabled nasce false (default da coluna) e o Pixel ID só aceita dígitos", async () => {
+    // O default é checado na COLUNA, não na linha singleton: a linha é estado compartilhado e
+    // meta-tracking.integration.test.ts a liga (e restaura o que encontrou). Uma execução
+    // interrompida a deixaria ligada para sempre e este teste ficaria vermelho sem bug de produto.
+    const cols = await prisma.$queryRaw<{ column_default: string | null }[]>`
+      SELECT column_default FROM information_schema.columns
+      WHERE table_name = 'platform_settings' AND column_name = 'metaEnabled'`;
+    expect(cols[0]?.column_default).toBe("false");
     await rejects(prisma.platformSettings.update({ where: { id: 1 }, data: { metaPixelId: "abc" } }), /check/i);
     const ok = await prisma.platformSettings.update({ where: { id: 1 }, data: { metaPixelId: "123456789012345" } });
     expect(ok.metaPixelId).toBe("123456789012345");

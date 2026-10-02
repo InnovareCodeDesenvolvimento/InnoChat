@@ -124,7 +124,7 @@ test.describe.serial("Admin: WhatsApp de cobrança", () => {
 
   test("a Saúde mostra a linha do WhatsApp de cobrança", async ({ page }) => {
     await page.goto("/admin/saude");
-    await expect(page.getByText("WhatsApp de cobrança", { exact: true })).toBeVisible();
+    await expect(page.getByText("WhatsApp de cobrança", { exact: true }).first()).toBeVisible();
     await expect(page.getByText("Desligado.", { exact: false }).or(page.getByText("sem número", { exact: false })).first()).toBeVisible();
   });
 });
