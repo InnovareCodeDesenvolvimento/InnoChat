@@ -5,15 +5,22 @@
  */
 import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { getPrisma } from "@/lib/db/prisma";
 import { DomainError } from "@/lib/errors";
+import { decryptSecret } from "@/lib/crypto";
+import { decryptFile, encryptFile, generateBackupKey, keyFingerprint, parseBackupKey, readBackupFileFingerprint } from "@/modules/backup/backup-crypto";
 import {
   BackupError,
   checkBackupLate,
   claimOAuthNonce,
   completeGoogleConnection,
   configForPanel,
+  generateBackupEncryptionKey,
+  verifyLatestBackup,
+  type RemoteBackup,
   listBackupRuns,
   loadBackupConfig,
   loadBackupLateNotification,
@@ -54,6 +61,10 @@ const FACTORY = {
   driveOauthFolderId: null,
   driveOauthConnectedAt: null,
   driveOauthConnectedById: null,
+  encryptionKeyEnc: null,
+  encryptionKeyFingerprint: null,
+  encryptionKeyCreatedAt: null,
+  encryptionKeyShownAt: null,
   runningSince: null,
   lastSuccessAt: null,
   lastAttemptAt: null,
@@ -88,8 +99,10 @@ function fakeExec(overrides: { list?: string; fail?: Error; version?: string } =
   };
 }
 
-async function setS3Destination(extra: Record<string, unknown> = {}) {
+/** `withKey: false` deixa o destino sem a chave de criptografia (o caso que tem de ser recusado). */
+async function setS3Destination(extra: Record<string, unknown> = {}, withKey = true) {
   await saveBackupConfig({ destination: "S3", s3Endpoint: "https://s3.backup-teste.invalid", s3Bucket: "bkt", s3Region: "auto", s3AccessKey: "AKIA-TESTE", s3SecretKey: "segredo-do-bucket-123" }, "adm");
+  if (withKey) await generateBackupEncryptionKey("adm", { replace: false });
   if (Object.keys(extra).length > 0) await prisma.backupConfig.update({ where: { id: 1 }, data: extra });
 }
 
@@ -127,6 +140,12 @@ describe("configuração: segredos cifrados, mascarados e que não somem sem que
     await expect(saveBackupConfig({ enabled: true }, "adm")).rejects.toMatchObject({ code: "BACKUP_DESTINATION_MISSING" });
     expect((await loadBackupConfig()).enabled).toBe(false);
     await expect(saveBackupConfig({ enabled: true, destination: "S3", s3Bucket: "b" }, "adm")).rejects.toBeInstanceOf(DomainError);
+  });
+
+  it("recusa ligar o automático sem a chave de criptografia, mesmo com o destino completo", async () => {
+    await setS3Destination({}, false);
+    await expect(saveBackupConfig({ enabled: true }, "adm")).rejects.toMatchObject({ code: "BACKUP_KEY_MISSING" });
+    expect((await loadBackupConfig()).enabled).toBe(false);
   });
 
   it("liga quando o destino está completo", async () => {
@@ -450,5 +469,337 @@ describe("testar conexão e conectar com Google", () => {
     const payload = { nonce: `n-${run}`, adminId: "adm", exp: Date.now() + 60_000 };
     const results = await Promise.all([claimOAuthNonce(payload), claimOAuthNonce(payload)]);
     expect(results.filter(Boolean)).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Criptografia do backup e Conferir backup
+// ---------------------------------------------------------------------------------------------
+
+const DUMP_TEXT = "conteudo-do-dump";
+
+/** `pg_restore --list` que só devolve tabela se o arquivo que recebeu é EXATAMENTE o dump original (prova que decifrou certo). */
+function execThatReadsDump(): CommandRunner {
+  const base = fakeExec();
+  return async (command, args, env) => {
+    if (command === "pg_restore") {
+      const content = await fs.readFile(args[1], "utf8").catch(() => "");
+      return content === DUMP_TEXT ? "1; 0 0 TABLE DATA public tenants x\n" : "";
+    }
+    return base(command, args, env);
+  };
+}
+
+function remoteFrom(file: string, name: string): RemoteBackup {
+  return { name, createdAt: new Date("2026-10-02T06:00:00Z"), size: null, ref: `bkt/${name}`, download: (dest) => fs.copyFile(file, dest) };
+}
+
+async function storedKey(): Promise<Buffer> {
+  const cfg = await loadBackupConfig();
+  return parseBackupKey(decryptSecret(cfg.encryptionKeyEnc!)!)!;
+}
+
+describe("chave de criptografia do backup", () => {
+  it("gera, guarda cifrada com o AUTH_SECRET e a tela só vê a impressão digital", async () => {
+    const generated = await generateBackupEncryptionKey("adm", { replace: false });
+    expect(generated.key).toMatch(/^([0-9a-f]{8}-){7}[0-9a-f]{8}$/);
+    expect(generated.fileText).toContain(`CHAVE: ${generated.key}`);
+    expect(generated.fileName).toBe(`chave-backup-innochat-${generated.fingerprint}.txt`);
+    expect(generated.replaced).toBe(false);
+
+    const row = await loadBackupConfig();
+    expect(row.encryptionKeyEnc).toMatch(/^enc:v1:/);
+    expect(row.encryptionKeyFingerprint).toBe(generated.fingerprint);
+    expect(row.encryptionKeyShownAt).not.toBeNull();
+    expect(keyFingerprint(await storedKey())).toBe(generated.fingerprint);
+
+    const panel = configForPanel(row);
+    const json = JSON.stringify(panel);
+    expect(json).not.toContain(generated.key.replace(/-/g, ""));
+    expect(json).not.toContain(generated.key);
+    expect(json).not.toContain("enc:v1:");
+    expect(panel.hasEncryptionKey).toBe(true);
+    expect(panel.encryptionKeyFingerprint).toBe(generated.fingerprint);
+    expect(Object.keys(panel).filter((k) => /Enc$/.test(k))).toEqual([]);
+  });
+
+  it("não troca a chave existente sem pedir (replace), e ao trocar a impressão digital muda", async () => {
+    const first = await generateBackupEncryptionKey("adm", { replace: false });
+    await expect(generateBackupEncryptionKey("adm", { replace: false })).rejects.toMatchObject({ code: "BACKUP_KEY_EXISTS" });
+    expect((await loadBackupConfig()).encryptionKeyFingerprint).toBe(first.fingerprint);
+    const second = await generateBackupEncryptionKey("adm", { replace: true });
+    expect(second.replaced).toBe(true);
+    expect(second.fingerprint).not.toBe(first.fingerprint);
+    expect((await loadBackupConfig()).encryptionKeyFingerprint).toBe(second.fingerprint);
+  });
+
+  it("duas gerações simultâneas da primeira chave: só uma vale (a outra é recusada, não sobrescreve)", async () => {
+    const results = await Promise.allSettled([generateBackupEncryptionKey("adm", { replace: false }), generateBackupEncryptionKey("adm", { replace: false })]);
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter((r) => r.status === "rejected")).toHaveLength(1);
+  });
+
+  it("o banco recusa chave sem impressão digital e impressão digital fora do formato", async () => {
+    await expect(prisma.backupConfig.update({ where: { id: 1 }, data: { encryptionKeyEnc: "enc:v1:x" } })).rejects.toThrow();
+    await expect(prisma.backupConfig.update({ where: { id: 1 }, data: { encryptionKeyEnc: "enc:v1:x", encryptionKeyFingerprint: "ZZ" } })).rejects.toThrow();
+  });
+});
+
+describe("backup cifrado de ponta a ponta", () => {
+  it("o que sobe é .dump.enc, não tem o texto do dump, abre com a chave e a conferência aprova", async () => {
+    await setS3Destination();
+    const kept = path.join(os.tmpdir(), `kept-${run}.dump.enc`);
+    let uploadedName = "";
+    try {
+      const r = await runBackup(
+        { trigger: "MANUAL" },
+        {
+          exec: fakeExec(),
+          send: async ({ file, name }) => {
+            uploadedName = name;
+            await fs.copyFile(file, kept);
+            return `bkt/${name}`;
+          },
+        },
+      );
+      expect(uploadedName).toMatch(/^backup-innochat-.*\.dump\.enc$/);
+      const raw = await fs.readFile(kept);
+      expect(raw.includes(DUMP_TEXT)).toBe(false);
+      expect(r.sizeBytes).toBe(raw.length);
+      const cfg = await loadBackupConfig();
+      const row = await prisma.backupRun.findUniqueOrThrow({ where: { id: r.runId } });
+      expect(row.status).toBe("SUCCESS");
+      expect(row.encryptionKeyFingerprint).toBe(cfg.encryptionKeyFingerprint);
+      expect(row.sizeBytes).toBe(BigInt(raw.length));
+      expect(cfg.lastSuccessAt).not.toBeNull();
+      expect(await readBackupFileFingerprint(kept)).toBe(cfg.encryptionKeyFingerprint);
+
+      const plain = path.join(os.tmpdir(), `plain-${run}.dump`);
+      await decryptFile(kept, plain, await storedKey());
+      expect(await fs.readFile(plain, "utf8")).toBe(DUMP_TEXT);
+      await fs.rm(plain, { force: true });
+
+      const lastSuccess = cfg.lastSuccessAt!.getTime();
+      const v = await verifyLatestBackup({ trigger: "MANUAL" }, { exec: execThatReadsDump(), fetchLatest: async () => remoteFrom(kept, uploadedName) });
+      expect(v.encrypted).toBe(true);
+      expect(v.keyFingerprint).toBe(cfg.encryptionKeyFingerprint);
+      expect(v.tablesWithData).toBe(1);
+      expect(v.sizeBytes).toBe(raw.length);
+      const vrow = await prisma.backupRun.findUniqueOrThrow({ where: { id: v.runId } });
+      expect(vrow.trigger).toBe("VERIFY");
+      expect(vrow.status).toBe("SUCCESS");
+      expect(vrow.encryptionKeyFingerprint).toBe(cfg.encryptionKeyFingerprint);
+      // Conferir não é backup: não avança o relógio do alerta de atraso.
+      expect((await loadBackupConfig()).lastSuccessAt!.getTime()).toBe(lastSuccess);
+    } finally {
+      await fs.rm(kept, { force: true });
+    }
+  });
+
+  it("com destino e sem chave: falha com a causa KEY, registra no histórico e não envia nada", async () => {
+    await setS3Destination({}, false);
+    let sent = false;
+    await expect(
+      runBackup(
+        { trigger: "MANUAL" },
+        {
+          exec: fakeExec(),
+          send: async () => {
+            sent = true;
+            return "x";
+          },
+        },
+      ),
+    ).rejects.toMatchObject({ code: "KEY" });
+    expect(sent).toBe(false);
+    const row = await prisma.backupRun.findFirstOrThrow({});
+    expect(row.status).toBe("FAILED");
+    expect(row.errorCode).toBe("KEY");
+    expect((await loadBackupConfig()).runningSince).toBeNull();
+  });
+
+  it("chave guardada que não decifra mais (AUTH_SECRET trocado) falha com mensagem que manda gerar outra", async () => {
+    await setS3Destination();
+    // Impressão digital mantida e payload que não decifra: o que sobra quando o AUTH_SECRET muda.
+    await prisma.backupConfig.update({ where: { id: 1 }, data: { encryptionKeyEnc: "enc:v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" } });
+    const error = await runBackup({ trigger: "MANUAL" }, { exec: fakeExec(), send: async () => "x" }).catch((e) => e);
+    expect(error).toMatchObject({ code: "KEY" });
+    expect((error as Error).message).toMatch(/AUTH_SECRET/);
+  });
+
+  it("manual sem destino continua sem exigir chave (é só teste do pg_dump)", async () => {
+    const r = await runBackup({ trigger: "MANUAL" }, { exec: fakeExec() });
+    expect(r.objectKey).toBeNull();
+    expect((await prisma.backupRun.findUniqueOrThrow({ where: { id: r.runId } })).encryptionKeyFingerprint).toBeNull();
+  });
+});
+
+describe("Conferir backup: o que tem que reprovar", () => {
+  let dir: string;
+  beforeAll(async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), `verify-${run}-`));
+  });
+  afterAll(async () => {
+    await fs.rm(dir, { recursive: true, force: true });
+  });
+
+  async function encryptedWith(k: Buffer, content = DUMP_TEXT) {
+    const plain = path.join(dir, `${randomUUID()}.dump`);
+    const enc = `${plain}.enc`;
+    await fs.writeFile(plain, content);
+    await encryptFile(plain, enc, k);
+    return enc;
+  }
+
+  const verify = (file: string, name = "backup-innochat-2026-10-02-03h00m00s.dump.enc") =>
+    verifyLatestBackup({ trigger: "MANUAL" }, { exec: execThatReadsDump(), fetchLatest: async () => remoteFrom(file, name) });
+
+  async function lastRun() {
+    return prisma.backupRun.findFirstOrThrow({ where: { trigger: "VERIFY" }, orderBy: { startedAt: "desc" } });
+  }
+
+  it("sem destino completo: CONFIG e nada é gravado", async () => {
+    await expect(verifyLatestBackup({ trigger: "MANUAL" })).rejects.toMatchObject({ code: "CONFIG" });
+    expect(await prisma.backupRun.count()).toBe(0);
+  });
+
+  it("destino sem nenhuma cópia: NO_BACKUP, com a causa no histórico", async () => {
+    await setS3Destination();
+    await expect(
+      verifyLatestBackup(
+        { trigger: "MANUAL" },
+        {
+          fetchLatest: async () => {
+            throw new BackupError("O destino ainda não tem nenhuma cópia do backup.", "NO_BACKUP");
+          },
+        },
+      ),
+    ).rejects.toMatchObject({ code: "NO_BACKUP" });
+    expect((await lastRun()).errorCode).toBe("NO_BACKUP");
+  });
+
+  it("cópia feita com OUTRA chave: KEY, e a mensagem traz as duas impressões digitais", async () => {
+    await setS3Destination();
+    const other = generateBackupKey();
+    const file = await encryptedWith(other);
+    const error = await verify(file).catch((e) => e);
+    expect(error).toMatchObject({ code: "KEY" });
+    expect((error as Error).message).toContain(keyFingerprint(other));
+    expect((error as Error).message).toContain((await loadBackupConfig()).encryptionKeyFingerprint!);
+    const row = await lastRun();
+    expect(row.status).toBe("FAILED");
+    expect(row.errorCode).toBe("KEY");
+  });
+
+  it("cópia adulterada (um byte trocado no meio): VERIFY e o dump decifrado não fica no disco", async () => {
+    await setS3Destination();
+    const file = await encryptedWith(await storedKey(), "x".repeat(5000));
+    const bytes = await fs.readFile(file);
+    bytes[bytes.length >> 1] ^= 0x01;
+    await fs.writeFile(file, bytes);
+    const before = (await fs.readdir(os.tmpdir())).filter((f) => f.startsWith("innochat-verify-")).length;
+    await expect(verify(file)).rejects.toMatchObject({ code: "VERIFY" });
+    expect((await lastRun()).errorDetail).toMatch(/alterado|corrompido/);
+    expect((await fs.readdir(os.tmpdir())).filter((f) => f.startsWith("innochat-verify-")).length).toBe(before);
+  });
+
+  it("cópia cortada no meio: VERIFY", async () => {
+    await setS3Destination();
+    const file = await encryptedWith(await storedKey(), "y".repeat(5000));
+    const bytes = await fs.readFile(file);
+    await fs.writeFile(file, bytes.subarray(0, bytes.length - 40));
+    await expect(verify(file)).rejects.toMatchObject({ code: "VERIFY" });
+  });
+
+  it("arquivo .enc sem a marca do formato: VERIFY; e arquivo vazio: VERIFY", async () => {
+    await setS3Destination();
+    const fake = path.join(dir, "fake.enc");
+    await fs.writeFile(fake, "isto nao e um backup cifrado de verdade");
+    await expect(verify(fake)).rejects.toMatchObject({ code: "VERIFY" });
+    const empty = path.join(dir, "empty.enc");
+    await fs.writeFile(empty, "");
+    await expect(verify(empty)).rejects.toMatchObject({ code: "VERIFY" });
+  });
+
+  it("dump que abre mas não lista nenhuma tabela com dados: VERIFY", async () => {
+    await setS3Destination();
+    const file = await encryptedWith(await storedKey(), "outro-conteudo");
+    await expect(verify(file)).rejects.toMatchObject({ code: "VERIFY" });
+  });
+
+  it("cópia antiga SEM cifra continua conferível (e a tela fica sabendo que não era cifrada)", async () => {
+    await setS3Destination();
+    const plain = path.join(dir, "old.dump");
+    await fs.writeFile(plain, DUMP_TEXT);
+    const v = await verify(plain, "backup-innochat-2026-09-01-03h00m00s.dump");
+    expect(v.encrypted).toBe(false);
+    expect(v.keyFingerprint).toBeNull();
+    expect((await lastRun()).encryptionKeyFingerprint).toBeNull();
+  });
+
+  it("duas conferências ao mesmo tempo: a segunda é recusada (BUSY)", async () => {
+    await setS3Destination();
+    await prisma.backupRun.create({ data: { trigger: "VERIFY", status: "RUNNING" } });
+    await expect(verify(await encryptedWith(await storedKey()))).rejects.toMatchObject({ code: "BUSY" });
+  });
+});
+
+describe("conferência semanal no agendador", () => {
+  const notDueHour = new Date("2026-10-02T12:10:00Z"); // 09:10 em Brasília, longe da hora do backup (03h)
+  const day = 24 * 3_600_000;
+
+  async function readyForVerify() {
+    await setS3Destination();
+    await saveBackupConfig({ enabled: true, hourLocal: 3 }, "adm");
+    await prisma.backupConfig.update({ where: { id: 1 }, data: { lastSuccessAt: new Date(notDueHour.getTime() - 2 * 3_600_000) } });
+  }
+
+  async function goodRemote() {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), `weekly-${run}-`));
+    const plain = path.join(dir, "a.dump");
+    await fs.writeFile(plain, DUMP_TEXT);
+    await encryptFile(plain, `${plain}.enc`, await storedKey());
+    return { dir, fetchLatest: async () => remoteFrom(`${plain}.enc`, "backup-innochat-2026-10-02-03h00m00s.dump.enc") };
+  }
+
+  it("confere na primeira passada elegível, não repete antes de uma semana e repete depois", async () => {
+    await readyForVerify();
+    const { dir, fetchLatest } = await goodRemote();
+    try {
+      const first = await runBackupTick(notDueHour, { exec: execThatReadsDump(), fetchLatest });
+      expect(first.ran).toBe(false);
+      expect(first.verified).toBe(true);
+      expect(await prisma.backupRun.count({ where: { trigger: "VERIFY", status: "SUCCESS" } })).toBe(1);
+
+      const soon = await runBackupTick(new Date(notDueHour.getTime() + 600_000), { exec: execThatReadsDump(), fetchLatest });
+      expect(soon.verified).toBeNull();
+      expect(await prisma.backupRun.count({ where: { trigger: "VERIFY" } })).toBe(1);
+
+      const later = await runBackupTick(new Date(notDueHour.getTime() + 8 * day), { exec: execThatReadsDump(), fetchLatest });
+      expect(later.verified).toBe(true);
+      expect(await prisma.backupRun.count({ where: { trigger: "VERIFY" } })).toBe(2);
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("sem nenhuma cópia enviada ainda, não confere (evita alarme falso na primeira semana)", async () => {
+    await setS3Destination();
+    await saveBackupConfig({ enabled: true, hourLocal: 3 }, "adm");
+    const summary = await runBackupTick(notDueHour, { exec: fakeExec() });
+    expect(summary.verified).toBeNull();
+    expect(await prisma.backupRun.count()).toBe(0);
+  });
+
+  it("conferência que reprova no agendador não derruba o tick, fica no histórico e a tentativa conta (sem martelar a cada 10 min)", async () => {
+    await readyForVerify();
+    const fetchLatest = async () => {
+      throw new BackupError("O destino ainda não tem nenhuma cópia do backup.", "NO_BACKUP");
+    };
+    const first = await runBackupTick(notDueHour, { exec: fakeExec(), fetchLatest });
+    expect(first.verified).toBe(false);
+    const again = await runBackupTick(new Date(notDueHour.getTime() + 600_000), { exec: fakeExec(), fetchLatest });
+    expect(again.verified).toBeNull();
+    expect(await prisma.backupRun.count({ where: { trigger: "VERIFY", status: "FAILED" } })).toBe(1);
   });
 });

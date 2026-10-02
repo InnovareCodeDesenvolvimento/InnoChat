@@ -93,4 +93,68 @@ test.describe.serial("Admin → Backup", () => {
     await expect(page.getByRole("alert").first()).toBeVisible({ timeout: 100_000 });
     await expect(main(page).getByRole("heading", { name: "Backup do banco", level: 1 })).toBeVisible();
   });
+
+  test("Chave do backup: aparece inteira uma única vez, com copiar e baixar, e depois só a impressão digital", async ({ page }) => {
+    await prisma.backupConfig.updateMany({ data: { encryptionKeyEnc: null, encryptionKeyFingerprint: null, encryptionKeyCreatedAt: null, encryptionKeyShownAt: null } });
+    await page.goto("/admin/backup");
+    await expect(main(page).getByRole("heading", { name: "Chave do backup" })).toBeVisible();
+    await expect(page.getByText(/Ainda não há chave/)).toBeVisible();
+    await expect(page.getByRole("button", { name: "Conferir backup", exact: true })).toBeDisabled();
+
+    await page.getByRole("button", { name: "Gerar chave", exact: true }).click();
+    const key = page.getByTestId("backup-key");
+    await expect(key).toBeVisible();
+    await expect(key).toHaveText(/^([0-9a-f]{8}-){7}[0-9a-f]{8}$/);
+    await expect(page.getByText("Guarde fora do servidor. Sem ela os backups não abrem.")).toBeVisible();
+    const shownKey = ((await key.textContent()) ?? "").trim();
+
+    // Baixar o .txt: tem a chave e as instruções.
+    const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Baixar arquivo .txt" }).click()]);
+    expect(download.suggestedFilename()).toMatch(/^chave-backup-innochat-[0-9a-f]{8}\.txt$/);
+    const text = await (await import("node:fs/promises")).readFile((await download.path())!, "utf8");
+    expect(text).toContain(`CHAVE: ${shownKey}`);
+    expect(text).toContain("decrypt-backup.mjs");
+
+    // No banco: só cifrada, e a impressão digital bate com a que a tela mostrou.
+    const row = await prisma.backupConfig.findFirstOrThrow();
+    expect(row.encryptionKeyEnc).toMatch(/^enc:v1:/);
+    expect(row.encryptionKeyEnc).not.toContain(shownKey.replace(/-/g, ""));
+    expect(row.encryptionKeyShownAt).not.toBeNull();
+    await expect(page.getByText(`Chave (impressão digital ${row.encryptionKeyFingerprint})`)).toBeVisible();
+
+    // Cabe nas duas larguras (a chave tem 71 caracteres seguidos: quebra, não estoura).
+    for (const [w, h] of [[1440, 900], [390, 844]] as const) {
+      await page.setViewportSize({ width: w, height: h });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth), `overflow a ${w}px`).toBeLessThanOrEqual(0);
+      const box = await key.boundingBox();
+      expect(box!.x).toBeGreaterThanOrEqual(0);
+      expect(box!.x + box!.width).toBeLessThanOrEqual(w);
+    }
+
+    // "Já guardei, esconder" some com ela; recarregar também. Sobra só a impressão digital.
+    await page.getByRole("button", { name: "Já guardei, esconder" }).click();
+    await expect(key).toHaveCount(0);
+    await page.reload();
+    await expect(page.getByTestId("backup-key")).toHaveCount(0);
+    await expect(page.getByTestId("backup-key-fingerprint")).toHaveText(row.encryptionKeyFingerprint!);
+    await expect(page.locator("body")).not.toContainText(shownKey);
+  });
+
+  test("Gerar nova chave só vai adiante com a frase de confirmação digitada", async ({ page }) => {
+    const before = (await prisma.backupConfig.findFirstOrThrow()).encryptionKeyFingerprint;
+    expect(before).toMatch(/^[0-9a-f]{8}$/);
+    await page.goto("/admin/backup");
+    await page.getByRole("button", { name: "Gerar nova chave" }).click();
+    await expect(page.getByText(/continuam precisando da chave antiga/)).toBeVisible();
+    const confirm = page.getByRole("button", { name: "Trocar a chave" });
+    await expect(confirm).toBeDisabled();
+    await page.getByLabel(/Para confirmar, digite GERAR NOVA CHAVE/).fill("gerar nova");
+    await expect(confirm).toBeDisabled();
+    expect((await prisma.backupConfig.findFirstOrThrow()).encryptionKeyFingerprint).toBe(before);
+    await page.getByLabel(/Para confirmar, digite GERAR NOVA CHAVE/).fill("GERAR NOVA CHAVE");
+    await confirm.click();
+    await expect(page.getByTestId("backup-key")).toBeVisible();
+    const after = (await prisma.backupConfig.findFirstOrThrow()).encryptionKeyFingerprint;
+    expect(after).not.toBe(before);
+  });
 });

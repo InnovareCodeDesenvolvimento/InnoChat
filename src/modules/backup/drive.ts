@@ -1,4 +1,5 @@
-import { createReadStream } from "node:fs";
+import { createReadStream, createWriteStream } from "node:fs";
+import { pipeline } from "node:stream/promises";
 import https from "node:https";
 import type { IncomingMessage } from "node:http";
 import { createSign } from "node:crypto";
@@ -360,4 +361,33 @@ export async function deleteDriveFiles(getToken: TokenGetter, fileIds: string[])
     logger.warn("backup.drive.delete_failed", { status: res.status });
   }
   return deleted;
+}
+
+/**
+ * Baixa um arquivo do Drive para o disco, em fluxo (o dump não passa pela memória). O arquivo de
+ * destino nasce 0600. Em erro o chamador apaga o que sobrou (a pasta temporária inteira some no `finally`).
+ */
+export async function downloadDriveFile(getToken: TokenGetter, fileId: string, dest: string): Promise<void> {
+  const token = await getToken();
+  const url = `${API}/files/${encodeURIComponent(fileId)}?alt=media&supportsAllDrives=true`;
+  await new Promise<void>((resolve, reject) => {
+    const req = https.request(url, { method: "GET", headers: { Authorization: `Bearer ${token}` } }, (res) => {
+      if (res.statusCode !== 200) {
+        let text = "";
+        res.setEncoding("utf8");
+        res.on("data", (chunk: string) => {
+          if (text.length < MAX_BODY_CHARS) text += chunk;
+        });
+        res.on("end", () => reject(httpFailure(res.statusCode ?? 0, text, "Ao baixar o backup do Drive")));
+        return;
+      }
+      pipeline(res, createWriteStream(dest, { mode: 0o600 })).then(
+        () => resolve(),
+        (err: Error) => reject(new DriveFailure(`O download do backup foi interrompido: ${err.message}.`, "network")),
+      );
+    });
+    req.setTimeout(UPLOAD_TIMEOUT_MS, () => req.destroy(new Error("o download ficou parado por tempo demais")));
+    req.on("error", (err) => reject(new DriveFailure(`Não foi possível falar com o Google Drive: ${err.message}.`, "network")));
+    req.end();
+  });
 }

@@ -3,16 +3,21 @@ import {
   activeDestination,
   backupFileName,
   countTablesWithData,
+  backupKeyChangedMail,
   decidePrune,
+  encryptedBackupFileName,
   failureMail,
   googleConnectedMail,
   isBackupFileName,
   isDue,
+  isVerifyDue,
+  VERIFY_INTERVAL_MS,
   lateMail,
   lateStatus,
   parsePgDumpMajor,
   pgEnvFromUrl,
   pgVersionProblem,
+  verifyFailureMail,
   type BackupConfigFields,
 } from "./policy";
 
@@ -75,6 +80,39 @@ describe("backupFileName", () => {
     expect(isBackupFileName("backup-innochat-2026-09-22-09h24m40s.dump")).toBe(true);
     expect(isBackupFileName("foto-do-cliente.jpg")).toBe(false);
     expect(isBackupFileName(".teste-conexao-ab12.tmp")).toBe(false);
+  });
+  it("o arquivo cifrado é o do dump + .enc, e a poda e a busca também o reconhecem", () => {
+    const name = encryptedBackupFileName(backupFileName(new Date("2026-09-22T12:24:40Z")));
+    expect(name).toBe("backup-innochat-2026-09-22-09h24m40s.dump.enc");
+    expect(isBackupFileName(name)).toBe(true);
+    expect(isBackupFileName("backup-innochat-2026-09-22-09h24m40s.dump.enc.tmp")).toBe(false);
+    expect(isBackupFileName("outro-innochat-2026-09-22.dump.enc")).toBe(false);
+  });
+});
+
+describe("isVerifyDue (conferência semanal)", () => {
+  const now = new Date("2026-10-09T12:00:00Z");
+  it("nunca conferiu: vence; conferiu há menos de uma semana: não; há uma semana ou mais: vence", () => {
+    expect(isVerifyDue(null, now)).toBe(true);
+    expect(isVerifyDue(new Date(now.getTime() - VERIFY_INTERVAL_MS + 60_000), now)).toBe(false);
+    expect(isVerifyDue(new Date(now.getTime() - VERIFY_INTERVAL_MS), now)).toBe(true);
+  });
+});
+
+describe("e-mails da chave e da conferência", () => {
+  it("o aviso de chave nova diz a impressão digital e nunca a chave, sem travessão", () => {
+    const mail = backupKeyChangedMail({ adminName: "Ana", adminEmail: "ana@x.com", fingerprint: "2f8a5d0b", replaced: true, adminUrl: "https://app.exemplo.com" });
+    expect(mail.subject).toContain("trocada");
+    expect(mail.text).toContain("2f8a5d0b");
+    expect(mail.text).toContain("chave antiga");
+    expect(mail.text).not.toContain("—");
+    expect(backupKeyChangedMail({ adminName: "Ana", adminEmail: "ana@x.com", fingerprint: "2f8a5d0b", replaced: false, adminUrl: null }).subject).toContain("gerada");
+  });
+  it("a reprovação da conferência traz o motivo e manda tratar como incidente", () => {
+    const mail = verifyFailureMail({ detail: "Falha na verificação.", adminUrl: "https://app.exemplo.com" });
+    expect(mail.text).toContain("Falha na verificação.");
+    expect(mail.text).toContain("incidente");
+    expect(mail.text).toContain("https://app.exemplo.com/admin/backup");
   });
 });
 

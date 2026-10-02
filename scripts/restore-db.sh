@@ -4,6 +4,13 @@
 #
 # Uso:
 #   ./scripts/restore-db.sh <arquivo.dump> <url-do-banco-destino> --confirmar
+#   ./scripts/restore-db.sh <arquivo.dump.enc> <url-do-banco-destino> --confirmar --chave <arquivo-da-chave>
+#
+# BACKUP CIFRADO (.dump.enc, o que o painel envia ao S3/Drive): precisa de --chave, o arquivo .txt
+# baixado em Admin > Backup (ou qualquer arquivo com a linha CHAVE: ...). O script decifra para uma
+# pasta temporária 0700 (scripts/decrypt-backup.mjs, que exige Node), confere a integridade, restaura e
+# APAGA o temporário no fim, deu certo ou não. Chave errada ou arquivo adulterado param aqui, antes de
+# tocar no destino. Dump em claro (.dump) continua aceito, sem --chave.
 #
 # POR QUE O DESTINO É UM ARGUMENTO, E NÃO A DATABASE_URL DO AMBIENTE:
 # restaurar é destrutivo — apaga o conteúdo atual antes de repor. Se este
@@ -22,12 +29,38 @@
 
 set -eu
 
-ARQUIVO="${1:-}"
-DESTINO="${2:-}"
-CONFIRMACAO="${3:-}"
+ARQUIVO=""
+DESTINO=""
+CONFIRMACAO=""
+CHAVE=""
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --confirmar) CONFIRMACAO="--confirmar" ;;
+    --chave)
+      shift
+      CHAVE="${1:-}"
+      if [ -z "$CHAVE" ]; then
+        echo "ERRO: --chave precisa do caminho do arquivo da chave." >&2
+        exit 1
+      fi
+      ;;
+    *)
+      if [ -z "$ARQUIVO" ]; then
+        ARQUIVO="$1"
+      elif [ -z "$DESTINO" ]; then
+        DESTINO="$1"
+      else
+        echo "ERRO: argumento inesperado: $1" >&2
+        exit 1
+      fi
+      ;;
+  esac
+  shift
+done
 
 if [ -z "$ARQUIVO" ] || [ -z "$DESTINO" ]; then
-  echo "Uso: $0 <arquivo.dump> <url-do-banco-destino> --confirmar" >&2
+  echo "Uso: $0 <arquivo.dump|arquivo.dump.enc> <url-do-banco-destino> --confirmar [--chave <arquivo-da-chave>]" >&2
   exit 1
 fi
 
@@ -41,14 +74,39 @@ if ! command -v pg_restore >/dev/null 2>&1; then
   exit 1
 fi
 
+# Backup cifrado? Pela marca no começo do arquivo, não pela extensão. Decifra para uma pasta temporária
+# 0700 que some no fim (trap), e o resto do script trabalha sobre o dump decifrado ($DUMP).
+DUMP="$ARQUIVO"
+if [ "$(head -c 7 "$ARQUIVO" 2>/dev/null || true)" = "INNOBKP" ]; then
+  if [ -z "$CHAVE" ]; then
+    echo "ERRO: este backup é cifrado (.dump.enc). Informe a chave com --chave <arquivo-da-chave>. NADA foi alterado no destino." >&2
+    exit 1
+  fi
+  if ! command -v node >/dev/null 2>&1; then
+    echo "ERRO: node não encontrado: ele é necessário para decifrar o backup. NADA foi alterado no destino." >&2
+    exit 1
+  fi
+  TEMPORARIA="$(mktemp -d)"
+  chmod 700 "$TEMPORARIA"
+  trap 'rm -rf "$TEMPORARIA"' EXIT INT TERM
+  DUMP="$TEMPORARIA/restore.dump"
+  echo "[restore] decifrando o backup (a verificação de integridade roda até o fim)..."
+  if ! node "$(dirname "$0")/decrypt-backup.mjs" "$ARQUIVO" --chave "$CHAVE" --saida "$DUMP"; then
+    echo "ERRO: não consegui abrir o backup com essa chave. NADA foi alterado no destino." >&2
+    exit 1
+  fi
+elif [ -n "$CHAVE" ]; then
+  echo "[restore] aviso: o arquivo não é cifrado, a chave foi ignorada."
+fi
+
 # Confere o dump ANTES de destruir qualquer coisa. Descobrir que o arquivo está
 # corrompido depois de apagar o banco seria a pior sequência possível.
-if ! pg_restore --list "$ARQUIVO" >/dev/null 2>&1; then
+if ! pg_restore --list "$DUMP" >/dev/null 2>&1; then
   echo "ERRO: dump ilegível ou corrompido. NADA foi alterado no destino." >&2
   exit 1
 fi
 
-TABELAS="$(pg_restore --list "$ARQUIVO" | grep -c 'TABLE DATA' || true)"
+TABELAS="$(pg_restore --list "$DUMP" | grep -c 'TABLE DATA' || true)"
 
 # Separa a senha da URL (printf é builtin e sed/awk leem da entrada padrão: a senha nunca vira argumento de processo).
 # Sem usuário:senha@ na URL, vale o PGPASSWORD que já estiver no ambiente.
@@ -83,7 +141,7 @@ echo "ISTO APAGA o conteúdo atual do banco de destino."
 
 if [ "$CONFIRMACAO" != "--confirmar" ]; then
   echo "" >&2
-  echo "Parado: falta --confirmar como terceiro argumento." >&2
+  echo "Parado: falta --confirmar." >&2
   exit 1
 fi
 
@@ -101,7 +159,7 @@ pg_restore \
   --dbname="$DESTINO" \
   --clean --if-exists \
   --no-owner --no-privileges \
-  "$ARQUIVO"
+  "$DUMP"
 CODIGO=$?
 set -e
 

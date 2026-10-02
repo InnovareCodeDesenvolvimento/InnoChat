@@ -1,9 +1,11 @@
 import { spawn } from "node:child_process";
-import { createReadStream, promises as fs } from "node:fs";
+import { createReadStream, createWriteStream, promises as fs } from "node:fs";
+import { pipeline } from "node:stream/promises";
+import type { Readable } from "node:stream";
 import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { DeleteObjectsCommand, DeleteObjectCommand, ListObjectsV2Command, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { DeleteObjectsCommand, DeleteObjectCommand, GetObjectCommand, ListObjectsV2Command, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getPrisma } from "@/lib/db/prisma";
 import { DomainError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
@@ -17,6 +19,7 @@ import {
   DriveFailure,
   checkDriveFolder,
   deleteDriveFiles,
+  downloadDriveFile,
   listDriveDumps,
   normalizeFolderId,
   parseServiceAccountKey,
@@ -27,10 +30,24 @@ import {
 } from "./drive";
 import { createBackupFolder, exchangeCodeForTokens, fetchAccountEmail, oauthTokenGetter, redirectUriFor, revokeGoogleToken, verifyOAuthState, signOAuthState, buildAuthorizationUrl } from "./drive-oauth";
 import {
+  BackupCryptoError,
+  backupKeyFileText,
+  decryptFile,
+  encryptFile,
+  formatBackupKey,
+  generateBackupKey,
+  keyFingerprint,
+  parseBackupKey,
+  readBackupFileFingerprint,
+} from "./backup-crypto";
+import {
   LATE_ALERT_INTERVAL_MS,
   LOCK_EXPIRES_MS,
+  VERIFY_STALE_MS,
   activeDestination,
   backupFileName,
+  backupKeyChangedMail,
+  encryptedBackupFileName,
   countTablesWithData,
   decidePrune,
   failureMail,
@@ -38,11 +55,13 @@ import {
   googleDisconnectedMail,
   isBackupFileName,
   isDue,
+  isVerifyDue,
   lateMail,
   lateStatus,
   parsePgDumpMajor,
   pgEnvFromUrl,
   pgVersionProblem,
+  verifyFailureMail,
   type AlertMail,
   type BackupDestination,
   type BackupErrorCode,
@@ -59,6 +78,12 @@ import {
  * um. Não há como consertar isso de dentro; o que dá é não deixar passar em branco: o alerta de
  * "backup atrasado" (sino do Admin + e-mail) avisa quando nenhuma cópia entrou dentro do limite. O
  * mesmo `runBackupTick` também pode ser chamado pelo cron externo (POST /api/internal/v1/backup/tick).
+ *
+ * CIFRA: tudo que sai do servidor sai cifrado (AES-256-GCM em fluxo, `backup-crypto.ts`, arquivo `.dump.enc`)
+ * com uma chave PRÓPRIA do backup, gerada na tela e mostrada ao dono uma única vez. O sistema guarda a
+ * chave cifrada com o AUTH_SECRET só para o agendador conseguir cifrar de madrugada; o dono guarda a
+ * dele fora do servidor, e é ela que abre os arquivos se o servidor se perder. "Conferir backup"
+ * (`verifyLatestBackup`) baixa a cópia mais recente, decifra e lê o índice, sem escrever em banco algum.
  *
  * O QUE NÃO FAZ, DE PROPÓSITO: restaurar. Um botão que apaga o banco a um clique é risco
  * desproporcional. Restaurar exige linha de comando, destino escrito à mão e `--confirmar`
@@ -107,7 +132,7 @@ export type BackupConfigRow = Awaited<ReturnType<typeof loadBackupConfig>>;
 /**
  * O que a tela pode ver. Lista EXPLÍCITA: um segredo que escapa para a resposta não dá erro em
  * lugar nenhum, some no meio de um objeto que "funciona". NUNCA devolva `s3SecretKeyEnc`,
- * `driveServiceAccountEnc`, `driveOauthClientSecretEnc` nem `driveOauthRefreshTokenEnc`.
+ * `driveServiceAccountEnc`, `driveOauthClientSecretEnc`, `driveOauthRefreshTokenEnc` nem `encryptionKeyEnc`.
  */
 export function configForPanel(config: BackupConfigRow) {
   return {
@@ -135,6 +160,11 @@ export function configForPanel(config: BackupConfigRow) {
     driveOauthConnected: Boolean(config.driveOauthConnectedAt),
     driveOauthConnectedAt: config.driveOauthConnectedAt?.toISOString() ?? null,
     driveOauthEmail: config.driveOauthEmail,
+    /** A chave em si NUNCA sai daqui: só que existe, a impressão digital (8 hex) e quando foi gerada e mostrada. */
+    hasEncryptionKey: Boolean(config.encryptionKeyEnc),
+    encryptionKeyFingerprint: config.encryptionKeyFingerprint,
+    encryptionKeyCreatedAt: config.encryptionKeyCreatedAt?.toISOString() ?? null,
+    encryptionKeyShownAt: config.encryptionKeyShownAt?.toISOString() ?? null,
     updatedAt: config.updatedAt.toISOString(),
   };
 }
@@ -244,8 +274,79 @@ export async function saveBackupConfig(input: BackupConfigInput, adminId: string
     );
   }
 
+  // Backup que sai do servidor sai cifrado, e cifrar exige a chave que o dono guardou. Ligar sem ela
+  // faria o primeiro backup agendado falhar de madrugada.
+  if (future.enabled && !current.encryptionKeyEnc) {
+    throw new DomainError("BACKUP_KEY_MISSING", "Gere a chave de criptografia antes de ligar o backup automático. Sem ela as cópias não saem do servidor, e é ela que você guarda para conseguir abri-las depois.");
+  }
+
   const saved = await getPrisma().backupConfig.update({ where: { id: 1 }, data });
   return { config: configForPanel(saved), wasEnabled: current.enabled };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Chave de criptografia do backup
+// ---------------------------------------------------------------------------------------------
+
+export type GeneratedBackupKey = {
+  /** A chave inteira, no formato de 8 grupos. É a ÚNICA vez em que ela sai do servidor. */
+  key: string;
+  fingerprint: string;
+  fileName: string;
+  fileText: string;
+  replaced: boolean;
+};
+
+/**
+ * Gera a chave própria do backup (32 bytes aleatórios, independente do AUTH_SECRET), guarda-a cifrada
+ * com `src/lib/crypto.ts` e a devolve UMA vez para a tela mostrar. Trocar uma chave que já existe
+ * exige `replace: true` (a tela pede confirmação forte): as cópias antigas continuam precisando da
+ * chave antiga, e o sistema NÃO guarda a antiga, então perdê-la é perder aquelas cópias.
+ */
+export async function generateBackupEncryptionKey(adminId: string, opts: { replace: boolean }): Promise<GeneratedBackupKey> {
+  const prisma = getPrisma();
+  const current = await loadBackupConfig();
+  if (current.encryptionKeyEnc && !opts.replace) {
+    throw new DomainError("BACKUP_KEY_EXISTS", "Já existe uma chave de backup. Para trocar, use Gerar nova chave e confirme.");
+  }
+  const key = generateBackupKey();
+  const fingerprint = keyFingerprint(key);
+  const now = new Date();
+  // Só troca se ninguém trocou no meio: dois cliques ou duas pessoas não geram duas chaves e mostram só uma.
+  const claimed = await prisma.backupConfig.updateMany({
+    where: { id: 1, encryptionKeyFingerprint: current.encryptionKeyFingerprint },
+    data: {
+      encryptionKeyEnc: encryptSecret(key.toString("hex")),
+      encryptionKeyFingerprint: fingerprint,
+      encryptionKeyCreatedAt: now,
+      encryptionKeyShownAt: now,
+      updatedById: adminId,
+    },
+  });
+  if (claimed.count !== 1) throw new DomainError("BACKUP_KEY_CHANGED", "A chave acabou de ser gerada por outra pessoa. Recarregue a tela para ver a impressão digital atual.");
+
+  const replaced = Boolean(current.encryptionKeyEnc);
+  logger.info("backup.key.generated", { adminId, replaced });
+  const admin = await prisma.user.findUnique({ where: { id: adminId }, select: { name: true, email: true } });
+  const adminUrl = await tryGetPublicBaseUrl().catch(() => null);
+  await sendAdminMail(backupKeyChangedMail({ adminName: admin?.name ?? "Um administrador", adminEmail: admin?.email ?? "desconhecido", fingerprint, replaced, adminUrl }));
+  return { key: formatBackupKey(key), fingerprint, fileName: `chave-backup-innochat-${fingerprint}.txt`, fileText: backupKeyFileText({ key, createdAt: now }), replaced };
+}
+
+/** A chave do backup, decifrada do banco. Lança com a causa clara se não existe ou não decifra (AUTH_SECRET trocado). */
+function requireBackupKey(config: BackupConfigRow): { key: Buffer; fingerprint: string } {
+  if (!config.encryptionKeyEnc || !config.encryptionKeyFingerprint) {
+    throw new BackupError("Falta a chave de criptografia do backup. Abra Admin > Backup, gere a chave e guarde-a fora do servidor. Backup que sai sem cifrar não é aceito.", "KEY");
+  }
+  const hex = readEncryptedSecret(config.encryptionKeyEnc, "backup.encryptionKey");
+  const key = hex ? parseBackupKey(hex) : null;
+  if (!key || keyFingerprint(key) !== config.encryptionKeyFingerprint) {
+    throw new BackupError(
+      "Não consegui ler a chave de criptografia do backup. Se o AUTH_SECRET do ambiente mudou, a chave guardada no sistema não abre mais: use a cópia que você guardou e gere uma nova chave em Admin > Backup.",
+      "KEY",
+    );
+  }
+  return { key, fingerprint: config.encryptionKeyFingerprint };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -330,6 +431,58 @@ async function pruneS3(config: BackupConfigRow, s3: S3Client, keep: string): Pro
   return victims.length;
 }
 
+/** Uma cópia no destino, pronta para baixar. */
+export type RemoteBackup = { name: string; createdAt: Date; size: number | null; ref: string; download: (dest: string) => Promise<void> };
+
+/** A cópia mais recente do destino ativo (S3 ou Drive). Lança NO_BACKUP se o destino está vazio. */
+async function fetchLatestRemoteBackup(config: BackupConfigRow): Promise<RemoteBackup> {
+  const destination = activeDestination(config);
+  if (!destination) throw new BackupError("Não há destino completo configurado: não há onde procurar a cópia.", "CONFIG");
+  const none = () => new BackupError("O destino ainda não tem nenhuma cópia do backup. Use Fazer backup agora e confira de novo.", "NO_BACKUP");
+
+  if (destination === "S3") {
+    const s3 = await s3Client(config);
+    const prefix = s3Prefix(config);
+    let latest: { key: string; at: Date; size: number | null } | null = null;
+    try {
+      let token: string | undefined;
+      do {
+        const page = await s3.send(new ListObjectsV2Command({ Bucket: config.s3Bucket!, Prefix: prefix ? `${prefix}/` : undefined, ContinuationToken: token }));
+        for (const o of page.Contents ?? []) {
+          if (!o.Key || !o.LastModified || !isBackupFileName(o.Key.split("/").pop() ?? "")) continue;
+          if (!latest || o.LastModified > latest.at) latest = { key: o.Key, at: o.LastModified, size: o.Size ?? null };
+        }
+        token = page.IsTruncated ? page.NextContinuationToken : undefined;
+      } while (token);
+    } catch (error) {
+      throw s3Failure(error, "Ao procurar a cópia mais recente no bucket");
+    }
+    if (!latest) throw none();
+    const found = latest;
+    return {
+      name: found.key.split("/").pop() ?? found.key,
+      createdAt: found.at,
+      size: found.size,
+      ref: found.key,
+      download: async (dest) => {
+        try {
+          const res = await s3.send(new GetObjectCommand({ Bucket: config.s3Bucket!, Key: found.key }));
+          if (!res.Body) throw new Error("resposta sem corpo");
+          await pipeline(res.Body as Readable, createWriteStream(dest, { mode: 0o600 }));
+        } catch (error) {
+          throw s3Failure(error, "Ao baixar a cópia do bucket");
+        }
+      },
+    };
+  }
+
+  const { getToken, folderId } = driveAccess(config);
+  const files = (await listDriveDumps(getToken, folderId)).filter((f) => isBackupFileName(f.name));
+  if (files.length === 0) throw none();
+  const newest = files.reduce((a, b) => (b.createdAt > a.createdAt ? b : a));
+  return { name: newest.name, createdAt: newest.createdAt, size: newest.size, ref: `drive:${newest.id}/${newest.name}`, download: (dest) => downloadDriveFile(getToken, newest.id, dest) };
+}
+
 /**
  * Sobe para o Drive e poda o que venceu, NESSA ORDEM: o antigo só é apagado depois que o novo subiu
  * e foi conferido (tamanho e lixeira). A poda que falha não derruba um backup que já está lá.
@@ -396,7 +549,14 @@ export type BackupResult = {
   destination: BackupDestination | null;
 };
 
-export type RunBackupDeps = { exec?: CommandRunner; now?: () => Date };
+export type RunBackupDeps = {
+  exec?: CommandRunner;
+  now?: () => Date;
+  /** Só para teste: troca o envio ao destino (S3/Drive) e devolve a chave do objeto. Recebe o arquivo JÁ cifrado. */
+  send?: (item: { file: string; name: string; size: number }) => Promise<string>;
+  /** Só para teste: troca a busca da cópia mais recente, usada pela conferência semanal do agendador. */
+  fetchLatest?: VerifyDeps["fetchLatest"];
+};
 
 /** Trava por UPDATE condicional: quem muda a linha é o dono da execução. Trava velha é considerada abandonada. */
 async function acquireLock(now: Date): Promise<boolean> {
@@ -459,6 +619,8 @@ export async function runBackup(opts: { trigger: BackupTrigger; createdById?: st
   let file = "";
 
   try {
+    // Cópia que sai do servidor sai CIFRADA: sem a chave, nem começa (a falha fica no histórico e avisa por e-mail).
+    const encryption = destination ? requireBackupKey(config) : null;
     workDir = await fs.mkdtemp(path.join(os.tmpdir(), "innochat-backup-"));
     await fs.chmod(workDir, 0o700);
     file = path.join(workDir, `${randomUUID()}-${fileName}`);
@@ -475,15 +637,28 @@ export async function runBackup(opts: { trigger: BackupTrigger; createdById?: st
     // Ler o índice custa um segundo e evita descobrir isso durante um incidente.
     const tables = countTablesWithData(await exec("pg_restore", ["--list", file], env));
     if (tables === 0) throw new BackupError("O dump não tem nenhuma tabela com dados. Confira se a DATABASE_URL aponta para o banco certo.", "DUMP");
-    const { size } = await fs.stat(file);
+    const dumpSize = (await fs.stat(file)).size;
+
+    // O que sobe é o arquivo cifrado (AES-256-GCM em fluxo, `backup-crypto.ts`); o dump em claro some junto com a pasta temporária.
+    let sendFile = file;
+    let sendName = fileName;
+    let size = dumpSize;
+    if (encryption) {
+      sendFile = `${file}.enc`;
+      sendName = encryptedBackupFileName(fileName);
+      await encryptFile(file, sendFile, encryption.key);
+      size = (await fs.stat(sendFile)).size;
+    }
 
     let objectKey: string | null = null;
-    if (destination === "S3") {
+    if (destination && deps.send) {
+      objectKey = await deps.send({ file: sendFile, name: sendName, size });
+    } else if (destination === "S3") {
       const s3 = await s3Client(config);
-      objectKey = s3Key(config, fileName);
+      objectKey = s3Key(config, sendName);
       try {
         // Stream, não Buffer: um dump de 2 GB na memória derruba o container.
-        await s3.send(new PutObjectCommand({ Bucket: config.s3Bucket!, Key: objectKey, Body: createReadStream(file), ContentLength: size, ContentType: "application/octet-stream" }));
+        await s3.send(new PutObjectCommand({ Bucket: config.s3Bucket!, Key: objectKey, Body: createReadStream(sendFile), ContentLength: size, ContentType: "application/octet-stream" }));
       } catch (error) {
         throw s3Failure(error, "Ao enviar o dump para o bucket");
       }
@@ -495,19 +670,19 @@ export async function runBackup(opts: { trigger: BackupTrigger; createdById?: st
         logger.warn("backup.s3.prune_failed", { errorMessage: error instanceof Error ? error.message : String(error) });
       }
     } else if (destination === "DRIVE") {
-      objectKey = await sendToDrive(config, file, fileName, size);
+      objectKey = await sendToDrive(config, sendFile, sendName, size);
     }
 
     await prisma.$transaction([
       prisma.backupRun.update({
         where: { id: run.id },
-        data: { status: "SUCCESS", finishedAt: new Date(), sizeBytes: BigInt(size), tablesWithData: tables, objectKey },
+        data: { status: "SUCCESS", finishedAt: new Date(), sizeBytes: BigInt(size), tablesWithData: tables, objectKey, encryptionKeyFingerprint: encryption?.fingerprint ?? null },
       }),
       // `lastSuccessAt` só avança quando o dump SAIU do servidor: o alerta de atraso depende dele, e
       // um teste manual sem destino não pode calar o alerta.
       ...(objectKey ? [prisma.backupConfig.update({ where: { id: 1 }, data: { lastSuccessAt: new Date() } })] : []),
     ]);
-    logger.info("backup.completed", { runId: run.id, bytes: size, tables, destination });
+    logger.info("backup.completed", { runId: run.id, bytes: size, tables, destination, encrypted: encryption !== null });
     return { runId: run.id, sizeBytes: size, tablesWithData: tables, objectKey, destination };
   } catch (raw) {
     const error = asBackupError(raw);
@@ -525,6 +700,114 @@ export async function runBackup(opts: { trigger: BackupTrigger; createdById?: st
   } finally {
     // Sempre: a trava presa impediria todo backup seguinte, e o arquivo temporário enche o disco do container.
     await releaseLock();
+    if (workDir) await fs.rm(workDir, { recursive: true, force: true }).catch(() => undefined);
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Conferir backup
+// ---------------------------------------------------------------------------------------------
+
+export type VerifyDeps = {
+  exec?: CommandRunner;
+  now?: () => Date;
+  /** Para teste: troca a busca da cópia no destino (S3/Drive). */
+  fetchLatest?: (config: BackupConfigRow) => Promise<RemoteBackup>;
+};
+
+export type VerifyResult = {
+  runId: string;
+  fileName: string;
+  fileCreatedAt: string;
+  encrypted: boolean;
+  keyFingerprint: string | null;
+  sizeBytes: number;
+  tablesWithData: number;
+};
+
+/** Traduz a falha de cifra em erro de backup com a causa que a pessoa consegue agir. */
+function cryptoToBackupError(error: unknown): BackupError {
+  if (error instanceof BackupCryptoError) {
+    if (error.code === "WRONG_KEY" || error.code === "BAD_KEY") return new BackupError(error.message, "KEY");
+    return new BackupError(error.message, "VERIFY");
+  }
+  return asBackupError(error);
+}
+
+/**
+ * Prova que a cópia MAIS RECENTE do destino abre: baixa, decifra em fluxo (a tag de autenticação só
+ * confere no fim, e o resultado só vale depois disso) e roda `pg_restore --list` no dump. NÃO escreve
+ * em banco nenhum: o que a conferência garante é que o arquivo é íntegro e legível com a chave que o
+ * sistema tem; que ele restaura num banco novo é o que o job `backup-restore` do CI prova a cada push.
+ * Fica no histórico como `VERIFY` (não conta como backup: não mexe em `lastSuccessAt`).
+ */
+export async function verifyLatestBackup(opts: { trigger: "MANUAL" | "SCHEDULED"; createdById?: string | null }, deps: VerifyDeps = {}): Promise<VerifyResult> {
+  const exec = deps.exec ?? runCommand;
+  const now = (deps.now ?? (() => new Date()))();
+  const prisma = getPrisma();
+  const config = await loadBackupConfig();
+  const destination = activeDestination(config);
+  if (!destination) throw new BackupError("Escolha e complete o destino antes de conferir: é lá que a cópia está.", "CONFIG");
+
+  const running = await prisma.backupRun.findFirst({ where: { trigger: "VERIFY", status: "RUNNING", startedAt: { gt: new Date(now.getTime() - VERIFY_STALE_MS) } }, select: { id: true } });
+  if (running) throw new BackupError("Já existe uma conferência em andamento.", "BUSY");
+
+  const run = await prisma.backupRun.create({ data: { trigger: "VERIFY", status: "RUNNING", destination, startedAt: now, createdById: opts.createdById ?? null } });
+  let workDir: string | null = null;
+  try {
+    const remote = await (deps.fetchLatest ?? fetchLatestRemoteBackup)(config);
+    workDir = await fs.mkdtemp(path.join(os.tmpdir(), "innochat-verify-"));
+    await fs.chmod(workDir, 0o700);
+    const downloaded = path.join(workDir, `${randomUUID()}.download`);
+    await remote.download(downloaded);
+    const size = (await fs.stat(downloaded)).size;
+    if (size === 0) throw new BackupError(`A cópia "${remote.name}" chegou vazia do destino.`, "VERIFY");
+
+    // Cifrada ou não é decidido pelo CABEÇALHO do arquivo, não pelo nome: backups de antes da cifra continuam conferíveis.
+    const fileFingerprint = await readBackupFileFingerprint(downloaded);
+    let dump = downloaded;
+    let usedFingerprint: string | null = null;
+    if (fileFingerprint !== null) {
+      const { key, fingerprint } = requireBackupKey(config);
+      if (fileFingerprint !== fingerprint) {
+        throw new BackupError(
+          `A cópia "${remote.name}" foi cifrada com a chave de impressão digital ${fileFingerprint}, mas a chave atual do sistema é a ${fingerprint}. Se você gerou uma chave nova depois dessa cópia, ela só abre com a chave antiga. Faça um backup novo e confira de novo.`,
+          "KEY",
+        );
+      }
+      dump = path.join(workDir, `${randomUUID()}.dump`);
+      try {
+        await decryptFile(downloaded, dump, key);
+      } catch (error) {
+        throw cryptoToBackupError(error);
+      }
+      usedFingerprint = fingerprint;
+    } else if (remote.name.endsWith(".enc")) {
+      throw new BackupError(`A cópia "${remote.name}" deveria estar cifrada, mas não tem a marca do formato. Ela está corrompida ou foi trocada.`, "VERIFY");
+    }
+
+    const tables = countTablesWithData(await exec("pg_restore", ["--list", dump], {}));
+    if (tables === 0) throw new BackupError("O dump abriu, mas o índice dele não lista nenhuma tabela com dados. Esta cópia não serve.", "VERIFY");
+
+    await prisma.backupRun.update({
+      where: { id: run.id },
+      data: { status: "SUCCESS", finishedAt: new Date(), sizeBytes: BigInt(size), tablesWithData: tables, objectKey: remote.ref, encryptionKeyFingerprint: usedFingerprint },
+    });
+    logger.info("backup.verify.ok", { runId: run.id, bytes: size, tables, encrypted: usedFingerprint !== null });
+    return { runId: run.id, fileName: remote.name, fileCreatedAt: remote.createdAt.toISOString(), encrypted: usedFingerprint !== null, keyFingerprint: usedFingerprint, sizeBytes: size, tablesWithData: tables };
+  } catch (raw) {
+    const error = asBackupError(raw);
+    const detail = scrub(error.message, process.env.DATABASE_URL ?? "");
+    await prisma.backupRun
+      .update({ where: { id: run.id }, data: { status: "FAILED", finishedAt: new Date(), errorCode: error.code, errorDetail: detail } })
+      .catch((e) => logger.error("backup.verify.record_failure_failed", { errorMessage: e instanceof Error ? e.message : String(e) }));
+    logger.error("backup.verify.failed", { runId: run.id, code: error.code });
+    if (opts.trigger === "SCHEDULED") {
+      const adminUrl = await tryGetPublicBaseUrl().catch(() => null);
+      await sendAdminMail(verifyFailureMail({ detail, adminUrl }));
+    }
+    throw new BackupError(detail, error.code);
+  } finally {
     if (workDir) await fs.rm(workDir, { recursive: true, force: true }).catch(() => undefined);
   }
 }
@@ -600,7 +883,7 @@ export async function checkBackupLate(now: Date = new Date(), deps: { send?: typ
 // Agendador
 // ---------------------------------------------------------------------------------------------
 
-export type BackupTickSummary = { ran: boolean; ok: boolean | null; late: boolean; staleRunsClosed: number };
+export type BackupTickSummary = { ran: boolean; ok: boolean | null; late: boolean; staleRunsClosed: number; verified: boolean | null };
 
 /** Fecha como FALHA as execuções que ficaram RUNNING além da trava (o processo morreu no meio do dump). */
 async function closeStaleRuns(now: Date): Promise<number> {
@@ -617,7 +900,7 @@ async function closeStaleRuns(now: Date): Promise<number> {
  * externo quiser, por `POST /api/internal/v1/backup/tick`. Nunca lança.
  */
 export async function runBackupTick(now: Date = new Date(), deps: RunBackupDeps = {}): Promise<BackupTickSummary> {
-  const summary: BackupTickSummary = { ran: false, ok: null, late: false, staleRunsClosed: 0 };
+  const summary: BackupTickSummary = { ran: false, ok: null, late: false, staleRunsClosed: 0, verified: null };
   try {
     summary.staleRunsClosed = await closeStaleRuns(now);
     const config = await loadBackupConfig();
@@ -633,6 +916,22 @@ export async function runBackupTick(now: Date = new Date(), deps: RunBackupDeps 
       }
     }
     summary.late = (await checkBackupLate(now)).late;
+
+    // Conferência semanal da cópia mais recente: baixa, decifra e lê o índice. Só com o automático
+    // ligado, destino completo, chave e pelo menos uma cópia já enviada, e nunca na mesma passada do backup.
+    if (!summary.ran && config.enabled && config.lastSuccessAt && config.encryptionKeyEnc && activeDestination(config)) {
+      const last = await getPrisma().backupRun.findFirst({ where: { trigger: "VERIFY" }, orderBy: { startedAt: "desc" }, select: { startedAt: true } });
+      if (isVerifyDue(last?.startedAt ?? null, now)) {
+        try {
+          await verifyLatestBackup({ trigger: "SCHEDULED" }, { exec: deps.exec, now: () => now, fetchLatest: deps.fetchLatest });
+          summary.verified = true;
+        } catch (error) {
+          // `verifyLatestBackup` já gravou o histórico e avisou.
+          summary.verified = false;
+          logger.error("backup.tick.verify_failed", { code: error instanceof BackupError ? error.code : "UNKNOWN" });
+        }
+      }
+    }
   } catch (error) {
     logger.error("backup.tick.error", { errorMessage: error instanceof Error ? error.message : String(error) });
   }
@@ -696,7 +995,7 @@ export async function testBackupConnection(): Promise<ConnectionTestResult> {
 export type BackupRunView = {
   id: string;
   status: "RUNNING" | "SUCCESS" | "FAILED";
-  trigger: "SCHEDULED" | "MANUAL";
+  trigger: "SCHEDULED" | "MANUAL" | "VERIFY";
   destination: BackupDestination | null;
   startedAt: string;
   finishedAt: string | null;
@@ -705,6 +1004,8 @@ export type BackupRunView = {
   objectKey: string | null;
   errorCode: string | null;
   errorDetail: string | null;
+  /** Impressão digital da chave da cópia (nulo = não cifrada). */
+  keyFingerprint: string | null;
 };
 
 export async function listBackupRuns(input: { page?: number; pageSize?: PageSize } = {}): Promise<{ items: BackupRunView[] } & PageInfo> {
@@ -726,6 +1027,7 @@ export async function listBackupRuns(input: { page?: number; pageSize?: PageSize
       objectKey: r.objectKey,
       errorCode: r.errorCode,
       errorDetail: r.errorDetail,
+      keyFingerprint: r.encryptionKeyFingerprint,
     })),
     ...pageInfoOf(paging),
   };

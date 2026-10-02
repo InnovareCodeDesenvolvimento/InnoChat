@@ -161,7 +161,7 @@ jobs:
   # Backup: o dump VOLTA mesmo (ciclo completo em Postgres real). Abordagem do Parque das Feiras.
   # Backup que nunca foi restaurado é uma suposição, e testar uma vez à mão não basta: o schema muda
   # toda semana e a restauração precisa continuar funcionando DEPOIS de cada migration. Por isso o
-  # ciclo inteiro (semear, dump, apagar tudo, restaurar, conferir) roda a cada push.
+  # ciclo inteiro (semear, dump CIFRADO, apagar tudo, decifrar e restaurar, conferir) roda a cada push.
   backup-restore:
     name: Backup, o dump volta mesmo (ciclo completo em Postgres real)
     runs-on: ubuntu-latest
@@ -213,8 +213,29 @@ jobs:
       - name: Semeia dados conhecidos
         run: node scripts/backup-smoke.mjs semear
 
-      - name: Faz o backup
-        run: sh scripts/backup-db.sh ./backups
+
+      # O backup do painel sai CIFRADO (AES-256-GCM, formato em src/modules/backup/backup-crypto.ts). Aqui o
+      # script de linha de comando produz o mesmo formato (BACKUP_KEY_FILE). A chave é gerada na hora e
+      # nunca sai do runner. O teste cruzado sistema/script (os dois sentidos) roda no job de testes unitários.
+      - name: Gera a chave do backup
+        run: |
+          printf 'CHAVE: %s\n' "$(node -e 'console.log(require("crypto").randomBytes(32).toString("hex"))')" > "$RUNNER_TEMP/chave.txt"
+          chmod 600 "$RUNNER_TEMP/chave.txt"
+          node -e 'console.log(require("crypto").randomBytes(32).toString("hex"))' | sed 's/^/CHAVE: /' > "$RUNNER_TEMP/chave-errada.txt"
+
+      - name: Faz o backup cifrado
+        run: |
+          BACKUP_KEY_FILE="$RUNNER_TEMP/chave.txt" sh scripts/backup-db.sh ./backups
+          ls -l ./backups
+
+      - name: Confere que o backup saiu cifrado (sem dump em claro, ilegível sem a chave)
+        run: |
+          ls ./backups/backup-innochat-*.dump.enc
+          if ls ./backups/*.dump >/dev/null 2>&1; then echo "ERRO: sobrou dump em claro"; exit 1; fi
+          ENC="$(ls -1 ./backups/backup-innochat-*.dump.enc | head -1)"
+          if pg_restore --list "$ENC" >/dev/null 2>&1; then echo "ERRO: o arquivo cifrado é lido como dump"; exit 1; fi
+          if grep -aq "Clínica da Ação" "$ENC"; then echo "ERRO: texto da semente aparece no arquivo cifrado"; exit 1; fi
+          node scripts/decrypt-backup.mjs "$ENC" --info
 
       # O DESASTRE, simulado: o banco some por completo. É contra isto que o backup existe, então é
       # exatamente isto que o teste precisa provocar.
@@ -224,10 +245,36 @@ jobs:
           echo "Tabelas restantes:"
           psql "$DATABASE_URL" -tAc "SELECT count(*) FROM information_schema.tables WHERE table_schema='public';"
 
-      - name: Restaura
+      # Casos negativos: com a chave errada, ou com o arquivo adulterado, a restauração tem que PARAR antes
+      # de tocar no banco (que continua vazio) e sem deixar dump decifrado para trás.
+      - name: Chave errada não restaura
         run: |
-          DUMP="$(ls -1 ./backups/backup-innochat-*.dump | head -1)"
-          sh scripts/restore-db.sh "$DUMP" "$DATABASE_URL" --confirmar
+          ENC="$(ls -1 ./backups/backup-innochat-*.dump.enc | head -1)"
+          if sh scripts/restore-db.sh "$ENC" "$DATABASE_URL" --confirmar --chave "$RUNNER_TEMP/chave-errada.txt"; then
+            echo "ERRO: restaurou com a chave errada"; exit 1
+          fi
+          if node scripts/decrypt-backup.mjs "$ENC" --chave "$RUNNER_TEMP/chave-errada.txt" --saida "$RUNNER_TEMP/errada.dump"; then
+            echo "ERRO: decifrou com a chave errada"; exit 1
+          fi
+          test ! -e "$RUNNER_TEMP/errada.dump"
+          N="$(psql "$DATABASE_URL" -tAc "SELECT count(*) FROM information_schema.tables WHERE table_schema='public';")"
+          test "$N" = "0"
+
+      - name: Arquivo adulterado não restaura
+        run: |
+          ENC="$(ls -1 ./backups/backup-innochat-*.dump.enc | head -1)"
+          node -e 'const fs=require("fs");const b=fs.readFileSync(process.argv[1]);b[b.length>>1]^=1;fs.writeFileSync(process.argv[2],b)' "$ENC" ./backups/adulterado.dump.enc
+          if sh scripts/restore-db.sh ./backups/adulterado.dump.enc "$DATABASE_URL" --confirmar --chave "$RUNNER_TEMP/chave.txt"; then
+            echo "ERRO: restaurou um arquivo adulterado"; exit 1
+          fi
+          N="$(psql "$DATABASE_URL" -tAc "SELECT count(*) FROM information_schema.tables WHERE table_schema='public';")"
+          test "$N" = "0"
+          rm -f ./backups/adulterado.dump.enc
+
+      - name: Decifra e restaura com a chave certa
+        run: |
+          ENC="$(ls -1 ./backups/backup-innochat-*.dump.enc | head -1)"
+          sh scripts/restore-db.sh "$ENC" "$DATABASE_URL" --confirmar --chave "$RUNNER_TEMP/chave.txt"
 
       - name: Confere se os dados voltaram íntegros
         run: node scripts/backup-smoke.mjs conferir

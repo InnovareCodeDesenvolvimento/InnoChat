@@ -51,3 +51,5 @@ tests/e2e/.auth/
 # Dumps do banco (backup): têm dados de todas as empresas, nunca versionar
 backups/
 *.dump
+*.dump.enc
+chave-backup-*.txt

@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { CheckCircle2, DatabaseBackup, Link2, PlayCircle, Plug, Save, Unlink } from "lucide-react";
+import { CheckCircle2, ClipboardCopy, DatabaseBackup, Download, KeyRound, Link2, PlayCircle, Plug, Save, ShieldCheck, Unlink } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { navIconFor } from "@/components/shell/nav-items";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,13 +23,16 @@ import { formatTimeLabel } from "@/components/lib/format-date";
 import { formatDateBR } from "@/modules/billing/format";
 import {
   disconnectGoogleAction,
+  generateBackupKeyAction,
   runBackupNowAction,
   saveBackupConfigAction,
   startGoogleConnectionAction,
   testBackupConnectionAction,
+  verifyBackupAction,
   type BackupPanelData,
 } from "@/modules/backup/actions";
-import type { BackupRunView } from "@/modules/backup/service";
+import { REPLACE_KEY_CONFIRMATION } from "@/modules/backup/policy";
+import type { BackupRunView, GeneratedBackupKey, VerifyResult } from "@/modules/backup/service";
 
 const TZ = "America/Sao_Paulo";
 
@@ -55,6 +58,9 @@ const ERROR_LABELS: Record<string, string> = {
   DUMP: "Falha ao copiar o banco",
   CONFIG: "Configuração incompleta",
   BUSY: "Já havia uma cópia rodando",
+  KEY: "Problema com a chave",
+  NO_BACKUP: "Nenhuma cópia no destino",
+  VERIFY: "A cópia não passou na conferência",
   UNKNOWN: "Erro desconhecido",
 };
 
@@ -83,7 +89,8 @@ function When({ iso }: { iso: string }) {
 
 function RunStatus({ run }: { run: BackupRunView }) {
   if (run.status === "RUNNING") return <Badge variant="primary">Em andamento</Badge>;
-  if (run.status === "FAILED") return <Badge variant="danger">Falhou</Badge>;
+  if (run.status === "FAILED") return <Badge variant="danger">{run.trigger === "VERIFY" ? "Reprovou" : "Falhou"}</Badge>;
+  if (run.trigger === "VERIFY") return <Badge variant="success">Conferida</Badge>;
   // Sucesso sem destino: o dump foi conferido, mas não saiu do servidor.
   return run.objectKey ? <Badge variant="success">Enviado</Badge> : <Badge variant="warning">Só teste</Badge>;
 }
@@ -94,7 +101,12 @@ export function BackupClient({ data, google }: { data: BackupPanelData; google: 
   const router = useRouter();
   const pathname = usePathname();
   const [isNavigating, startNavigation] = useTransition();
-  const [busy, setBusy] = useState<null | "save" | "test" | "run" | "connect" | "disconnect">(null);
+  const [busy, setBusy] = useState<null | "save" | "test" | "run" | "connect" | "disconnect" | "key" | "verify">(null);
+  /** A chave inteira, só em memória e só até a pessoa dispensar: não vai para URL, storage nem cache. */
+  const [revealed, setRevealed] = useState<GeneratedBackupKey | null>(null);
+  const [replacing, setReplacing] = useState(false);
+  const [confirmText, setConfirmText] = useState("");
+  const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null);
   const [message, setMessage] = useState<{ variant: "success" | "danger" | "warning"; text: string } | null>(null);
 
   const [enabled, setEnabled] = useState(config.enabled);
@@ -178,6 +190,62 @@ export function BackupClient({ data, google }: { data: BackupPanelData; google: 
       const { sizeBytes, tablesWithData, sentToDestination, message: text } = result.data;
       setMessage({ variant: sentToDestination ? "success" : "warning", text: `${text} ${formatBytes(sizeBytes)}, ${tablesWithData} tabelas com dados.` });
     }
+    router.refresh();
+    setBusy(null);
+  }
+
+  // Enquanto a chave está na tela e a pessoa não dispensou, sair da página perderia a única chance de copiá-la.
+  useEffect(() => {
+    if (!revealed) return;
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [revealed]);
+
+  async function handleGenerateKey() {
+    setBusy("key");
+    setMessage(null);
+    const result = await generateBackupKeyAction(config.hasEncryptionKey ? { replace: true, confirmation: confirmText } : {});
+    if (result.ok) {
+      setRevealed(result.data);
+      setReplacing(false);
+      setConfirmText("");
+      router.refresh();
+    } else {
+      setMessage({ variant: "danger", text: result.error.message });
+    }
+    setBusy(null);
+  }
+
+  async function handleCopyKey() {
+    if (!revealed) return;
+    try {
+      await navigator.clipboard.writeText(revealed.key);
+      notify({ title: "Chave copiada", variant: "success" });
+    } catch {
+      setMessage({ variant: "warning", text: "O navegador não deixou copiar. Selecione a chave na caixa e copie à mão, ou baixe o arquivo." });
+    }
+  }
+
+  function handleDownloadKey() {
+    if (!revealed) return;
+    const url = URL.createObjectURL(new Blob([revealed.fileText], { type: "text/plain;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = revealed.fileName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  async function handleVerify() {
+    setBusy("verify");
+    setMessage(null);
+    setVerifyResult(null);
+    const result = await verifyBackupAction();
+    if (result.ok) setVerifyResult(result.data);
+    else setMessage({ variant: "danger", text: result.error.message });
     router.refresh();
     setBusy(null);
   }
@@ -276,6 +344,122 @@ export function BackupClient({ data, google }: { data: BackupPanelData; google: 
           </div>
         </CardContent>
       </Card>
+
+      <div className="mb-4 grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader help="backup.criptografia">
+            <CardTitle>Chave do backup</CardTitle>
+            <CardDescription>As cópias saem do servidor trancadas com uma chave que só você guarda.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4 p-5">
+            {revealed ? (
+              <div className="space-y-3">
+                <Alert variant="warning" title="Guarde fora do servidor. Sem ela os backups não abrem.">
+                  Esta é a única vez que a chave aparece inteira. Se fechar esta tela sem guardar, só dá para gerar outra, e as cópias feitas com esta ficam sem como abrir.
+                </Alert>
+                <div>
+                  <p className="text-xs text-text-secondary">Chave (impressão digital {revealed.fingerprint})</p>
+                  <code data-testid="backup-key" className="mt-1 block break-all rounded-card border border-border bg-bg p-3 font-mono text-sm text-text select-all">
+                    {revealed.key}
+                  </code>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button type="button" variant="secondary" icon={ClipboardCopy} onClick={handleCopyKey}>
+                    Copiar chave
+                  </Button>
+                  <Button type="button" variant="secondary" icon={Download} onClick={handleDownloadKey}>
+                    Baixar arquivo .txt
+                  </Button>
+                  <Button type="button" variant="ghost" onClick={() => setRevealed(null)}>
+                    Já guardei, esconder
+                  </Button>
+                </div>
+              </div>
+            ) : config.hasEncryptionKey ? (
+              <div className="space-y-3">
+                <div>
+                  <p className="text-xs text-text-secondary">Impressão digital da chave atual</p>
+                  <p className="mt-1 font-mono text-lg font-medium text-text" data-testid="backup-key-fingerprint">
+                    {config.encryptionKeyFingerprint}
+                  </p>
+                  <p className="mt-1 text-xs text-text-secondary">
+                    {config.encryptionKeyCreatedAt
+                      ? `Gerada em ${formatDateBR(new Date(config.encryptionKeyCreatedAt), TZ)} às ${formatTimeLabel(new Date(config.encryptionKeyCreatedAt), TZ)}. `
+                      : ""}
+                    Confira se é a mesma do arquivo que você guardou. A chave em si não aparece de novo.
+                  </p>
+                </div>
+                {replacing ? (
+                  <div className="space-y-3 rounded-card border border-danger/40 bg-danger-bg p-4">
+                    <p className="text-sm text-text">
+                      Uma chave nova não abre as cópias que já existem: elas continuam precisando da chave antiga, e o sistema não guarda a antiga. Só troque se a chave atual vazou ou se você já tem as duas guardadas.
+                    </p>
+                    <Field label={`Para confirmar, digite ${REPLACE_KEY_CONFIRMATION}`}>
+                      {(p) => <Input {...p} value={confirmText} onChange={(e) => setConfirmText(e.target.value)} autoComplete="off" />}
+                    </Field>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        variant="danger"
+                        icon={KeyRound}
+                        onClick={handleGenerateKey}
+                        isLoading={busy === "key"}
+                        loadingText="Gerando…"
+                        disabled={anyBusy || confirmText.trim() !== REPLACE_KEY_CONFIRMATION}
+                      >
+                        Trocar a chave
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={() => {
+                          setReplacing(false);
+                          setConfirmText("");
+                        }}
+                        disabled={anyBusy}
+                      >
+                        Cancelar
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <Button type="button" variant="secondary" icon={KeyRound} onClick={() => setReplacing(true)} disabled={anyBusy}>
+                    Gerar nova chave
+                  </Button>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <Alert variant="warning">Ainda não há chave. Sem ela o backup não sai do servidor e o automático não liga.</Alert>
+                <Button type="button" icon={KeyRound} onClick={handleGenerateKey} isLoading={busy === "key"} loadingText="Gerando…" disabled={anyBusy}>
+                  Gerar chave
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader help="backup.conferir">
+            <CardTitle>Conferir backup</CardTitle>
+            <CardDescription>Baixa a cópia mais recente, abre com a chave e lê o conteúdo. Não mexe no banco.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4 p-5">
+            <Button type="button" variant="secondary" icon={ShieldCheck} onClick={handleVerify} isLoading={busy === "verify"} loadingText="Conferindo a cópia…" disabled={anyBusy || !config.destinationReady}>
+              Conferir backup
+            </Button>
+            {!config.destinationReady ? <p className="text-xs text-text-secondary">Complete o destino para poder conferir.</p> : null}
+            {verifyResult ? (
+              <Alert variant="success" aria-live="polite" title="A cópia está íntegra">
+                {`A cópia de ${formatDateBR(new Date(verifyResult.fileCreatedAt), TZ)} às ${formatTimeLabel(new Date(verifyResult.fileCreatedAt), TZ)} (${formatBytes(verifyResult.sizeBytes)}) foi baixada, ${
+                  verifyResult.encrypted ? `abriu com a chave ${verifyResult.keyFingerprint}, a verificação de integridade passou` : "estava sem cifra (é de antes da criptografia)"
+                } e o dump lista ${verifyResult.tablesWithData} tabelas com dados. Nada foi restaurado.`}
+              </Alert>
+            ) : null}
+            <p className="text-xs text-text-secondary">Uma vez por semana o sistema faz isso sozinho e avisa por e-mail se a cópia não abrir.</p>
+          </CardContent>
+        </Card>
+      </div>
 
       {!config.destinationReady ? (
         <Alert variant="warning" className="mb-4">
@@ -495,13 +679,14 @@ export function BackupClient({ data, google }: { data: BackupPanelData; google: 
                             {run.errorDetail ? <p className="break-words text-xs text-text-secondary">{run.errorDetail}</p> : null}
                           </div>
                         ) : null}
-                        {run.status === "SUCCESS" && !run.objectKey ? <p className="mt-1 text-xs text-text-secondary">Conferida, mas não enviada: sem destino.</p> : null}
+                        {run.status === "SUCCESS" && run.trigger !== "VERIFY" && !run.objectKey ? <p className="mt-1 text-xs text-text-secondary">Conferida, mas não enviada: sem destino.</p> : null}
                       </TableCell>
-                      <TableCell>{run.trigger === "SCHEDULED" ? "Automática" : "Manual"}</TableCell>
+                      <TableCell>{run.trigger === "SCHEDULED" ? "Automática" : run.trigger === "VERIFY" ? "Conferência" : "Manual"}</TableCell>
                       <TableCell>{run.destination === "S3" ? "Bucket S3" : run.destination === "DRIVE" ? "Google Drive" : "Nenhum"}</TableCell>
                       <TableCell className="tabular-nums">
                         {formatBytes(run.sizeBytes)}
                         {run.tablesWithData !== null ? <span className="block text-xs text-text-secondary">{run.tablesWithData} tabelas</span> : null}
+                        {run.keyFingerprint ? <span className="block text-xs text-text-secondary">Cifrada, chave {run.keyFingerprint}</span> : null}
                       </TableCell>
                     </TableRow>
                   ))}

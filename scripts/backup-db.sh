@@ -11,6 +11,11 @@
 #   DATABASE_URL=postgresql://... ./scripts/backup-db.sh [destino]
 #
 # O destino padrão é ./backups (ignorado pelo Git: o dump tem dados de todas as empresas).
+#
+# CIFRADO (opcional): com BACKUP_KEY_FILE=<arquivo da chave> o dump é cifrado (AES-256-GCM, o mesmo
+# formato do backup do painel), o arquivo em claro é apagado e sobra só backup-innochat-....dump.enc.
+# O arquivo da chave é o .txt baixado em Admin > Backup (ou qualquer arquivo com a linha CHAVE: ...).
+# Sem BACKUP_KEY_FILE o dump fica em claro: guarde-o em lugar de confiança.
 
 set -eu
 
@@ -58,6 +63,21 @@ echo "[backup] ok: $TAMANHO bytes, $TABELAS tabela(s) com dados"
 if [ "$TABELAS" -eq 0 ]; then
   echo "ERRO: o dump não tem NENHUMA tabela com dados. Confira se a DATABASE_URL aponta para o banco certo." >&2
   exit 1
+fi
+
+if [ -n "${BACKUP_KEY_FILE:-}" ]; then
+  if ! command -v node >/dev/null 2>&1; then
+    echo "ERRO: node não encontrado: ele é necessário para cifrar. O dump em claro foi mantido em $ARQUIVO." >&2
+    exit 1
+  fi
+  ENC="$ARQUIVO.enc"
+  if ! node "$(dirname "$0")/decrypt-backup.mjs" "$ARQUIVO" --cifrar --chave "$BACKUP_KEY_FILE" --saida "$ENC"; then
+    echo "ERRO: não consegui cifrar. O dump em claro foi mantido em $ARQUIVO." >&2
+    exit 1
+  fi
+  rm -f "$ARQUIVO"
+  ARQUIVO="$ENC"
+  echo "[backup] cifrado: o arquivo em claro foi apagado"
 fi
 
 echo "[backup] concluído: $ARQUIVO"

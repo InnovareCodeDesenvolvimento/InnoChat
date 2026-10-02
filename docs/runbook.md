@@ -505,12 +505,16 @@ e a tela mostrando os segredos como "não salvos".
 
 ## Backup e restauração
 
-> Backup que nunca foi restaurado é uma suposição. Por isso o ciclo completo (semear, copiar, apagar o banco inteiro, restaurar, conferir) roda a cada push no job `backup-restore` do CI. Se uma migration futura quebrar a restauração, o CI fica vermelho no dia, e não no dia do desastre.
+> Backup que nunca foi restaurado é uma suposição. Por isso o ciclo completo (semear, copiar já cifrado, apagar o banco inteiro, decifrar, restaurar, conferir, e mais os casos de chave errada e arquivo adulterado) roda a cada push no job `backup-restore` do CI. Se uma migration futura quebrar a restauração, o CI fica vermelho no dia, e não no dia do desastre.
 
 ### O backup automático fica em Admin → Backup
 
 Uma cópia por dia, no horário de Brasília, enviada para **fora do servidor**. Tudo é cadastrado na tela (nenhuma variável de ambiente): ligar o automático, hora, quantos dias guardar, depois de quantas horas sem cópia avisar, e o destino (bucket S3, R2, Backblaze ou Google Drive). Os segredos ficam cifrados no banco e não voltam para a tela.
 
+- **A cópia sai cifrada.** Antes de ir ao bucket ou ao Drive, o arquivo é cifrado com AES-256-GCM e vira `backup-innochat-....dump.enc`. Quem pegar o arquivo no destino não lê nada sem a chave. A chave é própria do backup (32 bytes aleatórios, não depende do `AUTH_SECRET`) e é gerada em Admin → Backup, no card **Chave do backup**. Ela aparece inteira **uma única vez**, com Copiar e Baixar arquivo .txt: **guarde fora do servidor** (gerenciador de senhas, pen drive). Depois a tela mostra só a impressão digital (8 caracteres) para conferir se a chave guardada é a mesma. Sem a chave o backup não sai e o automático não liga.
+- **Gerar nova chave** pede confirmação digitada. As cópias já feitas continuam precisando da chave **antiga**: o sistema não guarda a antiga. Só troque se a atual vazou, e guarde as duas.
+- A chave também fica no banco, cifrada com o `AUTH_SECRET`, para o agendador cifrar de madrugada. Se o `AUTH_SECRET` mudar, o sistema não consegue mais ler a chave dele: o backup falha com a causa `KEY` e pede para gerar outra. A cópia que você guardou segue valendo para abrir os arquivos antigos.
+- **Conferir backup** (botão na mesma tela): baixa a cópia mais recente do destino, decifra, valida a verificação de integridade e roda `pg_restore --list` no resultado. Não escreve em banco nenhum e fica no histórico como Conferência. Uma vez por semana o sistema faz isso sozinho (com o automático ligado e pelo menos uma cópia enviada) e avisa por e-mail se reprovar. Conferir prova que o arquivo abre e está inteiro; que ele restaura num banco novo é o que o job do CI prova a cada push.
 - **Fazer backup agora** prova o caminho inteiro antes de confiar no horário. Sem destino completo ele só gera um teste (a cópia é conferida e descartada) e a tela avisa que isso não é backup.
 - Use um bucket **só para backup**. A cópia tem dados de todas as empresas.
 - Cópias antigas são apagadas só depois que a nova subiu e foi conferida, e o sistema nunca apaga a última cópia que existe.
@@ -523,12 +527,16 @@ Uma cópia por dia, no horário de Brasília, enviada para **fora do servidor**.
 Não existe botão de restaurar, de propósito: um clique que apaga o banco é risco grande demais. Restaurar exige linha de comando, o destino escrito à mão e `--confirmar`.
 
 1. Pare o `innochat-painel` no Easypanel (evita escrita durante a restauração).
-2. Baixe o arquivo `backup-innochat-AAAA-MM-DD-HHhMMmSSs.dump` do bucket ou da pasta do Drive.
-3. De um computador com o cliente do PostgreSQL 18 (ou da versão do banco), rode:
+2. Baixe o arquivo `backup-innochat-AAAA-MM-DD-HHhMMmSSs.dump.enc` do bucket ou da pasta do Drive. Tenha à mão o arquivo `.txt` da chave que você guardou ao gerá-la (a impressão digital do arquivo `.txt` tem que ser a mesma do backup; para ver a do backup: `node scripts/decrypt-backup.mjs backup-....dump.enc --info`).
+3. De um computador com o projeto, o Node e o cliente do PostgreSQL 18 (ou da versão do banco), rode:
 
 ```bash
-./scripts/restore-db.sh backup-innochat-2026-10-02-03h00m12s.dump "postgresql://usuario:senha@host:5432/innochat" --confirmar
+./scripts/restore-db.sh backup-innochat-2026-10-02-03h00m12s.dump.enc "postgresql://usuario:senha@host:5432/innochat" --confirmar --chave chave-backup-innochat-2f8a5d0b.txt
 ```
+
+O script decifra para uma pasta temporária (permissão 0700) conferindo a integridade até o último byte, restaura e **apaga o temporário no fim**, dê certo ou não. Se a chave estiver errada ou o arquivo tiver sido alterado ou cortado, ele para **antes** de tocar no destino e diz o motivo (chave errada mostra as duas impressões digitais). Backups antigos, de antes da criptografia (`.dump` sem `.enc`), continuam aceitos e não precisam de `--chave`.
+
+Só quer abrir o dump, sem restaurar? `node scripts/decrypt-backup.mjs backup-....dump.enc --chave chave.txt` gera o `.dump` ao lado (e não sobrescreve nada que já exista). A chave nunca vai por argumento (ela apareceria no `ps`): use o arquivo, ou a variável `BACKUP_KEY`.
 
 O script confere o dump **antes** de tocar no destino, exige o destino como argumento (não lê a `DATABASE_URL` do ambiente) e, no fim, confere se o banco ficou com dados. Avisos de permissão do `pg_restore` são esperados (o dump usa `--no-owner`).
 
@@ -545,7 +553,9 @@ O script confere o dump **antes** de tocar no destino, exige o destino como argu
 DATABASE_URL="postgresql://..." ./scripts/backup-db.sh ./backups
 ```
 
-A pasta `backups/` e os arquivos `*.dump` já são ignorados pelo Git.
+Para sair cifrado, no mesmo formato do painel, aponte o arquivo da chave: `BACKUP_KEY_FILE=chave.txt DATABASE_URL="..." ./scripts/backup-db.sh ./backups`. O dump em claro é apagado e sobra só o `.dump.enc`. Sem `BACKUP_KEY_FILE` o dump fica em claro: guarde-o em lugar de confiança.
+
+A pasta `backups/` e os arquivos `*.dump`, `*.dump.enc` e `chave-backup-*.txt` já são ignorados pelo Git.
 
 Ver `docs/deploy-easypanel.md` §13 para o backup do próprio Easypanel (segunda camada, independente do sistema).
 

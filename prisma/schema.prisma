@@ -1458,6 +1458,13 @@ model BackupConfig {
   driveOauthConnectedAt     DateTime?
   driveOauthConnectedById   String?
 
+  // Chave PRÓPRIA do backup (32 bytes, independente do AUTH_SECRET), cifrada com src/lib/crypto.ts. A tela só vê a
+  // impressão digital (8 hex do sha256). `encryptionKeyShownAt` = quando foi mostrada inteira ao dono (uma única vez).
+  encryptionKeyEnc         String?
+  encryptionKeyFingerprint String?
+  encryptionKeyCreatedAt   DateTime?
+  encryptionKeyShownAt     DateTime?
+
   runningSince    DateTime?
   lastSuccessAt   DateTime?
   lastAttemptAt   DateTime?
@@ -1470,7 +1477,7 @@ model BackupConfig {
   @@map("backup_config")
 }
 
-// Histórico de execuções. `status`: RUNNING | SUCCESS | FAILED. `trigger`: SCHEDULED | MANUAL.
+// Histórico de execuções. `status`: RUNNING | SUCCESS | FAILED. `trigger`: SCHEDULED | MANUAL | VERIFY (conferência da cópia mais recente, não é backup).
 // `destination` = snapshot do destino usado (S3 | DRIVE; nulo = dump conferido mas sem destino: vale
 // como teste, não como backup). `errorCode` = causa classificada (CREDENTIAL, FOLDER, QUOTA, NETWORK,
 // DUMP...); `errorDetail` truncado, nunca com DATABASE_URL. `objectKey` = objeto (S3) ou id/nome do
@@ -1488,6 +1495,8 @@ model BackupRun {
   errorCode      String?
   errorDetail    String?
   createdById    String?
+  // Impressão digital da chave com que a cópia foi cifrada (nulo = não cifrada: antigas e teste sem destino).
+  encryptionKeyFingerprint String?
 
   // Tela lista por data decrescente.
   @@index([startedAt])

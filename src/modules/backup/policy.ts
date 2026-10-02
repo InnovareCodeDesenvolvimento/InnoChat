@@ -10,7 +10,19 @@ export const DRIVE_MODES = ["SERVICE_ACCOUNT", "OAUTH"] as const;
 export type DriveMode = (typeof DRIVE_MODES)[number];
 
 /** Códigos de causa gravados em `BackupRun.errorCode`. */
-export type BackupErrorCode = "CREDENTIAL" | "FOLDER" | "QUOTA" | "NETWORK" | "OAUTH_DISCONNECTED" | "DUMP" | "CONFIG" | "BUSY" | "UNKNOWN";
+export type BackupErrorCode =
+  | "CREDENTIAL"
+  | "FOLDER"
+  | "QUOTA"
+  | "NETWORK"
+  | "OAUTH_DISCONNECTED"
+  | "DUMP"
+  | "CONFIG"
+  | "BUSY"
+  | "KEY"
+  | "NO_BACKUP"
+  | "VERIFY"
+  | "UNKNOWN";
 
 /** Brasil não tem horário de verão desde 2019: o deslocamento de Brasília é fixo. */
 export const BRASILIA_UTC_OFFSET_HOURS = 3;
@@ -18,6 +30,12 @@ export const BRASILIA_UTC_OFFSET_HOURS = 3;
 export const REPEAT_WINDOW_MS = 20 * 60 * 60 * 1000;
 /** Trava de execução mais velha que isto é tratada como abandonada (processo morreu no meio do dump). */
 export const LOCK_EXPIRES_MS = 2 * 60 * 60 * 1000;
+/** Frase que a pessoa digita para trocar uma chave que já existe. Trocar é raro e perder a antiga é definitivo. */
+export const REPLACE_KEY_CONFIRMATION = "GERAR NOVA CHAVE";
+/** A conferência automática da cópia mais recente roda no máximo uma vez por semana (tentativa que falhou também conta). */
+export const VERIFY_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
+/** Conferência que ficou RUNNING além disto morreu no meio. */
+export const VERIFY_STALE_MS = 30 * 60 * 1000;
 /** Intervalo mínimo entre dois e-mails de "backup atrasado". */
 export const LATE_ALERT_INTERVAL_MS = 12 * 60 * 60 * 1000;
 
@@ -84,9 +102,19 @@ export function backupFileName(now: Date): string {
   return `${FILE_PREFIX}innochat-${parts.year}-${parts.month}-${parts.day}-${parts.hour}h${parts.minute}m${parts.second}s.dump`;
 }
 
-/** É nosso arquivo de backup? A poda só toca no que passa por aqui. */
+/** Nome do arquivo cifrado: o do dump + `.enc` (`backup-innochat-...dump.enc`). */
+export function encryptedBackupFileName(dumpName: string): string {
+  return `${dumpName}.enc`;
+}
+
+/** É nosso arquivo de backup (cifrado ou do tempo em que não era)? A poda só toca no que passa por aqui. */
 export function isBackupFileName(name: string): boolean {
-  return name.startsWith(FILE_PREFIX) && name.endsWith(".dump");
+  return name.startsWith(FILE_PREFIX) && (name.endsWith(".dump") || name.endsWith(".dump.enc"));
+}
+
+/** A última tentativa de conferência foi há mais de uma semana (ou nunca houve)? */
+export function isVerifyDue(lastVerifyAt: Date | null, now: Date): boolean {
+  return !lastVerifyAt || now.getTime() - lastVerifyAt.getTime() >= VERIFY_INTERVAL_MS;
 }
 
 /** É a hora marcada (Brasília), e ainda não houve tentativa nas últimas ~20 h? */
@@ -206,6 +234,7 @@ const FAILURE_SUBJECT: Partial<Record<BackupErrorCode, string>> = {
   QUOTA: "O backup parou: não há espaço no Google Drive",
   NETWORK: "O backup falhou ao falar com o destino",
   OAUTH_DISCONNECTED: "O backup parou: a conta Google foi desconectada",
+  KEY: "O backup parou: falta a chave de criptografia",
 };
 
 /** E-mail de falha do backup agendado. A causa vai no assunto (o que se lê no celular) e a ação no corpo. */
@@ -256,6 +285,32 @@ export function googleDisconnectedMail(opts: { adminName: string; adminEmail: st
     "Backup: a conta Google foi desconectada",
     [
       `${opts.adminName} (${opts.adminEmail}) desconectou a conta Google (${opts.account ?? "desconhecida"}) do backup automático. Sem uma conta conectada, o backup agendado falha por falta de destino até alguém conectar de novo.`,
+    ],
+    opts.adminUrl,
+  );
+}
+
+/** E-mail quando a chave de criptografia do backup é gerada ou trocada. Nunca leva a chave. */
+export function backupKeyChangedMail(opts: { adminName: string; adminEmail: string; fingerprint: string; replaced: boolean; adminUrl: string | null }): AlertMail {
+  return mailOf(
+    opts.replaced ? "Backup: a chave de criptografia foi trocada" : "Backup: foi gerada a chave de criptografia",
+    [
+      opts.replaced
+        ? `${opts.adminName} (${opts.adminEmail}) gerou uma chave nova para os backups (impressão digital ${opts.fingerprint}). As cópias feitas daqui em diante só abrem com ela. As cópias antigas continuam precisando da chave antiga: quem a perdeu não consegue abri-las.`
+        : `${opts.adminName} (${opts.adminEmail}) gerou a chave de criptografia dos backups (impressão digital ${opts.fingerprint}). Sem essa chave, nenhuma cópia abre.`,
+      "Se não foi você nem alguém da sua equipe, troque a senha do administrador.",
+    ],
+    opts.adminUrl,
+  );
+}
+
+/** E-mail quando a conferência semanal da cópia mais recente reprova. */
+export function verifyFailureMail(opts: { detail: string; adminUrl: string | null }): AlertMail {
+  return mailOf(
+    "Backup: a conferência da cópia mais recente reprovou",
+    [
+      `O sistema baixou a cópia mais recente, abriu e tentou ler o conteúdo, e não deu certo: ${opts.detail}`,
+      "Trate como incidente: uma cópia que não abre não é backup. Abra a tela de backup, confira a chave e use Fazer backup agora e depois Conferir backup.",
     ],
     opts.adminUrl,
   );
