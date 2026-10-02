@@ -13,3 +13,4 @@
 - [Revisão régua F2/F3/F4](billing_f2_f4_review_2026-10-01.md) — LIBERADO, sem CRÍTICO; telefone não verificado, ProviderEvent sem retenção, Pix antigo pagável, suspensão manual no deploy
 - [Revisão correções régua 587730f](billing_regua_fixes_review_2026-10-01.md) — LIBERADO; SIM repetido sem trava, callers de effectiveStatus sem manualSuspendedAt
 - [Revisão F6 Financeiro/Envios](billing_f6_review_2026-10-02.md) — LIBERADO; reenvio de FAILED em retry duplica, retenção recipient vs anonimização 90d
+- [Revisão Onda 1 melhorias](onda1_melhorias_review_2026-10-02.md) — BLOQUEIA: token Google na URL com Pixel, 2FA admin só no layout; padrões
