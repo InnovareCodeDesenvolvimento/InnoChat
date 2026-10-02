@@ -102,6 +102,7 @@ Para funcionar, o InnoChat depende de fornecedores que tratam dados em nosso nom
 - **Evolution API** (conexão com o WhatsApp): recebe e envia as mensagens entre o WhatsApp e o bot. É uma solução **não oficial**, sem vínculo com a Meta ou com o WhatsApp (veja a seção 5 dos [Termos de Uso](/termos)).
 - **n8n** (automação): processa cada mensagem recebida para o bot responder e executa rotinas periódicas. Execuções bem-sucedidas não são salvas; registros de execuções com erro são apagados em até 7 dias.
 - **Mercado Pago** (pagamento por Pix): recebe o valor da fatura e os dados do pagador (nome, e-mail e, quando exigido, CPF ou CNPJ). O Mercado Pago trata esses dados também segundo a política de privacidade dele.
+- **Meta** (Pixel e API de Conversões, só para quem aceita o aviso de cookies): recebe os dados da visita e os eventos de cadastro e de primeiro pagamento descritos na seção de Cookies. A Meta trata esses dados também segundo a política de privacidade dela.
 - **Provedor de e-mail (SMTP):** envia os e-mails do sistema (verificação, senha, convite, faturas e avisos), recebendo o endereço e o conteúdo da mensagem.
 
 As mensagens do bot trafegam pela infraestrutura do **WhatsApp**, que é um serviço da Meta sujeito aos termos e à política de privacidade dela.
@@ -124,7 +125,9 @@ O InnoChat usa **apenas cookies essenciais**, necessários para o login funciona
 - **Cookie de proteção** (`authjs.csrf-token`): protege os formulários de login contra falsificação de requisições.
 - **Cookie de retorno** (`authjs.callback-url`): lembra para qual página voltar depois do login.
 
-Em conexões seguras, esses nomes podem aparecer com o prefixo `__Secure-` ou `__Host-`. **Não usamos cookies de análise, de publicidade nem ferramentas de rastreamento de terceiros.** Como são essenciais, esses cookies não dependem de consentimento; se você bloqueá-los no navegador, não será possível entrar no painel.
+Em conexões seguras, esses nomes podem aparecer com o prefixo `__Secure-` ou `__Host-`. Esses cookies são essenciais e não dependem de consentimento; se você bloqueá-los no navegador, não será possível entrar no painel. **Fora o Pixel descrito abaixo, não usamos cookies de análise, de publicidade nem ferramentas de rastreamento de terceiros.**
+
+**Cookies de medição, só com a sua permissão.** Nas páginas públicas (página inicial, páginas por tipo de negócio e cadastro), podemos usar o **Pixel do Meta** para medir de onde vêm os visitantes e quais anúncios terminam em cadastro. Ele só é carregado se você clicar em "Aceitar" no aviso que aparece nessas páginas. Se clicar em "Recusar", nada do Meta é carregado. O Pixel não roda dentro do painel. Você muda de ideia quando quiser em "Preferências de cookies", no rodapé da página inicial. Se aceitar, a Meta pode gravar cookies no seu navegador (como `_fbp` e `_fbc`) e receber dados da visita, como endereço IP, navegador e páginas acessadas. Quando você cria uma conta, também enviamos à Meta, pelo nosso servidor, o evento de cadastro e, no primeiro pagamento, o evento de compra (valor e data), com e-mail e telefone embaralhados por hash. Para isso guardamos, junto da conta, o seu aceite, o IP, o navegador e esses cookies do momento do cadastro. Nada disso é enviado para quem recusou o aviso.
 
 <a id="retencao"></a>
 

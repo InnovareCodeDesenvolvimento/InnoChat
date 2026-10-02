@@ -29,6 +29,7 @@ import {
 } from "@/modules/platform/actions";
 import { BotFlowCard } from "@/components/admin/bot-flow-card";
 import { GoogleLoginCard, type GoogleAuthConfig } from "@/components/admin/google-login-card";
+import { MetaPixelCard, type MetaPixelConfig } from "@/components/admin/meta-pixel-card";
 import { PlatformWhatsappCard } from "@/components/admin/platform-whatsapp-card";
 import type { PlatformWhatsappState } from "@/modules/platform/platform-whatsapp-actions";
 import { MercadoPagoPanel } from "@/components/admin/mercado-pago-panel";
@@ -172,6 +173,7 @@ export function AdminConfiguracoesClient({
   initialMercadoPago,
   initialGoogle,
   initialPlatformWhatsapp,
+  initialMeta,
 }: {
   initialSettings: PlatformSettingsView;
   initialLegal: PlatformLegalInfo | null;
@@ -179,6 +181,7 @@ export function AdminConfiguracoesClient({
   initialMercadoPago: MercadoPagoConfig | null;
   initialGoogle: GoogleAuthConfig | null;
   initialPlatformWhatsapp: PlatformWhatsappState | null;
+  initialMeta: MetaPixelConfig | null;
 }) {
   const { notify } = useToast();
   const [settings, setSettings] = useState(initialSettings);
@@ -608,6 +611,8 @@ export function AdminConfiguracoesClient({
       <BotFlowCard />
 
       <GoogleLoginCard initial={initialGoogle} />
+
+      <MetaPixelCard initial={initialMeta} />
 
       <MercadoPagoPanel initial={initialMercadoPago} publicBaseUrl={settings.publicBaseUrl} onConfigChange={setMpConfig} />
 

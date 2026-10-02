@@ -29,10 +29,34 @@ export type DemoMessage = {
 export const DEFAULT_CANCEL_MIN_LEAD_MIN = 120;
 
 const TZ = "America/Sao_Paulo";
-const COMPANY = "Studio Bella";
-const CLIENT = "Camila";
-const SERVICE = "Corte feminino";
-const PROFESSIONAL = "Ana";
+
+/** Os dados fictícios da conversa (empresa, cliente, serviços). O texto do bot continua sendo o do bot v2. */
+export type DemoProfile = {
+  company: string;
+  client: string;
+  professional: string;
+  /** 3 serviços oferecidos no menu; o primeiro é o que o cliente escolhe. */
+  services: { title: string; detail: string }[];
+  /** Resumo da confirmação do serviço escolhido. */
+  duration: string;
+  price: string;
+  /** Horários sugeridos (4); o terceiro é o escolhido. */
+  times: [string, string, string, string];
+};
+
+export const DEFAULT_DEMO_PROFILE: DemoProfile = {
+  company: "Studio Bella",
+  client: "Camila",
+  professional: "Ana",
+  services: [
+    { title: "Corte feminino", detail: "40 min" },
+    { title: "Escova modelada", detail: "45 min" },
+    { title: "Coloração", detail: "1h30" },
+  ],
+  duration: "40 min",
+  price: "R$ 80,00",
+  times: ["09:00", "10:30", "14:00", "16:30"],
+};
 
 function opts(items: { title: string; detail?: string }[]): OptionV2[] {
   return items.map((item, index) => ({
@@ -63,12 +87,14 @@ function nextDays(now: Date): Date[] {
   return days;
 }
 
-export function buildDemoScript(now: Date = new Date()): DemoMessage[] {
+export function buildDemoScript(now: Date = new Date(), profile: DemoProfile = DEFAULT_DEMO_PROFILE): DemoMessage[] {
+  const { company: COMPANY, client: CLIENT, professional: PROFESSIONAL } = profile;
+  const SERVICE = profile.services[0].title;
   const days = nextDays(now);
   const chosen = days[0];
   const dayOptions = days.map((d) => ({ title: formatDayLabel(d, TZ) }));
   const dataLonga = formatLongDayLabel(chosen, TZ);
-  const hora = "14:00";
+  const hora = profile.times[2];
   const vars = { nome: CLIENT, empresa: COMPANY };
 
   return [
@@ -96,11 +122,7 @@ export function buildDemoScript(now: Date = new Date()): DemoMessage[] {
         {
           key: "CHOOSE_SERVICE",
           vars,
-          options: opts([
-            { title: "Corte feminino", detail: "40 min" },
-            { title: "Escova modelada", detail: "45 min" },
-            { title: "Coloração", detail: "1h30" },
-          ]),
+          options: opts(profile.services),
           footer: "FOOTER_HINT",
         },
       ]),
@@ -128,7 +150,7 @@ export function buildDemoScript(now: Date = new Date()): DemoMessage[] {
         {
           key: "CHOOSE_TIME",
           vars: { ...vars, servico: SERVICE, profissional: PROFESSIONAL, data: dataLonga },
-          options: opts([{ title: "09:00" }, { title: "10:30" }, { title: "14:00" }, { title: "16:30" }]),
+          options: opts(profile.times.map((title) => ({ title }))),
           footer: "FOOTER_HINT",
         },
       ]),
@@ -147,8 +169,8 @@ export function buildDemoScript(now: Date = new Date()): DemoMessage[] {
             profissional: PROFESSIONAL,
             data_longa: dataLonga,
             hora,
-            duracao: "40 min",
-            preco: "R$ 80,00",
+            duracao: profile.duration,
+            preco: profile.price,
           },
           options: opts([{ title: "Confirmar" }, { title: "Corrigir dados" }]),
           footer: "FOOTER_HINT",

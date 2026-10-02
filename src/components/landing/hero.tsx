@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { buildDemoScript } from "./demo-script";
 import { HeroNetwork } from "./hero-network";
 import { HeroStage } from "./hero-stage";
+import type { Niche } from "./niches";
 
 const POINTS = ["Agenda, remarca e cancela", "Lembra o cliente antes do horário", "Chama a sua equipe quando o cliente pede"];
 
@@ -14,8 +15,9 @@ const POINTS = ["Agenda, remarca e cancela", "Lembra o cliente antes do horário
  * h1 é o elemento do LCP (texto, sem imagem pesada). O roteiro do celular é montado aqui, no
  * servidor, com os textos reais do bot v2.
  */
-export function Hero() {
-  const messages = buildDemoScript();
+export function Hero({ niche }: { niche?: Niche } = {}) {
+  const messages = buildDemoScript(new Date(), niche?.demo);
+  const points = niche?.points ?? POINTS;
 
   return (
     <section aria-labelledby="hero-title" className="auth-brand-bg landing-dark pb-16 pt-28 sm:pb-24 sm:pt-32">
@@ -38,16 +40,17 @@ export function Hero() {
             id="hero-title"
             className="mt-6 text-balance font-display text-4xl font-extrabold leading-[1.08] tracking-tight text-sidebar-active-text sm:text-5xl xl:text-6xl"
           >
-            Seu WhatsApp{" "}
+            {niche ? <>{niche.h1.lead} </> : <>Seu WhatsApp </>}
             <span className="bg-gradient-to-r from-accent to-sidebar-active-text bg-clip-text text-transparent">
-              agenda sozinho
+              {niche ? niche.h1.highlight : "agenda sozinho"}
             </span>
-            , 24 horas por dia
+            {niche ? niche.h1.tail : ", 24 horas por dia"}
           </h1>
 
           <p className="mx-auto mt-6 max-w-xl text-lg leading-relaxed text-sidebar-text lg:mx-0">
-            Chega de largar o cliente pra responder WhatsApp. O InnoChat marca, remarca e cancela horários no WhatsApp
-            da sua empresa e avisa cada cliente antes do atendimento.
+            {niche
+              ? niche.heroText
+              : "Chega de largar o cliente pra responder WhatsApp. O InnoChat marca, remarca e cancela horários no WhatsApp da sua empresa e avisa cada cliente antes do atendimento."}
           </p>
 
           <div className="mt-8 flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:items-center lg:justify-start">
@@ -77,7 +80,7 @@ export function Hero() {
           </p>
 
           <ul className="mt-8 flex flex-col items-center gap-2.5 lg:items-start">
-            {POINTS.map((point) => (
+            {points.map((point) => (
               <li key={point} className="flex items-center gap-2.5 text-sm text-sidebar-active-text">
                 <span className="flex h-5 w-5 items-center justify-center rounded-full bg-success text-white">
                   <Check className="h-3 w-3" aria-hidden="true" />
@@ -88,7 +91,7 @@ export function Hero() {
           </ul>
         </div>
 
-        <HeroStage messages={messages} company="Studio Bella" />
+        <HeroStage messages={messages} company={niche?.demo.company ?? "Studio Bella"} />
       </div>
     </section>
   );

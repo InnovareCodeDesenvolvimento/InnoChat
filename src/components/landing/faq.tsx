@@ -87,14 +87,15 @@ const FAQS: Faq[] = [
  * e é lido corretamente por leitores de tela, sem JavaScript. O atributo `name` agrupa os itens
  * (abrir um fecha o outro) nos navegadores que o suportam.
  */
-export function Faq() {
+export function Faq({ extra = [] }: { extra?: { question: string; answer: string }[] }) {
+  const items: Faq[] = [...extra, ...FAQS];
   return (
     <section id="faq" aria-labelledby="faq-titulo" className="scroll-mt-20 bg-surface py-20 sm:py-28">
       <div className="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
         <SectionHeading id="faq-titulo" title="Dúvidas antes de começar" />
 
         <div className="mt-12 space-y-3">
-          {FAQS.map((faq) => (
+          {items.map((faq) => (
             <details
               key={faq.question}
               name="faq"

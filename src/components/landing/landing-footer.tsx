@@ -1,16 +1,29 @@
 import Link from "next/link";
 import Image from "next/image";
 import { AppSignature } from "@/components/brand/app-signature";
+import { ConsentReopenButton } from "@/components/public/consent-reopen-button";
+import { getPublicPixelId } from "@/modules/meta/config";
+import { allNiches } from "./niches";
 
 const linkClass =
   "inline-flex min-h-11 items-center rounded-card text-sm text-text-secondary underline-offset-4 transition-colors hover:text-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
+
+/** "Preferências de cookies": só existe quando o Pixel está ligado (sem Pixel não há o que escolher). */
+async function CookiePreferences() {
+  if (!(await getPublicPixelId())) return null;
+  return (
+    <li>
+      <ConsentReopenButton className={`${linkClass} cursor-pointer`} />
+    </li>
+  );
+}
 
 /** Rodapé: marca, navegação, conta, legal e contato (e-mail só se estiver cadastrado em Admin → Dados jurídicos). */
 export function LandingFooter({ contactEmail }: { contactEmail: string | null }) {
   return (
     <footer className="border-t border-border bg-surface">
       <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
-        <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-[1.5fr_1fr_1fr_1fr]">
+        <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1fr_1fr]">
           <div>
             <Link
               href="/"
@@ -35,6 +48,19 @@ export function LandingFooter({ contactEmail }: { contactEmail: string | null })
             </ul>
           </nav>
 
+          <nav aria-label="Para quem é">
+            <h2 className="font-display text-sm font-bold text-text">Para quem é</h2>
+            <ul className="mt-3">
+              {allNiches().map((niche) => (
+                <li key={niche.slug}>
+                  <Link href={`/${niche.slug}`} className={linkClass}>
+                    {niche.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </nav>
+
           <nav aria-label="Conta">
             <h2 className="font-display text-sm font-bold text-text">Sua conta</h2>
             <ul className="mt-3">
@@ -51,6 +77,7 @@ export function LandingFooter({ contactEmail }: { contactEmail: string | null })
               {contactEmail ? (
                 <li><a href={`mailto:${contactEmail}`} className={linkClass}>{contactEmail}</a></li>
               ) : null}
+              <CookiePreferences />
             </ul>
           </nav>
         </div>

@@ -126,7 +126,7 @@ export function PhoneDemo({
         data-mode={mode}
         data-testid="phone-demo"
         role="group"
-        aria-label={`Exemplo de conversa de WhatsApp com o bot da ${company}`}
+        aria-label={`Exemplo de conversa de WhatsApp com o bot da empresa ${company}`}
         className="demo relative mx-auto w-fit"
       >
         <PhoneFrame width={PHONE_WIDTH} height={PHONE_HEIGHT}>

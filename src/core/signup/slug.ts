@@ -29,6 +29,12 @@ export const RESERVED_SLUGS = [
   "_next",
   "webhooks",
   "internal",
+  // Páginas públicas por tipo de negócio (melhoria 5): a rota estática vence o `[tenantSlug]`.
+  "salao",
+  "barbearia",
+  "clinica-estetica",
+  "consultorio",
+  "pet-shop",
 ] as const;
 
 const SLUG_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;

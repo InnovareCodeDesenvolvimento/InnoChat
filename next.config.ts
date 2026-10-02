@@ -22,6 +22,10 @@ import type { NextConfig } from "next";
  * `form-action` inclui `https://accounts.google.com`: o botão "Entrar com Google" é um formulário cuja
  * resposta redireciona para o Google (navegadores aplicam `form-action` também ao redirecionamento).
  *
+ * Pixel do Meta (melhoria 5): `fbevents.js` vem de `connect.facebook.net`; os eventos saem por
+ * `www.facebook.com` (imagem de 1px e beacon). A lista vale para o site todo, mas o script só é pedido
+ * nas páginas públicas de venda e só depois do "Aceitar" do banner de cookies.
+ *
  * `img-src` inclui `data:` porque o QR code do Pix (Mercado Pago) e o QR da Evolution vêm como
  * imagem base64 embutida, nunca por URL externa. Fontes são `next/font` (self-hosted, sem
  * domínio externo) — `font-src 'self'` já cobre.
@@ -30,11 +34,11 @@ const isDev = process.env.NODE_ENV === "development";
 
 const cspHeader = `
   default-src 'self';
-  script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""};
+  script-src 'self' 'unsafe-inline' https://connect.facebook.net${isDev ? " 'unsafe-eval'" : ""};
   style-src 'self' 'unsafe-inline';
-  img-src 'self' data: blob:;
+  img-src 'self' data: blob: https://www.facebook.com;
   font-src 'self';
-  connect-src 'self';
+  connect-src 'self' https://www.facebook.com https://connect.facebook.net;
   object-src 'none';
   base-uri 'self';
   form-action 'self' https://accounts.google.com;
