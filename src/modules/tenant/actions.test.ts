@@ -18,6 +18,16 @@ vi.mock("@/modules/billing/service", () => ({
   assertTenantCanWrite: assertTenantCanWriteMock,
 }));
 
+// O histórico de alterações tem os próprios testes (tests/integration/audit.integration.test.ts); aqui só não pode quebrar a ação.
+const recordAuditMock = vi.fn();
+vi.mock("@/modules/audit/record", () => ({
+  recordAudit: recordAuditMock,
+  memberActor: (ctx: { user: { id: string } }) => ({ userId: ctx.user.id, role: "OWNER" }),
+}));
+vi.mock("@/lib/db/prisma", () => ({
+  getPrisma: () => ({ tenant: { findUnique: vi.fn().mockResolvedValue({ theme: "INDIGO_CLINICO", document: null }) } }),
+}));
+
 const updateTenantThemeMock = vi.fn();
 const getBotRulesMock = vi.fn();
 const updateBotRulesMock = vi.fn();
@@ -54,6 +64,7 @@ describe("updateTenantThemeAction — bloqueio de escrita", () => {
 
     expect(result.ok).toBe(true);
     expect(updateTenantThemeMock).toHaveBeenCalledWith(TENANT.id, "AMBAR_ESTUDIO");
+    expect(recordAuditMock).toHaveBeenCalledWith(expect.objectContaining({ tenantId: TENANT.id, action: "settings.theme_changed", changes: { theme: { de: "INDIGO_CLINICO", para: "AMBAR_ESTUDIO" } } }));
   });
 });
 
@@ -95,7 +106,8 @@ describe("updateBotRulesAction / getBotRulesAction", () => {
 
   it("aceita limites de borda (0, 20, 15, 30, 1440) e grava", async () => {
     asOwner();
-    updateBotRulesMock.mockResolvedValue({ ...valid, humanPauseMin: 720 });
+    getBotRulesMock.mockResolvedValue({ ...valid, humanPauseMin: 720, notifyClientOnStaffChanges: true });
+    updateBotRulesMock.mockResolvedValue({ ...valid, humanPauseMin: 720, notifyClientOnStaffChanges: true });
     for (const input of [
       { maxFutureAppointmentsPerContact: 0, slotGranularityMin: 15, handoffResumeMinutes: 30 },
       { maxFutureAppointmentsPerContact: 20, slotGranularityMin: 30, handoffResumeMinutes: 1440 },

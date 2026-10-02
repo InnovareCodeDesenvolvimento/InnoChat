@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { Palette, Building2, Clock, Users2, CalendarOff } from "lucide-react";
+import { Palette, Building2, Clock, Users2, CalendarOff, History } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { navIconFor } from "@/components/shell/nav-items";
 import { getPrisma } from "@/lib/db/prisma";
@@ -53,6 +53,16 @@ const SECTIONS: ConfigSection[] = [
     ready: true,
   },
 ];
+
+/** Só o dono vê o histórico: o cartão entra na grade só para ele. */
+const HISTORY_SECTION: ConfigSection = {
+  href: "historico",
+  help: "pagina.historicoAlteracoes",
+  icon: <History aria-hidden="true" />,
+  title: "Histórico de alterações",
+  description: "Quem da equipe mudou o quê no painel, e quando.",
+  ready: true,
+};
 
 export default async function ConfiguracoesPage({
   params,
@@ -119,7 +129,7 @@ export default async function ConfiguracoesPage({
         </Alert>
       )}
 
-      <ConfiguracoesGrid tenantSlug={tenantSlug} sections={SECTIONS} />
+      <ConfiguracoesGrid tenantSlug={tenantSlug} sections={membership?.role === "OWNER" ? [...SECTIONS, HISTORY_SECTION] : SECTIONS} />
     </div>
   );
 }

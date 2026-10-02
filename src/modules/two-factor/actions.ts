@@ -2,7 +2,10 @@
 
 import { z } from "zod";
 import { requirePlatformAdmin, requireSessionUser } from "@/lib/auth/guards";
+import { getPrisma } from "@/lib/db/prisma";
 import { runAction, type Result } from "@/lib/result";
+import { auditContextForUser } from "@/modules/audit/actors";
+import { platformAdminActor, recordAudit } from "@/modules/audit/record";
 import {
   adminResetTwoFactor,
   beginTwoFactorSetup,
@@ -37,7 +40,13 @@ export async function beginTwoFactorSetupAction(): Promise<Result<TwoFactorSetup
 export async function disableTwoFactorAction(input: unknown): Promise<Result<{ disabled: true }>> {
   return runAction(async () => {
     const user = await requireSessionUser();
-    await disableTwoFactor(user.id, proofSchema.parse(input));
+    const proof = proofSchema.parse(input);
+    const before = await getPrisma().user.findUnique({ where: { id: user.id }, select: { totpEnabledAt: true } });
+    await disableTwoFactor(user.id, proof);
+    if (before?.totpEnabledAt) {
+      const ctx = await auditContextForUser(user.id);
+      await recordAudit({ ...ctx, action: "two_factor.disabled", targetType: "user", targetId: user.id, summary: "Desativou a verificação em 2 etapas da própria conta." });
+    }
     return { disabled: true as const };
   });
 }
@@ -45,7 +54,10 @@ export async function disableTwoFactorAction(input: unknown): Promise<Result<{ d
 export async function regenerateRecoveryCodesAction(input: unknown): Promise<Result<{ recoveryCodes: string[] }>> {
   return runAction(async () => {
     const user = await requireSessionUser();
-    return regenerateRecoveryCodes(user.id, proofSchema.parse(input));
+    const generated = await regenerateRecoveryCodes(user.id, proofSchema.parse(input));
+    const ctx = await auditContextForUser(user.id);
+    await recordAudit({ ...ctx, action: "two_factor.recovery_codes_regenerated", targetType: "user", targetId: user.id, summary: "Gerou novos códigos de recuperação da verificação em 2 etapas." });
+    return generated;
   });
 }
 
@@ -54,7 +66,18 @@ export async function adminResetTwoFactorAction(input: unknown): Promise<Result<
   return runAction(async () => {
     const admin = await requirePlatformAdmin();
     const { userId } = idSchema.parse(input);
+    const target = await getPrisma().user.findUnique({ where: { id: userId }, select: { email: true } });
     await adminResetTwoFactor(admin.id, userId);
+    // Fica na empresa do usuário (quando ele tem uma só), para o dono ver que a equipe da plataforma mexeu.
+    const targetContext = await auditContextForUser(userId);
+    await recordAudit({
+      tenantId: targetContext.tenantId,
+      actor: platformAdminActor(admin.id),
+      action: "two_factor.reset_by_admin",
+      targetType: "user",
+      targetId: userId,
+      summary: `A equipe da plataforma zerou a verificação em 2 etapas de ${target?.email ?? "um usuário"}.`,
+    });
     return { reset: true as const };
   });
 }

@@ -3,6 +3,7 @@
 import { z } from "zod";
 import { requirePlatformAdmin } from "@/lib/auth/guards";
 import { runAction, type Result } from "@/lib/result";
+import { platformAdminActor, recordAudit } from "@/modules/audit/record";
 import {
   downloadLiveBotFlow,
   getBotFlowStatus,
@@ -33,7 +34,16 @@ export async function publishBotFlowAction(input: unknown): Promise<Result<Publi
   return runAction(async () => {
     const admin = await requirePlatformAdmin();
     const data = publishSchema.parse(input ?? {});
-    return publishBotFlow(admin.id, data.confirm);
+    const result = await publishBotFlow(admin.id, data.confirm);
+    await recordAudit({
+      tenantId: null,
+      actor: platformAdminActor(admin.id),
+      action: "bot_flow.published",
+      targetType: "bot_flow",
+      summary: `Publicou o fluxo do bot na versão ${result.version}${data.confirm === "SOBRESCREVER" ? " (sobrescrevendo mudanças feitas direto no n8n)" : ""}.`,
+      changes: { versao: { de: null, para: result.version } },
+    });
+    return result;
   });
 }
 
@@ -43,7 +53,16 @@ export async function rollbackBotFlowAction(input: unknown): Promise<Result<Publ
   return runAction(async () => {
     const admin = await requirePlatformAdmin();
     rollbackSchema.parse(input);
-    return rollbackBotFlow(admin.id);
+    const result = await rollbackBotFlow(admin.id);
+    await recordAudit({
+      tenantId: null,
+      actor: platformAdminActor(admin.id),
+      action: "bot_flow.rolled_back",
+      targetType: "bot_flow",
+      summary: `Voltou o fluxo do bot para a versão ${result.version}.`,
+      changes: { versao: { de: null, para: result.version } },
+    });
+    return result;
   });
 }
 

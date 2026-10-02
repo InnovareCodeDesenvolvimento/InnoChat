@@ -7,7 +7,7 @@ import { DomainError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
 import { createAppointmentManual } from "@/modules/agenda/appointments";
 import { toAppointmentSummary } from "@/modules/bot-api/booking-bot";
-import { passOfferedSlotToNext, runInBackground, type WaitlistDeps } from "./offer";
+import { offerToWaitingInOpenWindow, passOfferedSlotToNext, runInBackground, type WaitlistDeps } from "./offer";
 
 /**
  * Resposta do cliente à oferta (SIM / NÃO), vencimento por tick e limpeza. Todo avanço de estado é
@@ -143,7 +143,7 @@ export async function waitlistDayLabel(tenantId: string, isoDate: string): Promi
   return formatDayLabelFromISO(isoDate, tenant.timezone);
 }
 
-export type WaitlistTickSummary = { offersExpired: number; acceptedRecovered: number; pastEntriesExpired: number };
+export type WaitlistTickSummary = { offersExpired: number; acceptedRecovered: number; pastEntriesExpired: number; windowOffers: number };
 
 /**
  * Tick da lista de espera (idempotente): vence ofertas passadas do prazo e passa o horário ao próximo,
@@ -152,7 +152,7 @@ export type WaitlistTickSummary = { offersExpired: number; acceptedRecovered: nu
  */
 export async function runWaitlistTick(now: Date = new Date(), deps?: WaitlistDeps): Promise<WaitlistTickSummary> {
   const prisma = getPrisma();
-  const summary: WaitlistTickSummary = { offersExpired: 0, acceptedRecovered: 0, pastEntriesExpired: 0 };
+  const summary: WaitlistTickSummary = { offersExpired: 0, acceptedRecovered: 0, pastEntriesExpired: 0, windowOffers: 0 };
 
   const overdue = await prisma.waitlistEntry.findMany({
     where: { status: "OFFERED", offerExpiresAt: { lte: now } },
@@ -194,6 +194,13 @@ export async function runWaitlistTick(now: Date = new Date(), deps?: WaitlistDep
     data: { status: "EXPIRED" },
   });
   summary.pastEntriesExpired = past.count;
+
+  // Por último, com a janela de envio aberta (08h às 21h na empresa), oferece o que ficou esperando por causa do silêncio.
+  try {
+    summary.windowOffers = (await offerToWaitingInOpenWindow(now, deps)).offered;
+  } catch (error) {
+    logger.error("waitlist.tick.window_offers_failed", { errorName: error instanceof Error ? error.name : "unknown" });
+  }
 
   logger.info("waitlist.tick.completed", { ...summary });
   return summary;

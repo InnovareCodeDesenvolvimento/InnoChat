@@ -4,6 +4,10 @@ import { z } from "zod";
 import { requirePlatformAdmin } from "@/lib/auth/guards";
 import { runAction, type Result } from "@/lib/result";
 import type { InvoiceStatus } from "@/lib/db/types";
+import { getPrisma } from "@/lib/db/prisma";
+import { formatBrl } from "@/modules/audit/describe";
+import { platformAdminActor, recordAudit } from "@/modules/audit/record";
+import { diffChanges } from "@/modules/audit/sanitize";
 import {
   billingMonthlyTotals,
   extendTrialManually,
@@ -33,6 +37,13 @@ export async function listPlansAction() {
   });
 }
 
+const PLAN_FIELDS = ["name", "priceCents", "annualPriceCents", "maxWhatsappNumbers", "maxProfessionals", "active", "sortOrder"] as const;
+
+async function companyName(tenantId: string): Promise<string> {
+  const row = await getPrisma().tenant.findUnique({ where: { id: tenantId }, select: { name: true } });
+  return row?.name ?? tenantId;
+}
+
 const updatePlanSchema = z.object({
   name: z.string().trim().min(1).max(80).optional(),
   priceCents: z.coerce.number().int().min(0).optional(),
@@ -46,9 +57,26 @@ const updatePlanSchema = z.object({
 
 export async function updatePlanAction(planId: string, input: unknown) {
   return runAction(async () => {
-    await requirePlatformAdmin();
+    const admin = await requirePlatformAdmin();
     const data = updatePlanSchema.parse(input);
-    return updatePlan(planId, data);
+    const before = await getPrisma().plan.findUnique({ where: { id: planId } });
+    const updated = await updatePlan(planId, data);
+    const changes = before ? diffChanges(before, updated, PLAN_FIELDS) : {};
+    if (Object.keys(changes).length > 0) {
+      const priceChanged = "priceCents" in changes || "annualPriceCents" in changes;
+      await recordAudit({
+        tenantId: null,
+        actor: platformAdminActor(admin.id),
+        action: priceChanged ? "plan.price_changed" : "plan.updated",
+        targetType: "plan",
+        targetId: planId,
+        summary: priceChanged
+          ? `Mudou o preço do plano ${updated.name} (mensal ${formatBrl(updated.priceCents)}).`
+          : `Alterou o plano ${updated.name}.`,
+        changes,
+      });
+    }
+    return updated;
   });
 }
 
@@ -67,6 +95,15 @@ export async function suspendCompanyAction(tenantId: string): Promise<Result<{ t
   return runAction(async () => {
     const admin = await requirePlatformAdmin();
     await suspendCompanyManually(tenantId, admin.id);
+    await recordAudit({
+      tenantId,
+      actor: platformAdminActor(admin.id),
+      action: "company.suspended",
+      targetType: "tenant",
+      targetId: tenantId,
+      summary: `Suspendeu a empresa ${await companyName(tenantId)}.`,
+      changes: { situacao: { de: null, para: "suspensa" } },
+    });
     return { tenantId };
   });
 }
@@ -75,6 +112,15 @@ export async function reactivateCompanyAction(tenantId: string): Promise<Result<
   return runAction(async () => {
     const admin = await requirePlatformAdmin();
     await reactivateCompanyManually(tenantId, admin.id);
+    await recordAudit({
+      tenantId,
+      actor: platformAdminActor(admin.id),
+      action: "company.reactivated",
+      targetType: "tenant",
+      targetId: tenantId,
+      summary: `Reativou a empresa ${await companyName(tenantId)}.`,
+      changes: { situacao: { de: null, para: "ativa" } },
+    });
     return { tenantId };
   });
 }
@@ -86,6 +132,15 @@ export async function extendTrialAction(tenantId: string, input: unknown): Promi
     const admin = await requirePlatformAdmin();
     const data = extendTrialSchema.parse(input);
     await extendTrialManually(tenantId, data.extraDays, admin.id);
+    await recordAudit({
+      tenantId,
+      actor: platformAdminActor(admin.id),
+      action: "company.trial_extended",
+      targetType: "tenant",
+      targetId: tenantId,
+      summary: `Estendeu o teste da empresa ${await companyName(tenantId)} em ${data.extraDays} dia(s).`,
+      changes: { diasExtras: { de: null, para: data.extraDays } },
+    });
     return { tenantId };
   });
 }
@@ -143,7 +198,20 @@ export async function markInvoicePaidManuallyAction(invoiceId: string, input: un
   return runAction(async () => {
     const admin = await requirePlatformAdmin();
     const data = markInvoicePaidManuallySchema.parse(input);
-    return markInvoicePaidManually(invoiceId, admin.id, data.reason);
+    const result = await markInvoicePaidManually(invoiceId, admin.id, data.reason);
+    if (!result.alreadyProcessed) {
+      const invoice = await getPrisma().invoice.findUnique({ where: { id: invoiceId }, select: { amountCents: true, subscription: { select: { tenantId: true } } } });
+      await recordAudit({
+        tenantId: invoice?.subscription.tenantId ?? null,
+        actor: platformAdminActor(admin.id),
+        action: "invoice.marked_paid_manually",
+        targetType: "invoice",
+        targetId: invoiceId,
+        summary: `Deu baixa manual numa fatura${invoice ? ` de ${formatBrl(invoice.amountCents)}` : ""}.`,
+        changes: { motivo: { de: null, para: data.reason } },
+      });
+    }
+    return result;
   });
 }
 

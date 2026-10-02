@@ -7,6 +7,7 @@ import { DomainError } from "@/lib/errors";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { reconcileInvoicePayment, type ReconcileOutcome } from "./reconcile";
 import { getPrisma } from "@/lib/db/prisma";
+import { memberActor, recordAudit } from "@/modules/audit/record";
 import { CANCEL_REASON_MAX_LENGTH, requestCancellation, startReactivation, undoCancellation, type CancelResult } from "./cancellation";
 import { changePlan, findBillingRecipientEmail, findOwnInvoiceOrThrow, listActivePlans, regeneratePixForInvoice, type ChangePlanResult } from "./service";
 
@@ -47,9 +48,28 @@ const changePlanSchema = z.object({ planId: z.string().min(1) });
 /** Restrito a `OWNER` — troca de plano é decisão de dinheiro da empresa, não do dia a dia (mesma régua de `updateTenantThemeAction`). */
 export async function changePlanAction(tenantSlug: string, input: unknown): Promise<Result<ChangePlanResult>> {
   return runAction(async () => {
-    const { tenant } = await requireTenantMember(tenantSlug, ["OWNER"]);
+    const ctx = await requireTenantMember(tenantSlug, ["OWNER"]);
+    const { tenant } = ctx;
     const data = changePlanSchema.parse(input);
-    return changePlan(tenant.id, data.planId);
+    const prisma = getPrisma();
+    const [current, target] = await Promise.all([
+      prisma.subscription.findUnique({ where: { tenantId: tenant.id }, select: { plan: { select: { name: true } } } }),
+      prisma.plan.findUnique({ where: { id: data.planId }, select: { name: true } }),
+    ]);
+    const result = await changePlan(tenant.id, data.planId);
+    if (current?.plan.name !== target?.name) {
+      await recordAudit({
+        tenantId: tenant.id,
+        actor: memberActor(ctx),
+        action: "subscription.plan_changed",
+        targetType: "subscription",
+        summary: result.appliedImmediately
+          ? `Trocou o plano de ${current?.plan.name ?? "?"} para ${target?.name ?? "?"}.`
+          : `Pediu a troca do plano ${current?.plan.name ?? "?"} para ${target?.name ?? "?"} (vale na próxima renovação).`,
+        changes: { plano: { de: current?.plan.name ?? null, para: target?.name ?? null }, aplicadoAgora: { de: null, para: result.appliedImmediately } },
+      });
+    }
+    return result;
   });
 }
 
@@ -153,36 +173,64 @@ const CANCEL_WINDOW_MS = 10 * 60 * 1000;
 /** Cancela (agenda, ou imediato se suspensa/atrasada). `reason` é texto livre opcional (até 500). Idempotente. */
 export async function cancelSubscriptionAction(tenantSlug: string, input: unknown): Promise<Result<CancelResult>> {
   return runAction(async () => {
-    const { tenant } = await requireTenantMember(tenantSlug, ["OWNER"]);
+    const ctx = await requireTenantMember(tenantSlug, ["OWNER"]);
+    const { tenant } = ctx;
     const data = cancelSchema.parse(input ?? {});
     const rateLimit = checkRateLimit(`cancel-subscription:${tenant.id}`, CANCEL_LIMIT, CANCEL_WINDOW_MS);
     if (!rateLimit.allowed) {
       throw new DomainError("RATE_LIMITED", "Muitas tentativas. Aguarde alguns minutos antes de tentar de novo.", { retryAfterMs: rateLimit.retryAfterMs });
     }
-    return requestCancellation(tenant.id, { reason: data.reason });
+    const result = await requestCancellation(tenant.id, { reason: data.reason });
+    if (!result.alreadyRequested) {
+      // O motivo é texto livre do cliente: não entra no histórico (só o fato e o modo).
+      await recordAudit({
+        tenantId: tenant.id,
+        actor: memberActor(ctx),
+        action: "subscription.cancel_requested",
+        targetType: "subscription",
+        summary: result.mode === "IMMEDIATE" ? "Cancelou a assinatura (valeu na hora)." : "Pediu o cancelamento da assinatura (vale ao fim do período pago).",
+        changes: { acessoAte: { de: null, para: result.endsAt } },
+      });
+    }
+    return result;
   });
 }
 
 /** Desfaz o cancelamento agendado, até a data em que o acesso termina. */
 export async function undoCancellationAction(tenantSlug: string): Promise<Result<{ undone: boolean }>> {
   return runAction(async () => {
-    const { tenant } = await requireTenantMember(tenantSlug, ["OWNER"]);
+    const ctx = await requireTenantMember(tenantSlug, ["OWNER"]);
+    const { tenant } = ctx;
     const rateLimit = checkRateLimit(`undo-cancellation:${tenant.id}`, CANCEL_LIMIT, CANCEL_WINDOW_MS);
     if (!rateLimit.allowed) {
       throw new DomainError("RATE_LIMITED", "Muitas tentativas. Aguarde alguns minutos antes de tentar de novo.", { retryAfterMs: rateLimit.retryAfterMs });
     }
-    return undoCancellation(tenant.id);
+    const result = await undoCancellation(tenant.id);
+    if (result.undone) {
+      await recordAudit({ tenantId: tenant.id, actor: memberActor(ctx), action: "subscription.cancel_undone", targetType: "subscription", summary: "Desfez o cancelamento da assinatura." });
+    }
+    return result;
   });
 }
 
 /** Reativa uma assinatura já cancelada: devolve a fatura (com Pix) a pagar; ao pagar, volta a `ACTIVE`. */
 export async function reactivateSubscriptionAction(tenantSlug: string): Promise<Result<{ invoiceId: string }>> {
   return runAction(async () => {
-    const { tenant } = await requireTenantMember(tenantSlug, ["OWNER"]);
+    const ctx = await requireTenantMember(tenantSlug, ["OWNER"]);
+    const { tenant } = ctx;
     const rateLimit = checkRateLimit(`reactivate-subscription:${tenant.id}`, CANCEL_LIMIT, CANCEL_WINDOW_MS);
     if (!rateLimit.allowed) {
       throw new DomainError("RATE_LIMITED", "Muitas tentativas. Aguarde alguns minutos antes de tentar de novo.", { retryAfterMs: rateLimit.retryAfterMs });
     }
-    return startReactivation(tenant.id);
+    const result = await startReactivation(tenant.id);
+    await recordAudit({
+      tenantId: tenant.id,
+      actor: memberActor(ctx),
+      action: "subscription.reactivation_started",
+      targetType: "subscription",
+      targetId: result.invoiceId,
+      summary: "Pediu a reativação da assinatura (fatura gerada para pagamento).",
+    });
+    return result;
   });
 }

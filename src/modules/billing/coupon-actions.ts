@@ -8,6 +8,8 @@ import { DomainError } from "@/lib/errors";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { clientIp } from "@/lib/http/client-ip";
 import { normalizeCouponCode } from "@/core/billing";
+import { memberActor, platformAdminActor, recordAudit } from "@/modules/audit/record";
+import { diffChanges } from "@/modules/audit/sanitize";
 import { changeBillingCycle, type ChangeBillingCycleResult } from "./billing-cycle";
 import {
   applyCouponToSubscription,
@@ -93,20 +95,43 @@ export async function previewMyCouponAction(tenantSlug: string, input: unknown):
 /** Aplica o cupom à assinatura: vale a partir da próxima fatura a ser gerada. */
 export async function applyMyCouponAction(tenantSlug: string, input: unknown): Promise<Result<CouponPreview>> {
   return runAction(async () => {
-    const { tenant } = await requireTenantMember(tenantSlug, ["OWNER"]);
+    const ctx = await requireTenantMember(tenantSlug, ["OWNER"]);
+    const { tenant } = ctx;
     assertRateLimit("coupon-my", tenant.id, MY_COUPON_LIMIT, MY_COUPON_WINDOW_MS);
     const data = z.object({ code: codeSchema }).parse(input);
-    return applyCouponToSubscription(tenant.id, data.code);
+    const applied = await applyCouponToSubscription(tenant.id, data.code);
+    await recordAudit({
+      tenantId: tenant.id,
+      actor: memberActor(ctx),
+      action: "subscription.coupon_applied",
+      targetType: "subscription",
+      summary: `Aplicou o cupom ${applied.coupon.code} na assinatura.`,
+      changes: { cupom: { de: null, para: applied.coupon.code } },
+    });
+    return applied;
   });
 }
 
 /** Troca mensal <-> anual; vale a partir da próxima fatura, sem proporcional. */
 export async function changeBillingCycleAction(tenantSlug: string, input: unknown): Promise<Result<ChangeBillingCycleResult>> {
   return runAction(async () => {
-    const { tenant } = await requireTenantMember(tenantSlug, ["OWNER"]);
+    const ctx = await requireTenantMember(tenantSlug, ["OWNER"]);
+    const { tenant } = ctx;
     assertRateLimit("billing-cycle", tenant.id, MY_COUPON_LIMIT, MY_COUPON_WINDOW_MS);
     const data = z.object({ cycle: cycleSchema }).parse(input);
-    return changeBillingCycle(tenant.id, data.cycle);
+    const before = await getPrisma().subscription.findUnique({ where: { tenantId: tenant.id }, select: { billingCycle: true } });
+    const result = await changeBillingCycle(tenant.id, data.cycle);
+    if (before && before.billingCycle !== result.billingCycle) {
+      await recordAudit({
+        tenantId: tenant.id,
+        actor: memberActor(ctx),
+        action: "subscription.cycle_changed",
+        targetType: "subscription",
+        summary: `Mudou o ciclo da assinatura para ${result.billingCycle === "ANNUAL" ? "anual" : "mensal"} (vale a partir da próxima fatura).`,
+        changes: { ciclo: { de: before.billingCycle, para: result.billingCycle } },
+      });
+    }
+    return result;
   });
 }
 
@@ -153,6 +178,8 @@ function toUpdateInput(data: z.infer<z.ZodObject<typeof couponFieldsShape>>): Om
   };
 }
 
+const COUPON_FIELDS = ["description", "kind", "value", "validFrom", "validUntil", "maxRedemptions", "duration", "durationCycles", "appliesToCycle", "active"] as const;
+
 const createSchema = z.object({ code: z.string().trim().min(1).max(40), ...couponFieldsShape });
 const updateSchema = z.object(couponFieldsShape);
 const listSchema = z.object({
@@ -174,24 +201,59 @@ export async function createCouponAction(input: unknown): Promise<Result<{ id: s
     const admin = await requirePlatformAdmin();
     const data = createSchema.parse(input);
     const created = await createCoupon({ code: normalizeCouponCode(data.code), ...toUpdateInput(data) }, admin.id);
+    await recordAudit({
+      tenantId: null,
+      actor: platformAdminActor(admin.id),
+      action: "coupon.created",
+      targetType: "coupon",
+      targetId: created.id,
+      summary: `Criou o cupom ${created.code}.`,
+    });
     return { id: created.id, code: created.code };
   });
 }
 
 export async function updateCouponAction(couponId: string, input: unknown): Promise<Result<{ id: string }>> {
   return runAction(async () => {
-    await requirePlatformAdmin();
+    const admin = await requirePlatformAdmin();
     const data = updateSchema.parse(input);
-    const updated = await updateCoupon(idSchema.parse(couponId), toUpdateInput(data));
+    const id = idSchema.parse(couponId);
+    const before = await getPrisma().coupon.findUnique({ where: { id } });
+    const updated = await updateCoupon(id, toUpdateInput(data));
+    const changes = before ? diffChanges(before, updated, COUPON_FIELDS) : {};
+    if (Object.keys(changes).length > 0) {
+      await recordAudit({
+        tenantId: null,
+        actor: platformAdminActor(admin.id),
+        action: "coupon.updated",
+        targetType: "coupon",
+        targetId: id,
+        summary: `Alterou o cupom ${updated.code}.`,
+        changes,
+      });
+    }
     return { id: updated.id };
   });
 }
 
 export async function setCouponActiveAction(couponId: string, input: unknown): Promise<Result<{ id: string; active: boolean }>> {
   return runAction(async () => {
-    await requirePlatformAdmin();
+    const admin = await requirePlatformAdmin();
     const data = z.object({ active: z.boolean() }).parse(input);
-    const updated = await setCouponActive(idSchema.parse(couponId), data.active);
+    const id = idSchema.parse(couponId);
+    const before = await getPrisma().coupon.findUnique({ where: { id }, select: { active: true } });
+    const updated = await setCouponActive(id, data.active);
+    if (before && before.active !== updated.active) {
+      await recordAudit({
+        tenantId: null,
+        actor: platformAdminActor(admin.id),
+        action: updated.active ? "coupon.activated" : "coupon.deactivated",
+        targetType: "coupon",
+        targetId: id,
+        summary: `${updated.active ? "Ativou" : "Desativou"} o cupom ${updated.code}.`,
+        changes: { active: { de: before.active, para: updated.active } },
+      });
+    }
     return { id: updated.id, active: updated.active };
   });
 }

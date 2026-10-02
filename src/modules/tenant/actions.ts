@@ -2,8 +2,11 @@
 
 import { z } from "zod";
 import { requireTenantMember } from "@/lib/auth/guards";
+import { getPrisma } from "@/lib/db/prisma";
 import { DomainError } from "@/lib/errors";
 import { runAction, type Result } from "@/lib/result";
+import { memberActor, recordAudit } from "@/modules/audit/record";
+import { diffChanges } from "@/modules/audit/sanitize";
 import { assertTenantCanWrite } from "@/modules/billing/service";
 import { getBotRules, updateBotRules, updateTenantDocument, updateTenantTheme, type BotRules } from "./service";
 
@@ -23,10 +26,23 @@ const updateDocumentSchema = z.object({
  */
 export async function updateTenantThemeAction(tenantSlug: string, input: unknown): Promise<Result<{ theme: string }>> {
   return runAction(async () => {
-    const { tenant } = await requireTenantMember(tenantSlug, ["OWNER"]);
+    const ctx = await requireTenantMember(tenantSlug, ["OWNER"]);
+    const { tenant } = ctx;
     await assertTenantCanWrite(tenant.id);
     const data = updateThemeSchema.parse(input);
+    const before = await getPrisma().tenant.findUnique({ where: { id: tenant.id }, select: { theme: true } });
     const updated = await updateTenantTheme(tenant.id, data.theme);
+    if (before && before.theme !== updated.theme) {
+      await recordAudit({
+        tenantId: tenant.id,
+        actor: memberActor(ctx),
+        action: "settings.theme_changed",
+        targetType: "tenant",
+        targetId: tenant.id,
+        summary: "Trocou o tema visual do painel.",
+        changes: { theme: { de: before.theme, para: updated.theme } },
+      });
+    }
     return { theme: updated.theme };
   });
 }
@@ -39,10 +55,24 @@ export async function updateTenantThemeAction(tenantSlug: string, input: unknown
  */
 export async function updateTenantDocumentAction(tenantSlug: string, input: unknown): Promise<Result<{ document: string }>> {
   return runAction(async () => {
-    const { tenant } = await requireTenantMember(tenantSlug, ["OWNER"]);
+    const ctx = await requireTenantMember(tenantSlug, ["OWNER"]);
+    const { tenant } = ctx;
     await assertTenantCanWrite(tenant.id);
     const data = updateDocumentSchema.parse(input);
+    const before = await getPrisma().tenant.findUnique({ where: { id: tenant.id }, select: { document: true } });
     const updated = await updateTenantDocument(tenant.id, data.document);
+    if (before?.document !== updated.document) {
+      // CPF/CNPJ é dado pessoal: o histórico guarda só que mudou (e os 2 últimos dígitos), nunca o número.
+      await recordAudit({
+        tenantId: tenant.id,
+        actor: memberActor(ctx),
+        action: "settings.document_changed",
+        targetType: "tenant",
+        targetId: tenant.id,
+        summary: before?.document ? "Alterou o CPF ou CNPJ da empresa." : "Informou o CPF ou CNPJ da empresa.",
+        changes: { documento: { de: before?.document ? `final ${before.document.slice(-2)}` : null, para: `final ${updated.document!.slice(-2)}` } },
+      });
+    }
     return { document: updated.document! };
   });
 }
@@ -65,7 +95,8 @@ export async function getBotRulesAction(tenantSlug: string): Promise<Result<BotR
 
 export async function updateBotRulesAction(tenantSlug: string, input: unknown): Promise<Result<BotRules>> {
   return runAction(async () => {
-    const { tenant } = await requireTenantMember(tenantSlug, ["OWNER"]);
+    const ctx = await requireTenantMember(tenantSlug, ["OWNER"]);
+    const { tenant } = ctx;
     await assertTenantCanWrite(tenant.id);
     const parsed = botRulesSchema.safeParse(input);
     if (!parsed.success) {
@@ -73,6 +104,20 @@ export async function updateBotRulesAction(tenantSlug: string, input: unknown): 
       const field = String(issue?.path[0] ?? "");
       throw new DomainError("INVALID_PAYLOAD", "Valor inválido nas regras do bot.", { field });
     }
-    return updateBotRules(tenant.id, parsed.data);
+    const before = await getBotRules(tenant.id);
+    const updated = await updateBotRules(tenant.id, parsed.data);
+    const changes = diffChanges(before, updated, ["maxFutureAppointmentsPerContact", "slotGranularityMin", "handoffResumeMinutes", "notifyClientOnStaffChanges"]);
+    if (Object.keys(changes).length > 0) {
+      await recordAudit({
+        tenantId: tenant.id,
+        actor: memberActor(ctx),
+        action: "settings.bot_rules_changed",
+        targetType: "tenant",
+        targetId: tenant.id,
+        summary: "Mudou as regras do bot (limite por cliente, grade de horários ou retomada do atendente).",
+        changes,
+      });
+    }
+    return updated;
   });
 }

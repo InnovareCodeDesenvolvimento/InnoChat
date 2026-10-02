@@ -86,7 +86,7 @@ const HELP_ENTRIES = {
       "O horário foi oferecido à Ana e, no meio tempo, você marcou outra pessoa nele pelo painel. Quando a Ana responde \"sim\", o bot explica que o horário foi ocupado e ela continua na fila.",
     ],
     tip: "Os clientes que estão em alguma lista veem a opção \"Minha lista de espera\" no menu do bot e podem sair quando quiserem. O texto das mensagens dá para mudar em Mensagens do bot.",
-    warning: "Para o aviso sair, o número de WhatsApp da empresa precisa estar conectado. Clientes com o bot pausado ou em conversa com a equipe são pulados e a vez passa ao próximo.",
+    warning: "Para o aviso sair, o número de WhatsApp da empresa precisa estar conectado. Clientes com o bot pausado ou em conversa com a equipe são pulados e a vez passa ao próximo. Os avisos automáticos só saem entre 8h e 21h; um horário liberado de madrugada é oferecido de manhã, se ainda estiver livre. O \"Oferecer encaixe\" você pode usar a qualquer hora.",
   },
   "pagina.atendimento": {
     title: "Atendimento",
@@ -450,6 +450,7 @@ const HELP_ENTRIES = {
     purpose: "Guarda uma cópia do banco de dados todo dia num lugar fora do servidor, apaga as cópias antigas e avisa você por e-mail e pelo sino se a cópia atrasar. Se o banco se perder, é daqui que ele volta.",
     steps: [
       "Escolha para onde a cópia vai (bucket S3 ou Google Drive) e preencha os dados do destino.",
+      "Gere a chave do backup e guarde o arquivo dela fora do servidor. Sem a chave o backup não sai e o automático não liga.",
       "Clique em \"Testar conexão\" para ver se o destino aceita gravar.",
       "Clique em \"Fazer backup agora\". É a prova de que o caminho inteiro funciona, antes de confiar no horário marcado.",
       "Ligue o backup automático e escolha a hora.",
@@ -504,6 +505,31 @@ const HELP_ENTRIES = {
       "Uma linha vermelha com \"a pasta do Google Drive não está acessível\": alguém tirou o compartilhamento. Compartilhe de novo e use Fazer backup agora.",
       "Uma linha marcada como \"só teste\" é uma cópia gerada sem destino: foi conferida, mas não saiu do servidor, então não vale como backup.",
     ],
+  },
+  "backup.criptografia": {
+    title: "Chave do backup",
+    purpose: "As cópias saem do servidor trancadas com uma chave que só você guarda. Quem pegar o arquivo no bucket ou no Drive não consegue ler nada sem ela.",
+    steps: [
+      "Clique em Gerar chave. Ela aparece inteira uma única vez.",
+      "Copie a chave ou baixe o arquivo .txt e guarde fora do servidor: no gerenciador de senhas, num pen drive ou num e-mail só seu.",
+      "Depois disso a tela mostra só a impressão digital, oito letras e números, para você conferir se a chave guardada é a mesma do sistema.",
+    ],
+    examples: [
+      "Você baixa o arquivo chave-backup-innochat-2f8a5d0b.txt e guarda no seu gerenciador de senhas. Se o servidor se perder, é com ele que o backup abre num servidor novo.",
+      "A tela mostra a impressão digital 2f8a5d0b e o arquivo guardado tem a mesma: é a chave certa.",
+    ],
+    tip: "A impressão digital só serve para conferir. Ela não abre nenhuma cópia.",
+    warning: "Sem a chave os backups não abrem, e não existe outro jeito de recuperar. Gerar uma chave nova não reabre as cópias antigas: elas continuam precisando da chave antiga.",
+  },
+  "backup.conferir": {
+    title: "Conferir backup",
+    purpose: "Pega a cópia mais recente no destino, abre com a chave e lê o conteúdo para provar que ela está inteira. Não mexe no banco.",
+    examples: [
+      "Você clica em Conferir backup e lê: a cópia de 02/10 às 03h abriu com a chave certa e lista 42 tabelas com dados.",
+      "Aparece que a cópia foi feita com outra chave: ela é de antes de uma troca de chave. Faça um backup novo e confira de novo.",
+    ],
+    tip: "Uma vez por semana o sistema confere sozinho e avisa por e-mail se a cópia não abrir.",
+    warning: "Conferir prova que o arquivo abre e está inteiro, mas não restaura nada. Para treinar uma restauração de verdade, use um banco descartável, como o passo a passo do runbook mostra.",
   },
   "admin.saudeCobranca": {
     title: "Cobrança na Saúde",
@@ -615,6 +641,41 @@ const HELP_ENTRIES = {
       "Período de 01/10 a 07/10 e situação \"Falhou\": todos os avisos que não saíram nessa semana.",
       "Canal WhatsApp e empresa \"Studio Bela\": confere se o aviso chegou no telefone dela.",
     ],
+  },
+  "pagina.adminAuditoria": {
+    title: "Auditoria",
+    purpose: "É o histórico de quem mudou o quê, em todas as empresas e na própria plataforma: preço de serviço, agenda, equipe, plano, configurações e a verificação em 2 etapas. Cada linha mostra quem fez, quando e o que ficou diferente.",
+    steps: [
+      "Use os filtros de empresa, tipo de mudança, pessoa e período.",
+      "Clique em \"Ver detalhes\" para ler o antes e o depois de cada campo.",
+    ],
+    examples: [
+      "Uma empresa diz que o preço do corte mudou sozinho: filtre por ela e por \"Serviços e preços\" e veja quem alterou e quando.",
+      "Quer saber quem suspendeu uma empresa: filtre por \"Suspensão e teste de empresas\".",
+    ],
+    tip: "Senhas, chaves e códigos nunca são guardados aqui. Para esses campos só aparece que houve troca.",
+    warning: "O histórico não pode ser editado nem apagado pela tela.",
+  },
+  "admin.auditoriaFiltros": {
+    title: "Filtros da auditoria",
+    purpose: "Reduzem a lista ao que você quer conferir. As datas valem para o horário de Brasília.",
+    examples: [
+      "Empresa \"Studio Bela\", tipo \"Assinatura e cobrança\" e período da última semana: tudo que mexeu no plano dela.",
+      "Pessoa \"paula@\": o que essa pessoa fez, em qualquer empresa.",
+    ],
+  },
+  "pagina.historicoAlteracoes": {
+    title: "Histórico de alterações",
+    purpose: "Mostra quem da sua equipe mudou o quê no painel: agendamentos, serviços e preços, profissionais, horários, regras do bot e assinatura. Só o dono vê esta tela.",
+    steps: [
+      "Filtre por tipo de mudança, pessoa ou período.",
+      "Clique em \"Ver detalhes\" para ler o antes e o depois.",
+    ],
+    examples: [
+      "O preço do corte apareceu diferente: filtre por \"Serviços e preços\" e veja quem mudou, de quanto para quanto.",
+      "Um horário sumiu da agenda: filtre por \"Agenda e agendamentos\" no dia em que aconteceu.",
+    ],
+    tip: "Quando a equipe do InnoChat faz algo na sua conta, aparece como \"Equipe InnoChat\".",
   },
   "pagina.adminErros": {
     title: "Erros do sistema",

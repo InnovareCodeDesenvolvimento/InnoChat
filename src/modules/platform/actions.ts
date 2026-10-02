@@ -8,6 +8,8 @@ import { logger } from "@/lib/logger";
 import { UnsafeUrlError } from "@/lib/net/safe-fetch";
 import { N8nApiError } from "./n8n-client";
 import { runAction, type Result } from "@/lib/result";
+import { platformAdminActor, recordAudit } from "@/modules/audit/record";
+import { diffChanges, type AuditChanges } from "@/modules/audit/sanitize";
 import { parseSender } from "@/lib/email/sender";
 import { DomainError } from "@/lib/errors";
 import { ensurePublicBaseUrlFromCurrentRequest, setPublicBaseUrl } from "@/lib/public-url";
@@ -55,6 +57,27 @@ import {
  * `requirePlatformAdmin()` — nunca confiam em nada vindo do client sobre a sessão.
  */
 
+/** Linha de auditoria de ação da plataforma (sem empresa). Nunca recebe valor de segredo: só o fato de ter mudado. */
+async function auditPlatform(adminId: string, action: string, summary: string, changes?: AuditChanges | null, target?: { type: string; id?: string }) {
+  await recordAudit({
+    tenantId: null,
+    actor: platformAdminActor(adminId),
+    action,
+    targetType: target?.type ?? "platform_settings",
+    targetId: target?.id ?? null,
+    summary,
+    changes: changes ?? null,
+  });
+}
+
+const SETTINGS_PLAIN_FIELDS = ["evolutionApiUrl", "n8nWebhookBaseUrl", "n8nBaseUrl", "smtpHost", "smtpPort", "smtpSecure", "smtpUser", "smtpFrom"] as const;
+// Segredos: só comparamos a versão mascarada para saber SE mudou; o valor (nem os 4 últimos dígitos) nunca vai para o histórico.
+const SETTINGS_SECRET_FIELDS = [
+  ["evolutionApiKey", "evolutionApiKeyMasked"],
+  ["n8nApiKey", "n8nApiKeyMasked"],
+  ["smtpPassword", "smtpPasswordMasked"],
+] as const;
+
 export async function getPlatformSettingsAction(): Promise<Result<PlatformSettingsView>> {
   return runAction(async () => {
     await requirePlatformAdmin();
@@ -85,7 +108,22 @@ export async function updatePlatformSettingsAction(input: unknown): Promise<Resu
     // 1ª vez que um admin salva Configurações: grava `publicBaseUrl` a partir desta própria
     // requisição (nunca sobrescreve se já tiver um valor — ver `src/lib/public-url.ts`).
     await ensurePublicBaseUrlFromCurrentRequest();
-    return updatePlatformSettings(data, admin.id);
+    const before = await getMaskedPlatformSettings();
+    const updated = await updatePlatformSettings(data, admin.id);
+    const changes: AuditChanges = diffChanges(before, updated, SETTINGS_PLAIN_FIELDS);
+    for (const [field, masked] of SETTINGS_SECRET_FIELDS) {
+      if (before[masked] !== updated[masked]) changes[field] = { de: null, para: null };
+    }
+    if (Object.keys(changes).length > 0) {
+      const secretNames = SETTINGS_SECRET_FIELDS.filter(([field]) => field in changes).map(([field]) => field);
+      await auditPlatform(
+        admin.id,
+        "platform.settings_changed",
+        `Alterou as configurações da plataforma: ${Object.keys(changes).join(", ")}${secretNames.length > 0 ? " (valores de segredo não são guardados)" : ""}.`,
+        changes,
+      );
+    }
+    return updated;
   });
 }
 
@@ -101,6 +139,7 @@ export async function setPublicBaseUrlAction(input: unknown): Promise<Result<{ p
     const data = z.object({ baseUrl: z.string().trim().min(1).max(300) }).parse(input);
     const publicBaseUrl = await setPublicBaseUrl(data.baseUrl);
     logger.info("platform.public_base_url.changed", { adminId: admin.id });
+    await auditPlatform(admin.id, "platform.public_base_url_changed", "Trocou o endereço público do painel.", { publicBaseUrl: { de: null, para: publicBaseUrl } });
     return { publicBaseUrl };
   });
 }
@@ -112,7 +151,9 @@ export async function setPublicBaseUrlAction(input: unknown): Promise<Result<{ p
 export async function regenerateInternalApiSecretAction(): Promise<Result<{ secret: string }>> {
   return runAction(async () => {
     const admin = await requirePlatformAdmin();
-    return regenerateInternalApiSecret(admin.id);
+    const generated = await regenerateInternalApiSecret(admin.id);
+    await auditPlatform(admin.id, "platform.internal_secret_regenerated", "Gerou um novo segredo da API interna (o anterior deixou de valer).");
+    return generated;
   });
 }
 
@@ -164,7 +205,20 @@ export async function saveMercadoPagoCredentialsAction(input: unknown): Promise<
   return runAction(async () => {
     const admin = await requirePlatformAdmin();
     const data = saveMercadoPagoSchema.parse(input);
-    return saveMercadoPagoCredentials(data, admin.id);
+    const saved = await saveMercadoPagoCredentials(data, admin.id);
+    const changes: AuditChanges = {};
+    if (data.publicKey?.trim()) changes["publicKey"] = { de: null, para: "alterada" };
+    if (data.accessToken?.trim()) changes["accessToken"] = { de: null, para: null };
+    if (data.webhookSecret?.trim()) changes["webhookSecret"] = { de: null, para: null };
+    if (Object.keys(changes).length > 0) {
+      await auditPlatform(
+        admin.id,
+        "platform.mercadopago_credentials_changed",
+        `Alterou as credenciais do Mercado Pago (${data.env === "PRODUCTION" ? "produção" : "teste"}): ${Object.keys(changes).join(", ")}. Valores não são guardados.`,
+        changes,
+      );
+    }
+    return saved;
   });
 }
 
@@ -174,7 +228,14 @@ export async function removeMercadoPagoSecretAction(input: unknown): Promise<Res
   return runAction(async () => {
     const admin = await requirePlatformAdmin();
     const data = removeMercadoPagoSecretSchema.parse(input);
-    return removeMercadoPagoSecret(data, admin.id);
+    const saved = await removeMercadoPagoSecret(data, admin.id);
+    await auditPlatform(
+      admin.id,
+      "platform.mercadopago_secret_removed",
+      `Removeu ${data.field === "accessToken" ? "o access token" : "o segredo do webhook"} do Mercado Pago (${data.env === "PRODUCTION" ? "produção" : "teste"}).`,
+      { [data.field]: { de: null, para: null } },
+    );
+    return saved;
   });
 }
 
@@ -182,7 +243,14 @@ export async function setMercadoPagoEnvironmentAction(input: unknown): Promise<R
   return runAction(async () => {
     const admin = await requirePlatformAdmin();
     const data = z.object({ environment: mpEnvSchema }).parse(input);
-    return setMercadoPagoEnvironment(data.environment, admin.id);
+    const before = await getMercadoPagoConfig();
+    const saved = await setMercadoPagoEnvironment(data.environment, admin.id);
+    if (before.environment !== saved.environment) {
+      await auditPlatform(admin.id, "platform.mercadopago_environment_changed", `Trocou o ambiente do Mercado Pago para ${saved.environment === "PRODUCTION" ? "produção" : "teste"}.`, {
+        ambiente: { de: before.environment, para: saved.environment },
+      });
+    }
+    return saved;
   });
 }
 
@@ -190,7 +258,12 @@ export async function setMercadoPagoEnabledAction(input: unknown): Promise<Resul
   return runAction(async () => {
     const admin = await requirePlatformAdmin();
     const data = z.object({ enabled: z.boolean() }).parse(input);
-    return setMercadoPagoEnabled(data.enabled, admin.id);
+    const before = await getMercadoPagoConfig();
+    const saved = await setMercadoPagoEnabled(data.enabled, admin.id);
+    if (before.enabled !== saved.enabled) {
+      await auditPlatform(admin.id, "platform.mercadopago_enabled_changed", `${saved.enabled ? "Ligou" : "Desligou"} a cobrança pelo Mercado Pago.`, { enabled: { de: before.enabled, para: saved.enabled } });
+    }
+    return saved;
   });
 }
 
@@ -298,22 +371,26 @@ export async function syncN8nAction(): Promise<Result<N8nSyncSummary>> {
   return runAction(async () => {
     const admin = await requirePlatformAdmin();
     await ensurePublicBaseUrlFromCurrentRequest();
-    return translateN8nError("sync", () => syncN8n(admin.id));
+    const summary = await translateN8nError("sync", () => syncN8n(admin.id));
+    await auditPlatform(admin.id, "platform.n8n_synced", "Sincronizou os fluxos com o n8n.", null, { type: "n8n" });
+    return summary;
   });
 }
 
 export async function activateBotWorkflowAction(): Promise<Result<{ activated: true }>> {
   return runAction(async () => {
-    await requirePlatformAdmin();
+    const admin = await requirePlatformAdmin();
     await translateN8nError("activate", () => activateBotWorkflow());
+    await auditPlatform(admin.id, "platform.bot_workflow_activated", "Ativou o fluxo do bot no n8n.", null, { type: "n8n" });
     return { activated: true };
   });
 }
 
 export async function deactivateBotWorkflowAction(): Promise<Result<{ activated: false }>> {
   return runAction(async () => {
-    await requirePlatformAdmin();
+    const admin = await requirePlatformAdmin();
     await translateN8nError("deactivate", () => deactivateBotWorkflow());
+    await auditPlatform(admin.id, "platform.bot_workflow_deactivated", "Desativou o fluxo do bot no n8n.", null, { type: "n8n" });
     return { activated: false };
   });
 }
@@ -355,7 +432,12 @@ export async function updatePlatformLegalInfoAction(input: unknown): Promise<Res
       data.companyCnpj = digits;
     }
 
+    const legalBefore = await getPlatformLegalInfo();
     const saved = await updatePlatformLegalInfo(data, admin.id);
+    const legalChanges = diffChanges(legalBefore, saved, Object.keys(saved));
+    if (Object.keys(legalChanges).length > 0) {
+      await auditPlatform(admin.id, "platform.legal_info_changed", `Alterou os dados jurídicos da empresa operadora: ${Object.keys(legalChanges).join(", ")}.`, legalChanges, { type: "legal_info" });
+    }
     // /termos e /privacidade são estáticas com revalidate de 60s: invalida na hora para o
     // dado novo aparecer já na próxima visita (achado da Íris, 2026-09-29).
     revalidatePath("/termos");
@@ -383,7 +465,11 @@ export async function updatePlatformSalesWhatsappAction(input: unknown): Promise
   return runAction(async () => {
     const admin = await requirePlatformAdmin();
     const data = updateSalesWhatsappSchema.parse(input);
+    const salesBefore = await getPlatformSalesWhatsapp();
     const saved = await updatePlatformSalesWhatsapp(data.phone ?? null, admin.id);
+    if ((salesBefore?.e164 ?? null) !== (saved?.e164 ?? null)) {
+      await auditPlatform(admin.id, "platform.sales_whatsapp_changed", "Mudou o WhatsApp comercial da landing.", { whatsapp: { de: salesBefore?.display ?? null, para: saved?.display ?? null } });
+    }
     revalidatePath("/");
     return saved;
   });
@@ -423,7 +509,14 @@ export async function saveGoogleAuthConfigAction(input: unknown): Promise<Result
     const admin = await requirePlatformAdmin();
     const data = saveGoogleAuthConfigSchema.parse(input);
     await ensurePublicBaseUrlFromCurrentRequest();
-    return saveGoogleAuthConfig(data, admin.id);
+    const googleBefore = await getGoogleAuthConfig();
+    const saved = await saveGoogleAuthConfig(data, admin.id);
+    const googleChanges: AuditChanges = diffChanges(googleBefore, saved, ["enabled", "clientId"]);
+    if (data.clientSecret?.trim()) googleChanges["clientSecret"] = { de: null, para: null };
+    if (Object.keys(googleChanges).length > 0) {
+      await auditPlatform(admin.id, "platform.google_login_changed", `Alterou o login com Google: ${Object.keys(googleChanges).join(", ")}. Valores de segredo não são guardados.`, googleChanges, { type: "google_login" });
+    }
+    return saved;
   });
 }
 
@@ -431,7 +524,9 @@ export async function saveGoogleAuthConfigAction(input: unknown): Promise<Result
 export async function removeGoogleClientSecretAction(): Promise<Result<GoogleAuthConfigView>> {
   return runAction(async () => {
     const admin = await requirePlatformAdmin();
-    return removeGoogleClientSecret(admin.id);
+    const saved = await removeGoogleClientSecret(admin.id);
+    await auditPlatform(admin.id, "platform.google_secret_removed", "Removeu o Client Secret do login com Google (o login com Google foi desligado).", { clientSecret: { de: null, para: null } }, { type: "google_login" });
+    return saved;
   });
 }
 

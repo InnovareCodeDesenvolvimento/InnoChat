@@ -5,10 +5,15 @@ import { requirePlatformAdmin } from "@/lib/auth/guards";
 import { runAction, type Result } from "@/lib/result";
 import { DomainError } from "@/lib/errors";
 import { pagingInputShape, type PageInfo } from "@/modules/billing/paging";
+import { platformAdminActor, recordAudit } from "@/modules/audit/record";
+import { diffChanges, type AuditChanges } from "@/modules/audit/sanitize";
+import { REPLACE_KEY_CONFIRMATION } from "./policy";
+import type { GeneratedBackupKey, VerifyResult } from "./service";
 import {
   BackupError,
   configForPanel,
   disconnectGoogle,
+  generateBackupEncryptionKey,
   getBackupStatus,
   listBackupRuns,
   loadBackupConfig,
@@ -16,6 +21,7 @@ import {
   saveBackupConfig,
   startGoogleConnection,
   testBackupConnection,
+  verifyLatestBackup,
   type BackupConfigView,
   type BackupRunView,
   type BackupStatusView,
@@ -82,7 +88,24 @@ export async function saveBackupConfigAction(input: unknown): Promise<Result<{ c
     const admin = await requirePlatformAdmin();
     const parsed = saveSchema.parse(input);
     const data = emptyToNull(parsed, ["s3Endpoint", "s3Bucket", "s3Region", "s3Prefix", "s3AccessKey", "driveFolderId", "driveOauthClientId"]);
+    const before = configForPanel(await loadBackupConfig());
     const { config } = await saveBackupConfig(data as Parameters<typeof saveBackupConfig>[0], admin.id);
+    const changes: AuditChanges = diffChanges(before, config, ["enabled", "hourLocal", "retentionDays", "alertAfterHours", "destination", "driveMode", "s3Endpoint", "s3Bucket", "s3Region", "s3Prefix", "driveFolderId", "driveOauthClientId"]);
+    // Segredos: só o fato de terem sido trocados (o histórico redige o valor de qualquer campo com esse tipo de nome).
+    for (const secret of ["s3AccessKey", "s3SecretKey", "driveServiceAccountKey", "driveOauthClientSecret"] as const) {
+      const sent = data[secret];
+      if (typeof sent === "string" && sent.trim() !== "") changes[secret] = { de: null, para: null };
+    }
+    if (Object.keys(changes).length > 0) {
+      await recordAudit({
+        tenantId: null,
+        actor: platformAdminActor(admin.id),
+        action: "backup.config_changed",
+        targetType: "backup",
+        summary: `Alterou a configuração do backup: ${Object.keys(changes).join(", ")}. Valores de segredo não são guardados.`,
+        changes,
+      });
+    }
     return { config };
   });
 }
@@ -106,6 +129,13 @@ export async function runBackupNowAction(): Promise<Result<RunBackupNowResult>> 
     try {
       const r = await runBackup({ trigger: "MANUAL", createdById: admin.id });
       const sent = r.objectKey !== null;
+      await recordAudit({
+        tenantId: null,
+        actor: platformAdminActor(admin.id),
+        action: "backup.run_manual",
+        targetType: "backup",
+        summary: sent ? "Fez um backup agora e enviou ao destino." : "Fez um backup de teste agora (sem destino configurado, não foi enviado).",
+      });
       return {
         sizeBytes: r.sizeBytes,
         tablesWithData: r.tablesWithData,
@@ -133,6 +163,49 @@ export async function disconnectGoogleAction(): Promise<Result<{ ok: true }>> {
   return runAction(async () => {
     const admin = await requirePlatformAdmin();
     await disconnectGoogle(admin.id);
+    await recordAudit({ tenantId: null, actor: platformAdminActor(admin.id), action: "backup.google_disconnected", targetType: "backup", summary: "Desconectou a conta do Google Drive do backup." });
     return { ok: true as const };
+  });
+}
+
+const generateKeySchema = z.object({ replace: z.boolean().optional(), confirmation: z.string().max(100).optional() });
+
+/**
+ * Gera a chave de criptografia do backup. A chave inteira volta NESTA resposta e em nenhuma outra: a
+ * tela mostra uma vez, com cópia e download, e depois só a impressão digital. A resposta não pode ser
+ * guardada em cache nem logada.
+ */
+export async function generateBackupKeyAction(input?: unknown): Promise<Result<GeneratedBackupKey>> {
+  return runAction(async () => {
+    const admin = await requirePlatformAdmin();
+    const parsed = generateKeySchema.parse(input ?? {});
+    const replace = parsed.replace === true;
+    if (replace && parsed.confirmation?.trim() !== REPLACE_KEY_CONFIRMATION) {
+      throw new DomainError("BACKUP_KEY_CONFIRMATION", `Para trocar a chave, digite ${REPLACE_KEY_CONFIRMATION} no campo de confirmação.`);
+    }
+    const generated = await generateBackupEncryptionKey(admin.id, { replace });
+    // Só a impressão digital (que a própria tela mostra); a chave inteira nunca passa por aqui.
+    await recordAudit({
+      tenantId: null,
+      actor: platformAdminActor(admin.id),
+      action: "backup.key_generated",
+      targetType: "backup",
+      summary: generated.replaced ? "Trocou a chave de criptografia do backup." : "Gerou a chave de criptografia do backup.",
+      changes: { impressaoDigital: { de: null, para: generated.fingerprint } },
+    });
+    return generated;
+  });
+}
+
+/** "Conferir backup": baixa a cópia mais recente, decifra e lê o índice do dump. Não escreve em banco nenhum. */
+export async function verifyBackupAction(): Promise<Result<VerifyResult>> {
+  return runAction(async () => {
+    const admin = await requirePlatformAdmin();
+    try {
+      return await verifyLatestBackup({ trigger: "MANUAL", createdById: admin.id });
+    } catch (error) {
+      if (error instanceof BackupError) throw new DomainError(`BACKUP_${error.code}`, error.message);
+      throw error;
+    }
   });
 }

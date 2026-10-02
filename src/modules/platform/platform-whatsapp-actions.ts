@@ -4,7 +4,9 @@ import { z } from "zod";
 import { requirePlatformAdmin } from "@/lib/auth/guards";
 import { DomainError } from "@/lib/errors";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { getPrisma } from "@/lib/db/prisma";
 import { runAction, type Result } from "@/lib/result";
+import { platformAdminActor, recordAudit } from "@/modules/audit/record";
 import { parseBrazilianPhoneToE164 } from "@/core/whatsapp/phone";
 import {
   cancelPlatformConnection,
@@ -37,6 +39,10 @@ function enforceActionLimit(adminId: string): void {
   }
 }
 
+async function auditWhatsapp(adminId: string, action: string, summary: string, changes?: { [k: string]: { de: unknown; para: unknown } } | null, targetId?: string) {
+  await recordAudit({ tenantId: null, actor: platformAdminActor(adminId), action, targetType: "platform_whatsapp", targetId: targetId ?? null, summary, changes: changes ?? null });
+}
+
 const connectionIdSchema = z.string().trim().min(1).max(60);
 
 export async function getPlatformWhatsappAction(): Promise<Result<PlatformWhatsappState>> {
@@ -50,7 +56,12 @@ export async function setPlatformWhatsappEnabledAction(input: unknown): Promise<
   return runAction(async () => {
     const admin = await requirePlatformAdmin();
     const data = z.object({ enabled: z.boolean() }).parse(input);
-    return setPlatformWhatsappEnabled(data.enabled, admin.id);
+    const before = await getPrisma().platformSettings.findUnique({ where: { id: 1 }, select: { platformWhatsappEnabled: true } });
+    const result = await setPlatformWhatsappEnabled(data.enabled, admin.id);
+    if ((before?.platformWhatsappEnabled ?? false) !== result.enabled) {
+      await auditWhatsapp(admin.id, "platform_whatsapp.enabled_changed", `${result.enabled ? "Ligou" : "Desligou"} os avisos de cobrança pelo WhatsApp da plataforma.`, { enabled: { de: !result.enabled, para: result.enabled } });
+    }
+    return result;
   });
 }
 
@@ -60,7 +71,9 @@ export async function startPlatformWhatsappConnectionAction(input: unknown): Pro
     const admin = await requirePlatformAdmin();
     const data = z.object({ label: z.string() }).parse(input);
     enforceActionLimit(admin.id);
-    return startPlatformConnection({ label: data.label, adminId: admin.id });
+    const started = await startPlatformConnection({ label: data.label, adminId: admin.id });
+    await auditWhatsapp(admin.id, "platform_whatsapp.connection_started", "Começou a conectar um número no WhatsApp da plataforma.", null, started.connectionId);
+    return started;
   });
 }
 
@@ -77,7 +90,9 @@ export async function cancelPlatformWhatsappConnectionAction(connectionId: unkno
     const admin = await requirePlatformAdmin();
     const id = connectionIdSchema.parse(connectionId);
     enforceActionLimit(admin.id);
-    return cancelPlatformConnection(id, admin.id);
+    const canceled = await cancelPlatformConnection(id, admin.id);
+    if (canceled.canceled) await auditWhatsapp(admin.id, "platform_whatsapp.connection_canceled", "Cancelou a conexão de número em andamento no WhatsApp da plataforma.", null, id);
+    return canceled;
   });
 }
 
@@ -87,7 +102,9 @@ export async function disconnectPlatformWhatsappAction(input: unknown): Promise<
     const data = z.object({ confirm: z.literal("DESCONECTAR") }).parse(input);
     void data;
     enforceActionLimit(admin.id);
-    return disconnectPlatformWhatsapp(admin.id);
+    const retired = await disconnectPlatformWhatsapp(admin.id);
+    if (retired.retired) await auditWhatsapp(admin.id, "platform_whatsapp.disconnected", "Desconectou o número do WhatsApp da plataforma.");
+    return retired;
   });
 }
 

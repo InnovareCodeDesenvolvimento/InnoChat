@@ -5,7 +5,7 @@
  * falsa injetada em `setWaitlistDepsForTests`.
  */
 import { randomUUID } from "node:crypto";
-import { fromZonedTime } from "date-fns-tz";
+import { formatInTimeZone, fromZonedTime } from "date-fns-tz";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { getPrisma } from "@/lib/db/prisma";
 import { isUniqueViolation } from "@/lib/db/prisma-errors";
@@ -34,6 +34,21 @@ let planId: string | null = null;
 
 type Sent = { instanceName: string; number: string; text: string };
 let sent: Sent[] = [];
+let currentClient: EvolutionClient;
+
+/**
+ * Relógio dos testes. As ofertas automáticas só saem entre 08h e 21h no fuso da empresa; se a suíte rodar de madrugada o
+ * resultado não pode mudar. Dentro da janela usa a hora real; fora dela, hoje às 12h (o que se calcula é sempre em dias futuros).
+ */
+function windowNow(): Date {
+  const real = new Date();
+  const hour = Number(formatInTimeZone(real, TZ, "H"));
+  return hour >= 8 && hour < 21 ? real : fromZonedTime(`${isoPlus(0)}T12:00:00`, TZ);
+}
+function setClock(now: Date) {
+  setWaitlistDepsForTests({ evolution: currentClient, now });
+}
+
 function installFakeEvolution(opts: { fail?: boolean } = {}) {
   sent = [];
   const client = {
@@ -43,7 +58,8 @@ function installFakeEvolution(opts: { fail?: boolean } = {}) {
       return { messageId: `MSG-${randomUUID()}` };
     }),
   } as unknown as EvolutionClient;
-  setWaitlistDepsForTests({ evolution: client });
+  currentClient = client;
+  setClock(windowNow());
 }
 
 beforeEach(() => installFakeEvolution());
@@ -601,5 +617,120 @@ describe("rotas da API interna", () => {
     const res = await postTick(new Request("http://localhost/api/internal/v1/waitlist/tick", { method: "POST", headers: { authorization: h.authorization } }));
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ offersExpired: expect.any(Number), acceptedRecovered: expect.any(Number), pastEntriesExpired: expect.any(Number) });
+  });
+});
+
+describe("janela de silêncio das ofertas automáticas (08h às 21h na empresa)", () => {
+  // As pendências de adiamento são globais: limpa antes de cada prova para uma não oferecer no lugar da outra.
+  beforeEach(async () => {
+    await prisma.providerEvent.deleteMany({ where: { provider: "waitlist-deferred" } });
+  });
+  afterAll(async () => {
+    await prisma.providerEvent.deleteMany({ where: { provider: "waitlist-deferred" } });
+  });
+
+  async function freedAtNight(label: string) {
+    const w = await world(label);
+    const day = isoPlus(3);
+    const appt = await book(w, 6, w.corte.id, w.ana.id, day, "10:00");
+    // Só o 10:00 serve a esta pessoa, para a prova não depender de "qualquer horário livre".
+    const waiting = await join(w, 0, { date: day, windowStartMin: 10 * 60, windowEndMin: 10 * 60 + 30 });
+    return { w, day, appt, waiting };
+  }
+  const night = () => at(isoPlus(1), "23:00");
+  const morning = () => at(isoPlus(2), "08:30");
+
+  it("horário liberado de noite não é oferecido na hora; o tick da manhã oferece o que ainda está livre", async () => {
+    const { w, day, appt, waiting } = await freedAtNight("silencio");
+    setClock(night());
+    await cancelAppointment(w.tenant.id, appt.id, "system");
+    await drainWaitlistHook();
+    expect((await entryOf(w, waiting.id)).status).toBe("WAITING");
+    expect(sent).toHaveLength(0);
+
+    // Ainda de noite o tick não oferece nada (e guarda a pendência).
+    const stillNight = await runWaitlistTick(new Date());
+    expect(stillNight.windowOffers).toBe(0);
+    expect((await entryOf(w, waiting.id)).status).toBe("WAITING");
+
+    setClock(morning());
+    const summary = await runWaitlistTick(new Date());
+    expect(summary.windowOffers).toBeGreaterThanOrEqual(1);
+    const row = await entryOf(w, waiting.id);
+    expect(row.status).toBe("OFFERED");
+    expect(row.offeredSlotStart?.toISOString()).toBe(at(day, "10:00").toISOString());
+    expect(sent).toHaveLength(1);
+    expect(sent[0].number).toBe(numberOf(w, 0));
+
+    // Rodar de novo não repete a oferta (a pendência foi consumida).
+    const again = await runWaitlistTick(new Date());
+    expect(again.windowOffers).toBe(0);
+    expect(sent).toHaveLength(1);
+  });
+
+  it("se o horário foi ocupado durante a noite, a manhã não oferece nada", async () => {
+    const { w, day, appt, waiting } = await freedAtNight("ocupado");
+    setClock(night());
+    await cancelAppointment(w.tenant.id, appt.id, "system");
+    await drainWaitlistHook();
+    await book(w, 5, w.corte.id, w.ana.id, day, "10:00"); // outro canal pegou o horário
+    await book(w, 4, w.corte.id, w.bia.id, day, "10:00");
+    setClock(morning());
+    await runWaitlistTick(new Date());
+    expect((await entryOf(w, waiting.id)).status).toBe("WAITING");
+    expect(sent).toHaveLength(0);
+  });
+
+  it("dentro da janela a oferta automática sai na hora, como sempre", async () => {
+    const { w, appt, waiting } = await freedAtNight("dia");
+    setClock(at(isoPlus(1), "14:00"));
+    await cancelAppointment(w.tenant.id, appt.id, "system");
+    await drainWaitlistHook();
+    expect((await entryOf(w, waiting.id)).status).toBe("OFFERED");
+    expect(sent).toHaveLength(1);
+  });
+
+  it("as bordas da janela: 07h59 não oferece, 08h oferece, 20h59 oferece, 21h não oferece", async () => {
+    for (const [hhmm, expected] of [["07:59", "WAITING"], ["08:00", "OFFERED"], ["20:59", "OFFERED"], ["21:00", "WAITING"]] as const) {
+      const { w, appt, waiting } = await freedAtNight(`borda-${hhmm.replace(":", "")}`);
+      setClock(at(isoPlus(1), hhmm));
+      await cancelAppointment(w.tenant.id, appt.id, "system");
+      await drainWaitlistHook();
+      expect((await entryOf(w, waiting.id)).status, hhmm).toBe(expected);
+    }
+  });
+
+  it("o 'Oferecer encaixe' manual do painel funciona a qualquer hora", async () => {
+    const { w, day, waiting } = await freedAtNight("manual");
+    setClock(night());
+    const result = await offerEntryManually(w.tenant.id, waiting.id);
+    expect(result.slotStart.toISOString()).toBe(at(day, "10:00").toISOString());
+    expect((await entryOf(w, waiting.id)).status).toBe("OFFERED");
+    expect(sent).toHaveLength(1);
+  });
+
+  it("recusa de madrugada não passa o horário adiante na hora: espera a manhã", async () => {
+    const w = await world("recusa");
+    const day = isoPlus(3);
+    const appt = await book(w, 6, w.corte.id, w.ana.id, day, "10:00");
+    const first = await join(w, 0, { date: day, windowStartMin: 10 * 60, windowEndMin: 10 * 60 + 30 });
+    const second = await join(w, 1, { date: day, windowStartMin: 10 * 60, windowEndMin: 10 * 60 + 30 });
+    setClock(at(isoPlus(1), "14:00"));
+    await cancelAppointment(w.tenant.id, appt.id, "system");
+    await drainWaitlistHook();
+    expect((await entryOf(w, first.id)).status).toBe("OFFERED");
+    sent.length = 0;
+
+    setClock(night());
+    await declineWaitlistOffer(w.tenant.id, { entryId: first.id, contactId: w.contacts[0].id });
+    await drainWaitlistTriggers();
+    expect((await entryOf(w, second.id)).status).toBe("WAITING");
+    expect(sent).toHaveLength(0);
+
+    setClock(morning());
+    await runWaitlistTick(new Date());
+    expect((await entryOf(w, second.id)).status).toBe("OFFERED");
+    expect(sent).toHaveLength(1);
+    expect(sent[0].number).toBe(numberOf(w, 1));
   });
 });

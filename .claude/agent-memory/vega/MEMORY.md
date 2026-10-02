@@ -67,3 +67,5 @@
 - [Script Node via Bash des-escapa \n em strings de código](bash_node_e_escapes_newline.md) — use Edit/Write para trechos com barras; confira com Read.
 - [Estado em memória duplicado entre bundles do Next](module_state_duplicated_across_next_bundles.md) — travas/limites em Map de módulo valem o dobro em produção; usar globalState (src/lib/global-state.ts).
 - [Server Action que troca cookie de sessão desloga a si mesma](server_action_cookie_rerender_old_session.md) — confirmar 2FA é rota POST; guards exigem TOTP; admin já é negado no Google.
+- [Registro de auditoria (Melhoria 4)](audit_log_design.md) — recordAudit pós-sucesso e nunca lança, redação por nome de campo, escopo por empresa, retenção pendente.
+- [Lista de espera: janela de silêncio 08h-21h](waitlist_quiet_window.md) — marca em ProviderEvent, tick recupera, como os testes fixam o relógio.

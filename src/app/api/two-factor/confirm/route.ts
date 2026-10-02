@@ -6,6 +6,8 @@ import { runAction, err } from "@/lib/result";
 import { isSameOrigin, readBodyWithLimit } from "@/modules/error-monitor/client-report";
 import { runWithSessionRefresh } from "@/modules/auth/session-refresh";
 import { confirmTwoFactorSetup } from "@/modules/two-factor/service";
+import { auditContextForUser } from "@/modules/audit/actors";
+import { recordAudit } from "@/modules/audit/record";
 
 /**
  * `POST /api/two-factor/confirm` `{ code }`: confirma o cadastro da verificação em 2 etapas (primeiro código do app).
@@ -42,6 +44,8 @@ export async function POST(request: Request) {
     }
     const { code } = bodySchema.parse(parsed);
     const confirmed = await confirmTwoFactorSetup(user.id, code);
+    const auditCtx = await auditContextForUser(user.id);
+    await recordAudit({ ...auditCtx, action: "two_factor.enabled", targetType: "user", targetId: user.id, summary: "Ativou a verificação em 2 etapas da própria conta." });
     // As outras sessões já caíram (`sessionVersion`); esta ganha o `sv` novo no cookie desta resposta. Se a renovação
     // falhar, só esta sessão cai no próximo acesso: os códigos de recuperação saem do mesmo jeito.
     try {

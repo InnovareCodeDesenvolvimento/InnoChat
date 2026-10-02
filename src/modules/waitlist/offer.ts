@@ -2,7 +2,7 @@ import { addMinutes } from "date-fns";
 import { formatInTimeZone } from "date-fns-tz";
 import { formatDayLabel, formatLeadLabel, formatLongDayLabel, formatTimeLabel } from "@/core/bot/format";
 import { renderTemplate } from "@/core/bot/texts";
-import { reminderFirstName } from "@/core/reminders/window";
+import { isInsideSendWindow, reminderFirstName } from "@/core/reminders/window";
 import {
   WAITLIST_MAX_CANDIDATES_PER_TRIGGER,
   WAITLIST_OFFER_MINUTES,
@@ -161,7 +161,7 @@ function localDaysTouched(from: Date, to: Date, timezone: string): string[] {
   return first === last ? [first] : [first, last];
 }
 
-export type OfferSummary = { offeredEntryId: string | null; tried: number };
+export type OfferSummary = { offeredEntryId: string | null; tried: number; deferredQuietHours?: boolean };
 
 /**
  * Um horário abriu: acha o primeiro da fila compatível (serviço, profissional, dia, janela e duração
@@ -179,6 +179,14 @@ export async function offerFreedSlot(
 
   if (!(await isTenantBotAllowed(tenantId))) return summary;
   const tenant = await loadTenantRules(tenantId);
+  // Janela de silêncio (a mesma do lembrete: 08h às 21h no fuso da empresa). Fora dela a oferta automática não sai e a
+  // fila espera: quando a janela abre, `offerToWaitingInOpenWindow` (no tick) oferece o que ainda estiver livre e futuro.
+  if (!isInsideSendWindow(now, tenant.timezone)) {
+    logger.info("waitlist.offer_deferred_quiet_hours", { tenantId });
+    summary.deferredQuietHours = true;
+    await markQuietDeferral(tenantId);
+    return summary;
+  }
   const days = localDaysTouched(freed.from, freed.to, tenant.timezone).map(isoToDesiredDate);
 
   const db = forTenant(tenantId);
@@ -240,6 +248,122 @@ export async function offerFreedSlot(
       return summary;
     }
     if (result === "NO_WHATSAPP") return summary; // sem número conectado ninguém da fila recebe
+  }
+  return summary;
+}
+
+type AutoCandidate = {
+  contact: { botPausedUntil: Date | null; chatSessions: { id: string }[]; waitlistEntries: { id: string }[] };
+};
+
+/** Quem não pode receber uma oferta AUTOMÁTICA agora (bot pausado, atendente na conversa, oferta já aberta) é pulado sem perder a vez. */
+function skipForAutoOffer(entry: AutoCandidate, now: Date): boolean {
+  const { contact } = entry;
+  if (contact.botPausedUntil && contact.botPausedUntil > now) return true;
+  if (contact.chatSessions.length > 0) return true;
+  return contact.waitlistEntries.length > 0;
+}
+
+const WINDOW_SCAN_TENANTS = 200;
+const WINDOW_SCAN_ENTRIES_PER_TENANT = 50;
+
+/**
+ * Marca "esta empresa liberou horário na janela de silêncio e a oferta ficou para depois". Uma linha por empresa em
+ * `ProviderEvent` (estado auxiliar global, sem tabela nova); o tick consome a marca quando a janela abre. `createMany` com
+ * `skipDuplicates` torna a marcação idempotente e livre de corrida.
+ */
+const DEFERRAL_PROVIDER = "waitlist-deferred";
+
+async function markQuietDeferral(tenantId: string): Promise<void> {
+  try {
+    await getPrisma().providerEvent.createMany({ data: [{ provider: DEFERRAL_PROVIDER, providerEventId: tenantId, payload: {} }], skipDuplicates: true });
+  } catch (error) {
+    logger.error("waitlist.deferral_mark_failed", { tenantId, errorName: error instanceof Error ? error.name : "unknown" });
+  }
+}
+
+export type WindowOfferSummary = { tenantsScanned: number; offered: number };
+
+/**
+ * Tick: recupera as ofertas adiadas pela janela de silêncio. Só olha empresas com a marca de adiamento
+ * (`markQuietDeferral`) e só quando a janela de envio está ABERTA nelas (08h às 21h locais); então oferece a quem ficou
+ * esperando os horários que ainda estão livres e futuros, em ordem de chegada. A marca é tomada ANTES de varrer (uma
+ * rodada concorrente não duplica; um adiamento novo durante a varredura cria outra marca). Cada pessoa recebe no máximo
+ * uma oferta por rodada e o mesmo horário nunca vai a duas pessoas (a oferta em aberto segura o horário e o índice único
+ * do banco confirma). Não mexe em quem está em atendimento humano ou com o bot pausado.
+ */
+export async function offerToWaitingInOpenWindow(now: Date = new Date(), deps?: WaitlistDeps): Promise<WindowOfferSummary> {
+  const d = depsOf(deps);
+  const clock = d.now ?? now;
+  const summary: WindowOfferSummary = { tenantsScanned: 0, offered: 0 };
+  const prisma = getPrisma();
+
+  const marks = await prisma.providerEvent.findMany({
+    where: { provider: DEFERRAL_PROVIDER },
+    orderBy: { createdAt: "asc" },
+    take: WINDOW_SCAN_TENANTS,
+    select: { id: true, providerEventId: true },
+  });
+
+  for (const mark of marks) {
+    const tenantId = mark.providerEventId;
+    try {
+      const tenant = await loadTenantRules(tenantId).catch(() => null);
+      if (!tenant) {
+        await prisma.providerEvent.deleteMany({ where: { id: mark.id } }); // empresa apagada
+        continue;
+      }
+      if (!isInsideSendWindow(clock, tenant.timezone)) continue; // a marca fica para quando a janela abrir
+      // Toma a marca: só quem apagou a linha varre.
+      const claimed = await prisma.providerEvent.deleteMany({ where: { id: mark.id } });
+      if (claimed.count === 0) continue;
+      summary.tenantsScanned += 1;
+      if (!(await isTenantBotAllowed(tenantId))) continue;
+
+      const today = isoToDesiredDate(formatInTimeZone(clock, tenant.timezone, "yyyy-MM-dd"));
+      const entries = await forTenant(tenantId).waitlistEntry.findMany({
+        where: { status: "WAITING", desiredDate: { gte: today } },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        take: WINDOW_SCAN_ENTRIES_PER_TENANT,
+        include: {
+          service: { select: { active: true, durationMin: true, bufferAfterMin: true } },
+          contact: {
+            select: {
+              botPausedUntil: true,
+              chatSessions: { where: { humanUntil: { gt: clock } }, select: { id: true } },
+              waitlistEntries: { where: { status: "OFFERED", offerExpiresAt: { gt: clock } }, select: { id: true } },
+            },
+          },
+        },
+      });
+
+      let tried = 0;
+      for (const entry of entries) {
+        if (tried >= WAITLIST_MAX_CANDIDATES_PER_TRIGGER) break;
+        if (!entry.service.active || skipForAutoOffer(entry, clock)) continue;
+        const professionalIds = entry.professionalId ? [entry.professionalId] : await eligibleProfessionalIds(tenantId, entry.serviceId);
+        if (professionalIds.length === 0) continue;
+        const slot = await findSlotForEntry({
+          tenantId,
+          tenant: tenant as TenantRules,
+          entry,
+          service: entry.service,
+          candidateProfessionalIds: professionalIds,
+          freed: null,
+          now: clock,
+        });
+        if (!slot) continue;
+        tried += 1;
+        const result = await reserveAndSend({ tenantId, tenant, entry, slot, now: clock, evolution: d.evolution });
+        if (result === "SENT") summary.offered += 1;
+        else if (result === "NO_WHATSAPP" || result === "SEND_FAILED") {
+          await markQuietDeferral(tenantId); // sem canal agora: a marca volta e a próxima rodada tenta de novo
+          break;
+        }
+      }
+    } catch (error) {
+      logger.error("waitlist.window_offer_failed", { tenantId, errorName: error instanceof Error ? error.name : "unknown" });
+    }
   }
   return summary;
 }

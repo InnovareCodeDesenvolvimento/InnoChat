@@ -3,6 +3,8 @@
 import { z } from "zod";
 import { requireTenantMember } from "@/lib/auth/guards";
 import { runAction, type Result } from "@/lib/result";
+import { forTenant } from "@/lib/db/tenant-client";
+import { memberActor, recordAudit } from "@/modules/audit/record";
 import { assertTenantCanWrite } from "@/modules/billing/service";
 import { BOT_TEXT_KEYS } from "@/core/bot/texts";
 import { BOT_TEXT_KEYS_V2, LEGACY_V1_KEYS } from "@/core/bot/texts-v2";
@@ -34,19 +36,46 @@ const upsertSchema = z.object({ key: keySchema, text: z.string().trim().min(1).m
 
 export async function upsertBotTextAction(tenantSlug: string, input: unknown): Promise<Result<unknown>> {
   return runAction(async () => {
-    const { tenant } = await requireTenantMember(tenantSlug);
+    const ctx = await requireTenantMember(tenantSlug);
+    const { tenant } = ctx;
     await assertTenantCanWrite(tenant.id);
     const data = upsertSchema.parse(input);
-    return upsertBotText(tenant.id, data.key, data.text, await getPublishedFlowVersion());
+    const before = await forTenant(tenant.id).botText.findFirst({ where: { key: data.key as never }, select: { text: true } });
+    const saved = await upsertBotText(tenant.id, data.key, data.text, await getPublishedFlowVersion());
+    if (before?.text !== data.text) {
+      await recordAudit({
+        tenantId: tenant.id,
+        actor: memberActor(ctx),
+        action: "bot_text.changed",
+        targetType: "bot_text",
+        targetId: data.key,
+        summary: `Editou a mensagem do bot ${data.key}.`,
+        changes: { texto: { de: before?.text ?? "(texto padrão)", para: data.text } },
+      });
+    }
+    return saved;
   });
 }
 
 export async function resetBotTextAction(tenantSlug: string, key: unknown): Promise<Result<{ key: string }>> {
   return runAction(async () => {
-    const { tenant } = await requireTenantMember(tenantSlug);
+    const ctx = await requireTenantMember(tenantSlug);
+    const { tenant } = ctx;
     await assertTenantCanWrite(tenant.id);
     const parsedKey = keySchema.parse(key);
+    const before = await forTenant(tenant.id).botText.findFirst({ where: { key: parsedKey as never }, select: { text: true } });
     await resetBotText(tenant.id, parsedKey);
+    if (before) {
+      await recordAudit({
+        tenantId: tenant.id,
+        actor: memberActor(ctx),
+        action: "bot_text.reset",
+        targetType: "bot_text",
+        targetId: parsedKey,
+        summary: `Voltou a mensagem do bot ${parsedKey} para o texto padrão.`,
+        changes: { texto: { de: before.text, para: "(texto padrão)" } },
+      });
+    }
     return { key: parsedKey };
   });
 }

@@ -19,6 +19,15 @@ vi.mock("@/modules/billing/service", () => ({
   assertTenantCanWrite: assertTenantCanWriteMock,
 }));
 
+// O histórico de alterações tem os próprios testes (tests/integration/audit.integration.test.ts); aqui só não pode quebrar a ação.
+vi.mock("@/modules/audit/record", () => ({
+  recordAudit: vi.fn(),
+  memberActor: (ctx: { user: { id: string } }) => ({ userId: ctx.user.id, role: "OWNER" }),
+}));
+vi.mock("@/lib/db/tenant-client", () => ({
+  forTenant: () => ({ botText: { findFirst: vi.fn().mockResolvedValue(null) } }),
+}));
+
 const upsertBotTextMock = vi.fn();
 const resetBotTextMock = vi.fn();
 vi.mock("./service", () => ({

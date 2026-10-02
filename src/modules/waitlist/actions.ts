@@ -5,6 +5,9 @@ import { WAITLIST_PERIODS } from "@/core/waitlist/match";
 import { requireTenantMember } from "@/lib/auth/guards";
 import { DomainError } from "@/lib/errors";
 import { runAction, type Result } from "@/lib/result";
+import { forTenant } from "@/lib/db/tenant-client";
+import { formatDateTimeBr } from "@/modules/audit/describe";
+import { memberActor, recordAudit } from "@/modules/audit/record";
 import { assertTenantCanWrite } from "@/modules/billing/service";
 import { createContact } from "@/modules/contacts/contacts";
 import { offerEntryManually } from "./offer";
@@ -14,6 +17,17 @@ import { createWaitlistEntry, listWaitlist, removeWaitlistEntry } from "./servic
  * Server Actions da tela "Lista de espera" do painel. Qualquer membro da equipe lista, adiciona,
  * remove e oferece encaixe; painel suspenso é somente leitura (`assertTenantCanWrite`).
  */
+
+/** "Maria (Corte)" para os resumos do histórico; se não achar, um texto neutro. */
+async function waitlistLabel(tenantId: string, entryId: string): Promise<string> {
+  try {
+    const row = await forTenant(tenantId).waitlistEntry.findFirst({ where: { id: entryId }, select: { contact: { select: { name: true } }, service: { select: { name: true } } } });
+    if (row) return `${row.contact?.name ?? "um cliente"} (${row.service?.name ?? "serviço"})`;
+  } catch {
+    // só o texto fica mais pobre
+  }
+  return "um cliente";
+}
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
@@ -48,7 +62,8 @@ const addSchema = z
 
 export async function addWaitlistEntryAction(tenantSlug: string, input: unknown): Promise<Result<{ id: string; alreadyExisted: boolean }>> {
   return runAction(async () => {
-    const { tenant } = await requireTenantMember(tenantSlug);
+    const ctx = await requireTenantMember(tenantSlug);
+    const { tenant } = ctx;
     await assertTenantCanWrite(tenant.id);
     const data = addSchema.parse(input);
 
@@ -74,24 +89,53 @@ export async function addWaitlistEntryAction(tenantSlug: string, input: unknown)
       windowEndMin: data.windowEndMin ?? null,
       source: "PANEL",
     });
+    if (!alreadyExisted) {
+      const label = await waitlistLabel(tenant.id, entry.id);
+      await recordAudit({
+        tenantId: tenant.id,
+        actor: memberActor(ctx),
+        action: "waitlist.added",
+        targetType: "waitlist_entry",
+        targetId: entry.id,
+        summary: `Colocou ${label} na lista de espera.`,
+      });
+    }
     return { id: entry.id, alreadyExisted };
   });
 }
 
 export async function removeWaitlistEntryAction(tenantSlug: string, entryId: string): Promise<Result<{ removed: boolean }>> {
   return runAction(async () => {
-    const { tenant } = await requireTenantMember(tenantSlug);
+    const ctx = await requireTenantMember(tenantSlug);
+    const { tenant } = ctx;
     await assertTenantCanWrite(tenant.id);
-    return removeWaitlistEntry(tenant.id, z.string().min(1).parse(entryId));
+    const id = z.string().min(1).parse(entryId);
+    const label = await waitlistLabel(tenant.id, id);
+    const result = await removeWaitlistEntry(tenant.id, id);
+    if (result.removed) {
+      await recordAudit({ tenantId: tenant.id, actor: memberActor(ctx), action: "waitlist.removed", targetType: "waitlist_entry", targetId: id, summary: `Tirou ${label} da lista de espera.` });
+    }
+    return result;
   });
 }
 
 /** "Oferecer encaixe": manda agora a oferta do primeiro horário livre que cabe no pedido dessa pessoa. */
 export async function offerWaitlistEntryAction(tenantSlug: string, entryId: string): Promise<Result<{ slotStart: string }>> {
   return runAction(async () => {
-    const { tenant } = await requireTenantMember(tenantSlug);
+    const ctx = await requireTenantMember(tenantSlug);
+    const { tenant } = ctx;
     await assertTenantCanWrite(tenant.id);
-    const { slotStart } = await offerEntryManually(tenant.id, z.string().min(1).parse(entryId));
+    const id = z.string().min(1).parse(entryId);
+    const { slotStart } = await offerEntryManually(tenant.id, id);
+    const label = await waitlistLabel(tenant.id, id);
+    await recordAudit({
+      tenantId: tenant.id,
+      actor: memberActor(ctx),
+      action: "waitlist.offered",
+      targetType: "waitlist_entry",
+      targetId: id,
+      summary: `Ofereceu o encaixe de ${formatDateTimeBr(slotStart, tenant.timezone)} para ${label}.`,
+    });
     return { slotStart: slotStart.toISOString() };
   });
 }

@@ -274,16 +274,17 @@ describe("item 8 — comissões", () => {
   it("comissão 0–100 no profissional e no override por serviço; nula por padrão", async () => {
     const t = await makeTenant("com");
     const service = await prisma.service.create({ data: { tenantId: t.id, name: "Corte", durationMin: 30 } });
-    const prof = await prisma.professional.create({ data: { tenantId: t.id, name: "Ana" } });
+    // O client global omite commissionPct de toda leitura (dado só do dono): aqui lemos SEMPRE com select explícito.
+    const prof = await prisma.professional.create({ data: { tenantId: t.id, name: "Ana" }, select: { id: true, commissionPct: true } });
     expect(prof.commissionPct).toBeNull();
     await rejects(prisma.professional.update({ where: { id: prof.id }, data: { commissionPct: 100.01 } }), /check/i);
     await rejects(prisma.professional.update({ where: { id: prof.id }, data: { commissionPct: -1 } }), /check/i);
-    const ok = await prisma.professional.update({ where: { id: prof.id }, data: { commissionPct: 12.5 } });
+    const ok = await prisma.professional.update({ where: { id: prof.id }, data: { commissionPct: 12.5 }, select: { commissionPct: true } });
     expect(Number(ok.commissionPct)).toBe(12.5);
-    const ps = await prisma.professionalService.create({ data: { professionalId: prof.id, serviceId: service.id } });
+    const ps = await prisma.professionalService.create({ data: { professionalId: prof.id, serviceId: service.id }, select: { id: true, commissionPct: true } });
     expect(ps.commissionPct).toBeNull();
     await rejects(prisma.professionalService.update({ where: { id: ps.id }, data: { commissionPct: 150 } }), /check/i);
-    const zero = await prisma.professionalService.update({ where: { id: ps.id }, data: { commissionPct: 0 } });
+    const zero = await prisma.professionalService.update({ where: { id: ps.id }, data: { commissionPct: 0 }, select: { commissionPct: true } });
     expect(Number(zero.commissionPct)).toBe(0);
   });
 });

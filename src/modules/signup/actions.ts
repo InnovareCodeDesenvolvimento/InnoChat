@@ -11,6 +11,7 @@ import { assertCurrentTermsVersion, TERMS_VERSION } from "@/lib/legal";
 import { getGoogleSignUpPrefill, completeGoogleSignUp } from "@/modules/google-auth/signup";
 import { signGoogleToken, verifyGoogleToken } from "@/modules/google-auth/tokens";
 import { assertGoogleSignupCookie, clearGoogleSignupCookie } from "@/modules/google-auth/signup-cookie";
+import { memberActor, recordAudit } from "@/modules/audit/record";
 import { readMetaClientContext } from "@/modules/meta/request-context";
 import { trackCompleteRegistration } from "@/modules/meta/tracking";
 import { acceptInvite, inviteTeamMember, requestPasswordReset, resendVerificationEmail, resetPassword, signUp, verifyEmail } from "./service";
@@ -165,9 +166,18 @@ const inviteSchema = z.object({
 /** Só OWNER convida (§9, tela de equipe — fora do escopo desta fase, mas a Server Action já existe). */
 export async function inviteTeamMemberAction(tenantSlug: string, input: unknown): Promise<Result<{ invited: true }>> {
   return runAction(async () => {
-    const { tenant } = await requireTenantMember(tenantSlug, ["OWNER"]);
+    const ctx = await requireTenantMember(tenantSlug, ["OWNER"]);
+    const { tenant } = ctx;
     const data = inviteSchema.parse(input);
     await inviteTeamMember({ tenantId: tenant.id, tenantName: tenant.name, email: data.email, role: data.role });
+    await recordAudit({
+      tenantId: tenant.id,
+      actor: memberActor(ctx),
+      action: "team.invited",
+      targetType: "membership",
+      summary: `Convidou ${data.email} com o papel ${data.role === "OWNER" ? "Dono" : "Equipe"}.`,
+      changes: { papel: { de: null, para: data.role } },
+    });
     return { invited: true };
   });
 }
