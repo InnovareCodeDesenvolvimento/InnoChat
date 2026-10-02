@@ -10,11 +10,10 @@ import { actionLabel, fieldLabel, findArea, formatAuditValue, ROLE_LABELS } from
  */
 
 /**
- * RETENÇÃO: o dono ainda não decidiu por quanto tempo guardar. Enquanto `null`, NADA é apagado automaticamente
- * (nem por tick, nem por tela). Quando houver decisão, o apagamento é um DELETE por `createdAt` (o trigger só barra UPDATE)
- * num job próprio; esta constante é o único lugar a mudar. Pendência registrada no handoff da Melhoria 4.
+ * RETENÇÃO: decisão do dono (2026-10-02): guardar 5 anos. A manutenção diária apaga o que passou disso
+ * (`purgeOldAuditLogs` em ./retention.ts; o trigger só barra UPDATE, DELETE continua permitido). Esta constante é o único lugar a mudar.
  */
-export const AUDIT_RETENTION_DAYS: number | null = null;
+export const AUDIT_RETENTION_DAYS: number | null = 5 * 365 + 1;
 
 export type AuditFilters = {
   /** Admin: nome ou endereço (slug) da empresa. */

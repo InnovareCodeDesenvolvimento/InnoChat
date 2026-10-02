@@ -7,6 +7,7 @@ import { loadBillingHealth } from "@/modules/billing/health";
 import { notifyAdminBillingDown } from "@/modules/billing/health-alert";
 import { purgeOldErrorEvents } from "@/modules/error-monitor/service";
 import { flushErrorAlerts } from "@/modules/error-monitor/alert";
+import { purgeOldAuditLogs } from "@/modules/audit/retention";
 
 /**
  * `POST /api/internal/v1/maintenance/tick` (docs/contratos.md — "Segurança"). Aplica a
@@ -179,6 +180,13 @@ export async function runMaintenanceTick(now: Date = new Date()): Promise<Mainte
     logger.warn("maintenance.error_events_purge_failed", { errorMessage: error instanceof Error ? error.message : String(error) });
   }
   await flushErrorAlerts(now);
+
+  // Registro de auditoria (Melhoria 4): guardado 5 anos por decisão do dono; o que passou disso sai. Falha isolada; fora do summary.
+  try {
+    await purgeOldAuditLogs(now);
+  } catch (error) {
+    logger.warn("maintenance.audit_log_purge_failed", { errorMessage: error instanceof Error ? error.message : String(error) });
+  }
 
   const summary: MaintenanceTickSummary = {
     inboundEventsPurged: purged.count,
