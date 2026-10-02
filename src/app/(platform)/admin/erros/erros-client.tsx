@@ -142,7 +142,7 @@ export function ErrosClient({ data, filters: applied }: { data: ErrorListResult;
         className="mb-2"
       />
 
-      <div className="grid grid-cols-3 gap-3" aria-live="polite" aria-busy={isPending || undefined}>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3" aria-live="polite" aria-busy={isPending || undefined}>
         <TotalCard icon={<AlertTriangle aria-hidden="true" />} label="Abertos" value={totals.open} tone="danger" />
         <TotalCard icon={<CheckCircle2 aria-hidden="true" />} label="Resolvidos" value={totals.resolved} tone="success" />
         <TotalCard icon={<EyeOff aria-hidden="true" />} label="Ignorados" value={totals.ignored} tone="neutral" />
