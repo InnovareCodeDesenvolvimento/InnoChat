@@ -47,3 +47,7 @@ tests/e2e/.auth/
 # Worktrees locais do Claude Code
 .claude/worktrees/
 .claude/settings.local.json
+
+# Dumps do banco (backup): têm dados de todas as empresas, nunca versionar
+backups/
+*.dump

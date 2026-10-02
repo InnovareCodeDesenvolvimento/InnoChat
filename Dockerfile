@@ -61,6 +61,14 @@ RUN npm run build
 FROM node:${NODE_VERSION} AS app
 WORKDIR /app
 RUN apk add --no-cache openssl dumb-init
+# Cliente do PostgreSQL (`pg_dump` e `pg_restore`) para o backup automático (Admin > Backup,
+# docs/runbook.md). REGRA: o cliente tem de ser da MESMA versão do servidor ou mais novo; cliente
+# mais velho que o banco se RECUSA a copiar. O Easypanel cria o Postgres 17 ou 18 (docs/deploy-easypanel.md)
+# e o CI testa com o 18, então pedimos o 18 e, se a Alpine desta imagem ainda não o tiver, caímos no 17.
+# Se cair no 17 e o banco for 18, a primeira cópia falha com a mensagem exata do que atualizar (a tela
+# Backup mostra o erro e o sistema manda e-mail): suba a versão da imagem node ou do pacote aqui.
+RUN (apk add --no-cache postgresql18-client || apk add --no-cache postgresql17-client) \
+  && pg_dump --version
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000

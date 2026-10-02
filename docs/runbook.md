@@ -505,34 +505,49 @@ e a tela mostrando os segredos como "não salvos".
 
 ## Backup e restauração
 
-### Backup automático (Easypanel)
+> Backup que nunca foi restaurado é uma suposição. Por isso o ciclo completo (semear, copiar, apagar o banco inteiro, restaurar, conferir) roda a cada push no job `backup-restore` do CI. Se uma migration futura quebrar a restauração, o CI fica vermelho no dia, e não no dia do desastre.
 
-O Easypanel faz backup automático do Postgres (verifique a configuração no painel do Easypanel — frequência, retenção).
+### O backup automático fica em Admin → Backup
 
-### Backup manual (antes de operação arriscada)
+Uma cópia por dia, no horário de Brasília, enviada para **fora do servidor**. Tudo é cadastrado na tela (nenhuma variável de ambiente): ligar o automático, hora, quantos dias guardar, depois de quantas horas sem cópia avisar, e o destino (bucket S3, R2, Backblaze ou Google Drive). Os segredos ficam cifrados no banco e não voltam para a tela.
+
+- **Fazer backup agora** prova o caminho inteiro antes de confiar no horário. Sem destino completo ele só gera um teste (a cópia é conferida e descartada) e a tela avisa que isso não é backup.
+- Use um bucket **só para backup**. A cópia tem dados de todas as empresas.
+- Cópias antigas são apagadas só depois que a nova subiu e foi conferida, e o sistema nunca apaga a última cópia que existe.
+- **Atrasou?** Se passar o limite configurado sem cópia nova, o sino do Admin fica vermelho e chega e-mail aos administradores (no máximo um a cada 12 horas). O agendador roda dentro do próprio sistema: se o sistema estiver fora do ar, nenhuma cópia acontece e esse aviso é o único sinal. Trate como incidente.
+- No Drive, uma pessoa pode tirar o acesso sem querer (apagar a pasta, revogar a conta). Toda falha do Drive aparece no histórico com a causa e o que fazer. Para Gmail pessoal use **Conectar com Google** (no Google Cloud deixe o app em "Em produção", senão o acesso expira em 7 dias). Conta de serviço só funciona com unidade compartilhada do Workspace.
+- O `pg_dump` da imagem (`Dockerfile`, pacote `postgresql18-client` com queda para o 17) precisa ser da versão do banco ou mais novo. Se o banco for atualizado antes da imagem, a cópia falha dizendo exatamente isso.
+
+### Restaurar (o dia ruim)
+
+Não existe botão de restaurar, de propósito: um clique que apaga o banco é risco grande demais. Restaurar exige linha de comando, o destino escrito à mão e `--confirmar`.
+
+1. Pare o `innochat-painel` no Easypanel (evita escrita durante a restauração).
+2. Baixe o arquivo `backup-innochat-AAAA-MM-DD-HHhMMmSSs.dump` do bucket ou da pasta do Drive.
+3. De um computador com o cliente do PostgreSQL 18 (ou da versão do banco), rode:
 
 ```bash
-# No console do Postgres
-pg_dump innochat > innochat-backup-2026-09-28.sql
-
-# Ou via Easypanel:
-# Serviço Postgres → aba Backup → "Fazer backup agora"
+./scripts/restore-db.sh backup-innochat-2026-10-02-03h00m12s.dump "postgresql://usuario:senha@host:5432/innochat" --confirmar
 ```
 
-### Restauração
+O script confere o dump **antes** de tocar no destino, exige o destino como argumento (não lê a `DATABASE_URL` do ambiente) e, no fim, confere se o banco ficou com dados. Avisos de permissão do `pg_restore` são esperados (o dump usa `--no-owner`).
+
+4. Suba o `innochat-painel`. Ele roda `prisma migrate deploy` no boot e alinha o schema, caso o dump seja de uma versão anterior.
+5. Abra o painel e confira de verdade: as empresas, a agenda de uma delas, as faturas. Contar linhas prova que o dump tem dados; abrir a tela prova que o negócio voltou.
+
+**Antes de restaurar sobre a produção**, faça uma cópia do estado atual (`./scripts/backup-db.sh`), para poder desfazer a restauração.
+
+**Teste uma vez com os dados reais**, num banco descartável e nunca na produção: restaure o último dump num Postgres temporário e abra o painel apontando para ele.
+
+### Cópia manual
 
 ```bash
-# Parar a aplicação (Easypanel: Deploy → Pause)
-# No console do Postgres:
-psql innochat < innochat-backup-2026-09-28.sql
-
-# Reiniciar (Easypanel: Deploy → Resume)
-# Rodar migration se necessário: npx prisma migrate deploy
+DATABASE_URL="postgresql://..." ./scripts/backup-db.sh ./backups
 ```
 
-**Importante:** antes de restaurar, **sempre** faça um backup do estado atual (em caso de precisar de rollback do rollback).
+A pasta `backups/` e os arquivos `*.dump` já são ignorados pelo Git.
 
-Ver `docs/deploy-easypanel.md` para detalhes de infraestrutura.
+Ver `docs/deploy-easypanel.md` §13 para o backup do próprio Easypanel (segunda camada, independente do sistema).
 
 ---
 

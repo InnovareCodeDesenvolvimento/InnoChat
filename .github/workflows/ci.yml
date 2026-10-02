@@ -157,3 +157,77 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 7
+
+  # Backup: o dump VOLTA mesmo (ciclo completo em Postgres real). Abordagem do Parque das Feiras.
+  # Backup que nunca foi restaurado é uma suposição, e testar uma vez à mão não basta: o schema muda
+  # toda semana e a restauração precisa continuar funcionando DEPOIS de cada migration. Por isso o
+  # ciclo inteiro (semear, dump, apagar tudo, restaurar, conferir) roda a cada push.
+  backup-restore:
+    name: Backup, o dump volta mesmo (ciclo completo em Postgres real)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        # Mesma versão major dos outros jobs e do banco do Easypanel (17 ou 18; o cliente abaixo é o 18,
+        # que dumpa servidor 17 e 18).
+        image: postgres:18
+        env:
+          POSTGRES_USER: innochat
+          POSTGRES_PASSWORD: innochat
+          POSTGRES_DB: innochat_backup
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://innochat:innochat@localhost:5432/innochat_backup
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Instala dependências
+        run: npm ci
+
+      - name: Gera o Prisma Client
+        run: npm run db:generate
+
+      # O cliente do runner precisa ser >= o servidor, senão o pg_dump recusa por diferença de versão.
+      # Fixamos o 18 para casar com o Dockerfile (postgresql18-client) e com o serviço acima.
+      - name: Instala o cliente do Postgres 18
+        run: |
+          sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/pgdg.gpg
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends postgresql-client-18
+          pg_dump --version
+
+      - name: Cria o schema (as migrations de verdade)
+        run: npx prisma migrate deploy
+
+      - name: Semeia dados conhecidos
+        run: node scripts/backup-smoke.mjs semear
+
+      - name: Faz o backup
+        run: sh scripts/backup-db.sh ./backups
+
+      # O DESASTRE, simulado: o banco some por completo. É contra isto que o backup existe, então é
+      # exatamente isto que o teste precisa provocar.
+      - name: Destrói o banco
+        run: |
+          psql "$DATABASE_URL" -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public;'
+          echo "Tabelas restantes:"
+          psql "$DATABASE_URL" -tAc "SELECT count(*) FROM information_schema.tables WHERE table_schema='public';"
+
+      - name: Restaura
+        run: |
+          DUMP="$(ls -1 ./backups/backup-innochat-*.dump | head -1)"
+          sh scripts/restore-db.sh "$DUMP" "$DATABASE_URL" --confirmar
+
+      - name: Confere se os dados voltaram íntegros
+        run: node scripts/backup-smoke.mjs conferir
