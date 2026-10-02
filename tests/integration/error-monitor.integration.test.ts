@@ -40,7 +40,7 @@ async function wipe() {
 
 async function makeAdmin(): Promise<{ id: string; email: string }> {
   const email = `it-errors-admin-${randomUUID()}@example.com`;
-  const user = await prisma.user.create({ data: { email, passwordHash: "x", emailVerifiedAt: new Date(), isPlatformAdmin: true } });
+  const user = await prisma.user.create({ data: { email, passwordHash: "x", emailVerifiedAt: new Date(), isPlatformAdmin: true, totpSecretEnc: "enc:v1:x", totpEnabledAt: new Date() } });
   fixtures.userIds.push(user.id);
   return { id: user.id, email };
 }

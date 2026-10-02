@@ -1,4 +1,5 @@
 import { getPrisma } from "@/lib/db/prisma";
+import { globalState } from "@/lib/global-state";
 import { logger } from "@/lib/logger";
 import { sendMail, SmtpNotConfiguredError } from "@/lib/email";
 import { tryGetPublicBaseUrl } from "@/lib/public-url";
@@ -13,6 +14,9 @@ import { loadRecipients } from "@/modules/billing/health-alert";
  *   período num só e-mail (até `MAX_GROUPS_PER_EMAIL`; o resto vai no próximo). A reserva da janela é atômica no
  *   banco (linha única em `ProviderEvent`, provider "error-alert", id = número da janela): dois disparos
  *   simultâneos nunca mandam dois e-mails.
+ * - Texto livre de origem CLIENT (mensagem, tipo, rota) NUNCA entra no e-mail: a rota do navegador é pública e o texto é do
+ *   atacante (link de phishing vindo do remetente oficial). O e-mail só traz a contagem de erros do navegador e o link
+ *   para Admin > Erros; o texto do servidor segue como antes.
  * - Marcar `alertedAt` é uma reserva por `updateMany` condicional; se o envio falha (SMTP fora, sem destinatário), a marca
  *   é desfeita e a janela já gasta evita martelar o SMTP: o próximo e-mail tenta de novo na janela seguinte.
  * - Quem dispara: a própria captura (`scheduleErrorAlertFlush`, adiado se a janela está ocupada) e a manutenção diária.
@@ -42,12 +46,17 @@ function escapeHtml(text: string): string {
 export function buildErrorAlertEmail(groups: AlertGroup[], extra: number, adminUrl: string | null): { subject: string; text: string; html: string } {
   const total = groups.length + extra;
   const subject = total === 1 ? "Erro novo no InnoChat" : `${total} erros novos no InnoChat`;
+  const serverGroups = groups.filter((g) => g.source !== "CLIENT");
+  const clientCount = groups.length - serverGroups.length;
   const describe = (g: AlertGroup) =>
-    `${g.source === "CLIENT" ? "No navegador" : "No servidor"}: ${g.type}, ${g.message}${g.route ? ` (em ${g.route})` : ""}${g.lastVersion ? `, versão ${g.lastVersion}` : ""}.`;
+    `No servidor: ${g.type}, ${g.message}${g.route ? ` (em ${g.route})` : ""}${g.lastVersion ? `, versão ${g.lastVersion}` : ""}.`;
+  const clientLine =
+    clientCount > 0 ? `${clientCount === 1 ? "1 erro novo no navegador" : `${clientCount} erros novos no navegador`} (o texto fica só na tela de Erros).` : null;
   const lines = [
     total === 1 ? "O InnoChat registrou um erro que ainda não tinha aparecido:" : `O InnoChat registrou ${total} erros que ainda não tinham aparecido:`,
     "",
-    ...groups.map((g) => `- ${describe(g)}`),
+    ...serverGroups.map((g) => `- ${describe(g)}`),
+    ...(clientLine ? [`- ${clientLine}`] : []),
     ...(extra > 0 ? [`- E mais ${extra} no painel.`] : []),
     "",
     adminUrl ? `Veja os detalhes e marque como resolvido: ${adminUrl}` : "Veja os detalhes no painel do admin, em Erros.",
@@ -56,7 +65,7 @@ export function buildErrorAlertEmail(groups: AlertGroup[], extra: number, adminU
   ];
   const html =
     `<p>${total === 1 ? "O InnoChat registrou um erro que ainda não tinha aparecido:" : `O InnoChat registrou ${total} erros que ainda não tinham aparecido:`}</p>` +
-    `<ul>${groups.map((g) => `<li>${escapeHtml(describe(g))}</li>`).join("")}${extra > 0 ? `<li>E mais ${extra} no painel.</li>` : ""}</ul>` +
+    `<ul>${serverGroups.map((g) => `<li>${escapeHtml(describe(g))}</li>`).join("")}${clientLine ? `<li>${escapeHtml(clientLine)}</li>` : ""}${extra > 0 ? `<li>E mais ${extra} no painel.</li>` : ""}</ul>` +
     (adminUrl ? `<p><a href="${escapeHtml(adminUrl)}">Abrir a tela de Erros</a></p>` : "<p>Veja os detalhes no painel do admin, em Erros.</p>") +
     `<p>Para não lotar sua caixa, mandamos no máximo um e-mail a cada ${ERROR_ALERT_INTERVAL_MINUTES} minutos.</p>`;
   return { subject, text: lines.join("\n"), html };
@@ -129,28 +138,29 @@ export async function flushErrorAlerts(now: Date = new Date(), deps: ErrorAlertD
   }
 }
 
-let timer: ReturnType<typeof setTimeout> | null = null;
+// Em `globalThis` (ver `src/lib/global-state.ts`): um único timer por processo, não um por bundle do Next.
+const timerState = globalState("error-alert-timer", () => ({ timer: null as ReturnType<typeof setTimeout> | null }));
 
 /**
  * Pede o envio sem esperar. Se a janela está ocupada, agenda uma nova tentativa para o começo da próxima (um único
  * timer por processo, sem segurar o processo vivo): assim o erro novo recebido no meio da janela não espera o próximo erro.
  */
 export function scheduleErrorAlertFlush(): void {
-  if (timer) return;
+  if (timerState.timer) return;
   void flushErrorAlerts().then((result) => {
-    if (result.sent === false && result.reason === "RATE_LIMITED" && !timer) {
+    if (result.sent === false && result.reason === "RATE_LIMITED" && !timerState.timer) {
       const wait = WINDOW_MS - (Date.now() % WINDOW_MS) + 1_000;
-      timer = setTimeout(() => {
-        timer = null;
+      timerState.timer = setTimeout(() => {
+        timerState.timer = null;
         void flushErrorAlerts();
       }, wait);
-      timer.unref?.();
+      timerState.timer.unref?.();
     }
   });
 }
 
 /** Só para testes. */
 export function __resetAlertTimerForTests() {
-  if (timer) clearTimeout(timer);
-  timer = null;
+  if (timerState.timer) clearTimeout(timerState.timer);
+  timerState.timer = null;
 }

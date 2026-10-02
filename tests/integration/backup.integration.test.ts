@@ -68,7 +68,7 @@ async function resetConfig() {
 }
 
 async function makeAdmin(isPlatformAdmin = true) {
-  const u = await prisma.user.create({ data: { email: `bkp-${run}-${randomUUID().slice(0, 6)}@example.com`, passwordHash: "x", emailVerifiedAt: new Date(), isPlatformAdmin } });
+  const u = await prisma.user.create({ data: { email: `bkp-${run}-${randomUUID().slice(0, 6)}@example.com`, passwordHash: "x", emailVerifiedAt: new Date(), isPlatformAdmin, totpSecretEnc: isPlatformAdmin ? "enc:v1:x" : null, totpEnabledAt: isPlatformAdmin ? new Date() : null } });
   userIds.push(u.id);
   return u;
 }
@@ -89,7 +89,7 @@ function fakeExec(overrides: { list?: string; fail?: Error; version?: string } =
 }
 
 async function setS3Destination(extra: Record<string, unknown> = {}) {
-  await saveBackupConfig({ destination: "S3", s3Endpoint: "http://127.0.0.1:1", s3Bucket: "bkt", s3Region: "auto", s3AccessKey: "AKIA-TESTE", s3SecretKey: "segredo-do-bucket-123" }, "adm");
+  await saveBackupConfig({ destination: "S3", s3Endpoint: "https://s3.backup-teste.invalid", s3Bucket: "bkt", s3Region: "auto", s3AccessKey: "AKIA-TESTE", s3SecretKey: "segredo-do-bucket-123" }, "adm");
   if (Object.keys(extra).length > 0) await prisma.backupConfig.update({ where: { id: 1 }, data: extra });
 }
 

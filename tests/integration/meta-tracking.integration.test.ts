@@ -52,7 +52,7 @@ async function settle() {
 }
 
 beforeAll(async () => {
-  const admin = await prisma.user.create({ data: { email: `adm-meta-${randomUUID()}@example.com`, passwordHash: "x", isPlatformAdmin: true } });
+  const admin = await prisma.user.create({ data: { email: `adm-meta-${randomUUID()}@example.com`, passwordHash: "x", isPlatformAdmin: true, totpSecretEnc: "enc:v1:x", totpEnabledAt: new Date() } });
   adminId = admin.id;
   const row = await prisma.platformSettings.findUnique({ where: { id: 1 } });
   originalSettings = row ? { metaPixelId: row.metaPixelId, metaCapiTokenEnc: row.metaCapiTokenEnc, metaTestEventCode: row.metaTestEventCode, metaEnabled: row.metaEnabled } : null;

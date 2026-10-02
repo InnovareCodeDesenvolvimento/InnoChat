@@ -120,7 +120,7 @@ describe("bootstrapInstallCodeIfNeeded + installPlatformAdmin — instalação �
 
   it("bootstrapInstallCodeIfNeeded não faz nada (nem loga) quando já existe um admin", async () => {
     const email = `it-install-existing-${Date.now()}-${randomUUID().slice(0, 6)}@example.com`;
-    const admin = await prisma.user.create({ data: { email, passwordHash: "x", isPlatformAdmin: true } });
+    const admin = await prisma.user.create({ data: { email, passwordHash: "x", isPlatformAdmin: true, totpSecretEnc: "enc:v1:x", totpEnabledAt: new Date() } });
     createdUserIds.push(admin.id);
 
     const spy = captureConsoleLog();

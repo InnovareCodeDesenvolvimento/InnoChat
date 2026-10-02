@@ -41,6 +41,8 @@ const CHAT_MESSAGE_RETENTION_DAYS = 90;
 const CHAT_PURGE_BATCH = 5000;
 const CHAT_PURGE_MAX_BATCHES = 20;
 const BILLING_EMAIL_MARK_RETENTION_DAYS = 90;
+/** Linhas `meta-signup`/`meta-capi` de ProviderEvent (Pixel/CAPI). */
+export const META_TRACKING_RETENTION_DAYS = 180;
 /** Destino completo e texto enviado dos avisos de cobrança (registro do Admin): 12 meses, depois só fica o mascarado. */
 const BILLING_NOTICE_PERSONAL_DATA_RETENTION_DAYS = 365;
 
@@ -142,6 +144,16 @@ export async function runMaintenanceTick(now: Date = new Date()): Promise<Mainte
     await prisma.providerEvent.deleteMany({ where: { provider: "billing-email", processedAt: { not: null, lt: billingEmailCutoff } } });
   } catch (error) {
     logger.warn("maintenance.billing_email_marks_purge_failed", { errorMessage: error instanceof Error ? error.message : String(error) });
+  }
+
+  // Pixel/CAPI (Melhoria 5): o aceite do cadastro (`meta-signup`: IP, navegador, `_fbp`/`_fbc`) e a trava do Purchase
+  // (`meta-capi`) não precisam durar mais que 180 dias: o Purchase do primeiro pagamento sai bem antes disso.
+  // Falha isolada, fora do summary.
+  try {
+    const metaCutoff = new Date(now.getTime() - META_TRACKING_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+    await prisma.providerEvent.deleteMany({ where: { provider: { in: ["meta-signup", "meta-capi"] }, createdAt: { lt: metaCutoff } } });
+  } catch (error) {
+    logger.warn("maintenance.meta_tracking_purge_failed", { errorMessage: error instanceof Error ? error.message : String(error) });
   }
 
   // Registro de envios da régua (F6): o destino completo (e-mail/telefone) e o texto enviado saem depois de 12 meses

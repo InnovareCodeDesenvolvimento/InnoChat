@@ -142,11 +142,9 @@ test.describe.serial("2FA: ataques", () => {
   });
 
   test("replay do desafio entre a tela (Server Action) e a rota /api/auth: o desafio gasto não vale de novo", async ({ page }) => {
-    // BUG CONHECIDO (Íris, 2026-10-02): o estado do desafio (usado / nº de erros) e os limites de tentativa vivem em Map de
-    // módulo; a Server Action do login e a rota /api/auth/callback/two-factor rodam em instâncias de módulo diferentes no
-    // build de produção, então cada porta tem o seu "caderninho". Quando corrigirem (estado em globalThis ou no banco),
-    // este teste passa e o Playwright avisa que o 'fail' esperado não aconteceu: aí é só remover a linha abaixo.
-    test.fail(true, "desafio de uso único não vale entre a Server Action e a rota do Auth.js");
+    // Regressão (Íris, 2026-10-02): o estado do desafio (usado / nº de erros) e os limites de tentativa viviam em Map de
+    // módulo, e a Server Action do login e a rota /api/auth/callback/two-factor rodam em cópias diferentes do módulo no build
+    // de produção (cada porta tinha o seu "caderninho"). Corrigido guardando o estado em `globalThis` (`src/lib/global-state.ts`).
     const u = await createUser("desafio", { twoFactor: true });
     const challenge = await challengeFromUi(page, u.email);
     await page.getByLabel("Código de verificação").fill(totpCode(u.secret));

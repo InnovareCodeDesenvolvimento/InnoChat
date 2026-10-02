@@ -29,7 +29,7 @@ export default async function CadastroPage({ searchParams }: { searchParams: Pro
           </>
         }
       />
-      <MetaTracking />
+      <MetaTracking stripQuery />
     </AuthShell>
   );
 }

@@ -304,3 +304,37 @@ export function subscriptionCancelEmail(params: {
     ctx: params.ctx,
   });
 }
+
+export type TwoFactorChange = "ENABLED" | "DISABLED" | "RESET_BY_ADMIN";
+
+/** Aviso de mudança na verificação em 2 etapas da conta (quem não fez isso precisa agir rápido). */
+export function twoFactorChangedEmail(params: { change: TwoFactorChange; whenBr: string; ctx?: EmailContext }): Built {
+  const copy: Record<TwoFactorChange, { subject: string; title: string; body: string }> = {
+    ENABLED: {
+      subject: "Verificação em 2 etapas ativada no InnoChat",
+      title: "Verificação em 2 etapas ativada",
+      body: `A verificação em 2 etapas da sua conta foi ativada em ${params.whenBr}. Daqui pra frente, o login pede a senha e o código do app. Por segurança, os outros aparelhos conectados saíram da conta.`,
+    },
+    DISABLED: {
+      subject: "Verificação em 2 etapas desativada no InnoChat",
+      title: "Verificação em 2 etapas desativada",
+      body: `A verificação em 2 etapas da sua conta foi desativada em ${params.whenBr}. Agora só a senha protege o acesso.`,
+    },
+    RESET_BY_ADMIN: {
+      subject: "Verificação em 2 etapas redefinida no InnoChat",
+      title: "Verificação em 2 etapas redefinida",
+      body: `Um administrador do InnoChat redefiniu a verificação em 2 etapas da sua conta em ${params.whenBr}, a pedido de quem tem acesso a ela. Você saiu de todos os aparelhos. No próximo acesso, entre com a senha e cadastre o app de novo.`,
+    },
+  };
+  const c = copy[params.change];
+  const footerReason = "Você recebeu este e-mail porque houve uma mudança na segurança da sua conta no InnoChat.";
+  const warning = "Não foi você? Troque a senha agora e fale com o suporte.";
+  return build({
+    subject: c.subject,
+    preheader: "Mudou a segurança da sua conta.",
+    rows: [heading(c.title), paragraph(c.body), note(warning)].join("\n"),
+    text: `${c.body}\n\n${warning}`,
+    footerReason,
+    ctx: params.ctx,
+  });
+}

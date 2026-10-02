@@ -88,7 +88,7 @@ let adminId = "";
 let savedEnabled = false;
 
 async function makeUser(isPlatformAdmin: boolean) {
-  const u = await prisma.user.create({ data: { email: `it-pwa-${randomUUID().slice(0, 8)}@example.test`, passwordHash: "x", isPlatformAdmin } });
+  const u = await prisma.user.create({ data: { email: `it-pwa-${randomUUID().slice(0, 8)}@example.test`, passwordHash: "x", isPlatformAdmin, totpSecretEnc: isPlatformAdmin ? "enc:v1:x" : null, totpEnabledAt: isPlatformAdmin ? new Date() : null } });
   userIds.push(u.id);
   return u;
 }

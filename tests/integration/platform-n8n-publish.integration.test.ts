@@ -74,7 +74,7 @@ describe("publicar fluxo — persistência em PlatformSettings", () => {
     stubFetch();
     const build = loadBundledBuildFlow();
     const originalHash = canonicalFlowHash(liveWorkflow.nodes, liveWorkflow.connections);
-    const admin = await prisma.user.create({ data: { email: `it-publish-${randomUUID().slice(0, 8)}@example.com`, passwordHash: "x", isPlatformAdmin: true } });
+    const admin = await prisma.user.create({ data: { email: `it-publish-${randomUUID().slice(0, 8)}@example.com`, passwordHash: "x", isPlatformAdmin: true, totpSecretEnc: "enc:v1:x", totpEnabledAt: new Date() } });
 
     try {
       const first = await getBotFlowStatus();

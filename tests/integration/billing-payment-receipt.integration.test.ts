@@ -86,7 +86,7 @@ describe("recibo de pagamento", () => {
 
   it("baixa manual: envia 1 vez; repetir a baixa manual não reenvia", async () => {
     const { invoice } = await makeOpenInvoice("manual");
-    const admin = await prisma.user.create({ data: { email: `adm-${randomUUID()}@example.com`, passwordHash: "x", isPlatformAdmin: true } });
+    const admin = await prisma.user.create({ data: { email: `adm-${randomUUID()}@example.com`, passwordHash: "x", isPlatformAdmin: true, totpSecretEnc: "enc:v1:x", totpEnabledAt: new Date() } });
     try {
       await markInvoicePaidManually(invoice.id, admin.id, "pagou por fora");
       await markInvoicePaidManually(invoice.id, admin.id, "pagou por fora");

@@ -72,6 +72,22 @@ const HELP_ENTRIES = {
     ],
     tip: "Dá para remarcar ou cancelar até 2 horas antes do horário marcado. Vale para a equipe no painel e para o cliente no WhatsApp. Ex.: um horário das 15h pode ser mudado até as 13h.",
   },
+  "pagina.listaEspera": {
+    title: "Lista de espera",
+    purpose: "Guarda quem queria um horário num dia cheio. Quando alguém cancela ou remarca, o primeiro da fila que combina recebe o horário no WhatsApp e tem 30 minutos para aceitar.",
+    steps: [
+      "O bot oferece a lista quando o cliente pede um dia sem horário livre. Você também pode usar \"Adicionar à lista\" para quem ligou ou veio ao balcão.",
+      "A fila segue a ordem de chegada. O aviso vai para o primeiro que combina com o serviço, o profissional, o dia e a faixa de horário que ele pediu.",
+      "O cliente responde \"sim\" para ficar com o horário ou \"não\" para deixar passar. Se não responder em 30 minutos, o horário vai para o próximo.",
+      "\"Oferecer encaixe\" manda a oferta agora, sem esperar um cancelamento, se já existir um horário livre que caiba no pedido.",
+    ],
+    examples: [
+      "A Ana queria corte na sexta, mas só tinha vaga à tarde e ela só podia de manhã. Entrou na lista. Na quinta o Bruno cancelou o das 9h: a Ana recebe o aviso e responde \"sim\".",
+      "O horário foi oferecido à Ana e, no meio tempo, você marcou outra pessoa nele pelo painel. Quando a Ana responde \"sim\", o bot explica que o horário foi ocupado e ela continua na fila.",
+    ],
+    tip: "Os clientes que estão em alguma lista veem a opção \"Minha lista de espera\" no menu do bot e podem sair quando quiserem. O texto das mensagens dá para mudar em Mensagens do bot.",
+    warning: "Para o aviso sair, o número de WhatsApp da empresa precisa estar conectado. Clientes com o bot pausado ou em conversa com a equipe são pulados e a vez passa ao próximo.",
+  },
   "pagina.atendimento": {
     title: "Atendimento",
     purpose: "Aqui você responde pelo painel os clientes que pediram para falar com uma pessoa no WhatsApp. Enquanto você atende, o bot fica em silêncio para aquele cliente.",
@@ -674,8 +690,8 @@ const HELP_ENTRIES = {
       "Na hora de entrar, depois da senha, a tela pede o código. Você abre o app, vê 482 913 e digita.",
       "Perdeu ou trocou de celular? Na tela do código, digite um código de recuperação, como abcde-fghij. Cada um vale uma vez só.",
     ],
-    tip: "Quem entra com o Google não precisa disso: o próprio Google já confere.",
-    warning: "Para o administrador da plataforma a verificação é obrigatória. Se a pessoa perder o celular e os códigos, outro administrador pode redefinir.",
+    tip: "Quem entra com o Google (dono ou equipe) não vê esse passo: o próprio Google já confere. O administrador da plataforma não entra pelo Google; ele usa senha e código.",
+    warning: "Para o administrador da plataforma a verificação é obrigatória, e sem ela nenhuma tela de administração funciona. Se a pessoa perder o celular e os códigos, outro administrador pode redefinir.",
   },
   "admin.doisFatores": {
     title: "Verificação em 2 etapas da equipe",
@@ -960,6 +976,35 @@ const HELP_ENTRIES = {
     ],
     examples: ["O dono atende pelo celular (84) 99999-0000: coloque esse número e os avisos chegam nele, além do e-mail."],
     tip: "Se preferir, feche o aviso no X. Ele volta na próxima vez que você entrar no painel.",
+  },
+  "profissional.comissao": {
+    title: "Comissão do profissional",
+    purpose: "Quanto do valor de cada atendimento concluído fica para o profissional. O Relatórios usa isso para mostrar quanto você deve pagar a cada um.",
+    steps: [
+      "Em \"Comissão padrão\", digite o percentual que vale para todos os serviços dele.",
+      "Se algum serviço paga diferente, preencha o percentual ao lado do serviço. Deixe em branco para usar o padrão.",
+      "Clique em Salvar comissão.",
+    ],
+    examples: [
+      "A Ana ganha 40% em corte e 30% em química: coloque 40 na comissão padrão e 30 ao lado de Química.",
+      "A Bia não comissiona em retoque: escreva 0 ao lado de Retoque. O zero vale, ele não volta para o padrão.",
+    ],
+    tip: "Mudar a comissão vale para os atendimentos concluídos daqui pra frente. O que já foi concluído guarda o valor da época.",
+  },
+  "pagina.relatorios": {
+    title: "Relatórios",
+    purpose: "Mostra quanto a empresa faturou no período, por serviço e por profissional, com ticket médio, faltas e a comissão a pagar. Só o dono vê esta tela.",
+    steps: [
+      "Escolha o período: este mês, mês passado, últimos 30 dias ou datas à sua escolha.",
+      "Leia os totais no topo e as tabelas por serviço e por profissional.",
+      "Clique em \"Baixar CSV\" para abrir os números numa planilha.",
+    ],
+    examples: [
+      "No fim do mês, escolha \"Este mês\" e veja a coluna Comissão a pagar de cada profissional para fechar o acerto com a equipe.",
+      "O Bruno faltou em 3 de 20 horários marcados: a taxa de faltas dele aparece como 13,0%.",
+    ],
+    tip: "Só entram atendimentos marcados como Concluído. Se algo ficou aberto na agenda, conclua lá para contar aqui.",
+    warning: "Atendimentos concluídos antes desta tela existir usam o preço e a comissão de hoje, por isso aparecem como valores estimados.",
   },
 } as const satisfies Record<string, HelpEntry>;
 

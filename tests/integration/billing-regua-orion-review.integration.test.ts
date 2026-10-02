@@ -166,7 +166,7 @@ describe("3. Pix antigo não pode ser pago depois de regerado", () => {
     const sub = await prisma.subscription.findUniqueOrThrow({ where: { id: s.sub.id } });
     expect(sub.currentPeriodEnd.getTime()).toBeLessThan(at("2026-12-01T00:00:00Z").getTime());
 
-    const admin = await prisma.user.create({ data: { email: `it-dup-${randomUUID()}@example.com`, passwordHash: "x", isPlatformAdmin: true } });
+    const admin = await prisma.user.create({ data: { email: `it-dup-${randomUUID()}@example.com`, passwordHash: "x", isPlatformAdmin: true, totpSecretEnc: "enc:v1:x", totpEnabledAt: new Date() } });
     fixtures.userIds.push(admin.id);
     const bell = await listPlatformNotifications(admin.id);
     const dup = bell.items.filter((i) => i.kind === "PAYMENT_DUPLICATE" && i.id === `pdup:${s.invoice.id}`);

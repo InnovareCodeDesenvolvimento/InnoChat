@@ -13,6 +13,12 @@
 #
 # A flag --confirmar existe pelo mesmo motivo: nenhuma restauração acontece
 # por acidente de histórico do shell.
+#
+# SENHA FORA DOS ARGUMENTOS: o script nunca passa a senha ao pg_restore/psql
+# por argumento (`ps` de qualquer usuário da máquina a mostraria). Se a URL
+# trouxer senha, ela é tirada da URL e vai pela variável PGPASSWORD (só o
+# ambiente do processo). Melhor ainda: passe a URL SEM senha e exporte
+# PGPASSWORD antes de rodar.
 
 set -eu
 
@@ -44,8 +50,30 @@ fi
 
 TABELAS="$(pg_restore --list "$ARQUIVO" | grep -c 'TABLE DATA' || true)"
 
-# Esconde a senha ao ecoar o destino.
-DESTINO_SEGURO="$(echo "$DESTINO" | sed -E 's#(://[^:]+:)[^@]+@#\1***@#')"
+# Separa a senha da URL (printf é builtin e sed/awk leem da entrada padrão: a senha nunca vira argumento de processo).
+# Sem usuário:senha@ na URL, vale o PGPASSWORD que já estiver no ambiente.
+SENHA_NA_URL="$(printf '%s' "$DESTINO" | sed -n -E 's#^[A-Za-z][A-Za-z0-9+.-]*://[^:@/]+:([^@]*)@.*#\1#p')"
+if [ -n "$SENHA_NA_URL" ]; then
+  # A senha numa URL vem com %XX; o PGPASSWORD é literal.
+  PGPASSWORD="$(printf '%s' "$SENHA_NA_URL" | LC_ALL=C awk '{
+    hex = "0123456789ABCDEF"; out = ""; s = $0; n = length(s); i = 1
+    while (i <= n) {
+      c = substr(s, i, 1)
+      if (c == "%" && i + 2 <= n) {
+        a = index(hex, toupper(substr(s, i + 1, 1))) - 1
+        b = index(hex, toupper(substr(s, i + 2, 1))) - 1
+        if (a >= 0 && b >= 0) { out = out sprintf("%c", a * 16 + b); i += 3; continue }
+      }
+      out = out c; i++
+    }
+    printf "%s", out
+  }')"
+  export PGPASSWORD
+  DESTINO="$(printf '%s' "$DESTINO" | sed -E 's#^([A-Za-z][A-Za-z0-9+.-]*://[^:@/]+):[^@]*@#\1@#')"
+fi
+unset SENHA_NA_URL
+# `DESTINO` já não tem senha: pode ser ecoado e passado como argumento.
+DESTINO_SEGURO="$DESTINO"
 
 echo "Vai restaurar:"
 echo "  arquivo : $ARQUIVO ($TABELAS tabela(s) com dados)"

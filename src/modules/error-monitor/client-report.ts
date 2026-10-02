@@ -28,6 +28,32 @@ export type ClientErrorOutcome =
   | { status: 202 }
   | { status: 400 | 413 | 429; code: "INVALID_PAYLOAD" | "PAYLOAD_TOO_LARGE" | "RATE_LIMITED"; message: string; retryAfterSeconds?: number };
 
+/**
+ * Lê o corpo contando os bytes e para ao passar do limite (não bufferiza o que o atacante mandar sem `Content-Length`,
+ * nem com `Transfer-Encoding: chunked`). Devolve `null` se passou do limite.
+ */
+export async function readBodyWithLimit(request: { body: ReadableStream<Uint8Array<ArrayBufferLike>> | null }, maxBytes: number): Promise<string | null> {
+  if (!request.body) return "";
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel().catch(() => undefined);
+        return null;
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock?.();
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
+
 /** Mesma origem: se o navegador mandou `Origin`, ele tem que ser o do próprio site (barra relato forjado de outro domínio). */
 export function isSameOrigin(origin: string | null, host: string | null): boolean {
   if (!origin) return true;

@@ -12,11 +12,28 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
 import {
   beginTwoFactorSetupAction,
-  confirmTwoFactorSetupAction,
   disableTwoFactorAction,
   regenerateRecoveryCodesAction,
 } from "@/modules/two-factor/actions";
 import type { TwoFactorSetupStart, TwoFactorStatus } from "@/modules/two-factor/service";
+import type { Result } from "@/lib/result";
+
+/**
+ * Confirma a ativação por `fetch` (rota, não Server Action): o servidor derruba as outras sessões e renova o cookie desta,
+ * e uma action refaria a página com o cookie antigo (a pessoa cairia no login).
+ */
+async function confirmTwoFactorSetup(code: string): Promise<Result<{ recoveryCodes: string[] }>> {
+  try {
+    const response = await fetch("/api/two-factor/confirm", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code }),
+    });
+    return (await response.json()) as Result<{ recoveryCodes: string[] }>;
+  } catch {
+    return { ok: false, error: { code: "NETWORK", message: "Não deu para falar com o servidor. Confira a conexão e tente de novo." } };
+  }
+}
 
 type Step =
   | { kind: "idle" }
@@ -63,7 +80,7 @@ export function TwoFactorCard({ status, forced = false }: { status: TwoFactorSta
     e.preventDefault();
     setError(null);
     startTransition(async () => {
-      const result = await confirmTwoFactorSetupAction({ code });
+      const result = await confirmTwoFactorSetup(code);
       if (!result.ok) return setError(result.error.message);
       setCode("");
       setStep({ kind: "codes", codes: result.data.recoveryCodes });

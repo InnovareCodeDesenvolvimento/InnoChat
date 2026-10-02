@@ -16,6 +16,7 @@ import { logger } from "@/lib/logger";
 import { clientIp } from "@/lib/http/client-ip";
 import { getTrustedPublicBaseUrlCached } from "@/lib/public-url";
 import { forgetSessionVersion, isSessionVersionCurrent, readSessionVersion } from "@/modules/auth/session-version";
+import { isSessionRefreshAllowed } from "@/modules/auth/session-refresh";
 
 /**
  * Auth.js v5 — Credentials (e-mail + senha) e, quando ligado em Admin > Configurações, Google;
@@ -212,7 +213,7 @@ async function buildConfig(): Promise<NextAuthConfig> {
         }
         return true;
       },
-      async jwt({ token, user, account }) {
+      async jwt({ token, user, account, trigger }) {
         if (account?.provider === "google") {
           // `user.id` do provedor é o `sub` do Google — o id do NOSSO usuário sai do vínculo.
           const userId = await userIdForGoogleSub(account.providerAccountId);
@@ -225,6 +226,16 @@ async function buildConfig(): Promise<NextAuthConfig> {
           token.userId = user.id;
         }
         if (!token.userId) return token;
+
+        // Renovação deliberada do `sv` (ativar a 2FA derruba as outras sessões e mantém esta). Só vale dentro do escopo
+        // aberto pela Server Action (`runWithSessionRefresh`); `update` vindo do navegador não passa daqui.
+        if (trigger === "update" && isSessionRefreshAllowed(token.userId as string)) {
+          forgetSessionVersion(token.userId as string);
+          const fresh = await readSessionVersion(token.userId as string, { fresh: true });
+          if (fresh === null) return null;
+          token.sv = fresh;
+          return token;
+        }
 
         // Login novo: grava a versão ATUAL (leitura fresca). Leituras seguintes: confere contra o
         // banco (cache de 5 s); versão diferente ou usuário removido => sessão inválida.
@@ -249,4 +260,4 @@ async function buildConfig(): Promise<NextAuthConfig> {
   };
 }
 
-export const { handlers, auth, signIn, signOut } = NextAuth(async () => buildConfig());
+export const { handlers, auth, signIn, signOut, unstable_update } = NextAuth(async () => buildConfig());

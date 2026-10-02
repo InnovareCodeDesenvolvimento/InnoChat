@@ -6,7 +6,6 @@ import { runAction, type Result } from "@/lib/result";
 import {
   adminResetTwoFactor,
   beginTwoFactorSetup,
-  confirmTwoFactorSetup,
   disableTwoFactor,
   getTwoFactorStatus,
   listCompanyTwoFactor,
@@ -19,7 +18,6 @@ import {
 
 /** Server Actions da verificação em 2 etapas. O id do usuário SEMPRE vem da sessão. */
 
-const codeSchema = z.object({ code: z.string().trim().min(1).max(32) });
 const proofSchema = z
   .object({ password: z.string().max(200).optional(), code: z.string().trim().max(32).optional() })
   .refine((v) => !!v.password || !!v.code, { message: "Informe sua senha ou um código." });
@@ -33,12 +31,8 @@ export async function beginTwoFactorSetupAction(): Promise<Result<TwoFactorSetup
   return runAction(async () => beginTwoFactorSetup((await requireSessionUser()).id));
 }
 
-export async function confirmTwoFactorSetupAction(input: unknown): Promise<Result<{ recoveryCodes: string[] }>> {
-  return runAction(async () => {
-    const user = await requireSessionUser();
-    return confirmTwoFactorSetup(user.id, codeSchema.parse(input).code);
-  });
-}
+// Confirmar a ativação NÃO é Server Action: troca o cookie de sessão e uma action refaria a página com o cookie antigo
+// (ver `src/app/api/two-factor/confirm/route.ts`).
 
 export async function disableTwoFactorAction(input: unknown): Promise<Result<{ disabled: true }>> {
   return runAction(async () => {

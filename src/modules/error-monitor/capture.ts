@@ -2,6 +2,7 @@ import { getPrisma } from "@/lib/db/prisma";
 import { upsertErrorGroup } from "@/lib/db/error-queries";
 import { APP_VERSION } from "@/lib/app-info";
 import { prepareError, type RawErrorInput } from "@/core/error-monitor/prepare";
+import { globalState } from "@/lib/global-state";
 import { scheduleErrorAlertFlush } from "./alert";
 
 /**
@@ -10,42 +11,58 @@ import { scheduleErrorAlertFlush } from "./alert";
  * - `captureError` é fire-and-forget: devolve na hora, qualquer falha vira um `console.warn` curto.
  * - Sem loop: o monitor não usa `logger.error` (que é um dos gatilhos da captura), só `console.warn`; e há um teto de
  *   gravações simultâneas, então um erro ao gravar erro não gera uma fila crescente.
- * - Sem avalanche: teto por minuto no processo todo e um intervalo mínimo por assinatura (um bug em loop não vira
- *   milhares de linhas). O contador do grupo perde as ocorrências descartadas; o que importa é o grupo e o alerta.
+ * - Sem avalanche: teto por minuto e um intervalo mínimo por assinatura (um bug em loop não vira milhares de linhas).
+ *   O contador do grupo perde as ocorrências descartadas; o que importa é o grupo e o alerta.
+ * - Orçamentos SEPARADOS por origem: o navegador (rota pública, qualquer um relata) tem teto próprio e pequeno de gravações
+ *   por minuto e de gravações simultâneas; quem despeja relato falso nunca consome o orçamento do erro real do servidor.
  * - Cada grupo guarda no máximo `EVENTS_PER_GROUP` ocorrências (as mais recentes); a retenção de 30 dias fica na manutenção.
  */
 
-const MAX_IN_FLIGHT = 5;
-const MAX_RECORDS_PER_MINUTE = 120;
 const SAME_FINGERPRINT_MIN_GAP_MS = 2_000;
 export const EVENTS_PER_GROUP = 50;
 
-let inFlight = 0;
-let windowStart = 0;
-let windowCount = 0;
-const lastByFingerprint = new Map<string, number>();
+type Source = "SERVER" | "CLIENT";
+export const BUDGETS: Record<Source, { maxInFlight: number; maxPerMinute: number }> = {
+  SERVER: { maxInFlight: 5, maxPerMinute: 120 },
+  CLIENT: { maxInFlight: 2, maxPerMinute: 30 },
+};
 
-function allowedByThrottle(fingerprint: string, now: number): boolean {
-  if (now - windowStart >= 60_000) {
-    windowStart = now;
-    windowCount = 0;
+// Em `globalThis` (ver `src/lib/global-state.ts`): os tetos precisam ser um só por processo, não um por bundle do Next.
+const shared = globalState("error-monitor-capture", () => ({
+  state: {
+    SERVER: { inFlight: 0, windowStart: 0, windowCount: 0 },
+    CLIENT: { inFlight: 0, windowStart: 0, windowCount: 0 },
+  } as Record<Source, { inFlight: number; windowStart: number; windowCount: number }>,
+  lastByFingerprint: new Map<string, number>(),
+}));
+const state = shared.state;
+const lastByFingerprint = shared.lastByFingerprint;
+
+function sourceOf(input: RawErrorInput): Source {
+  return input.source === "CLIENT" ? "CLIENT" : "SERVER";
+}
+
+function allowedByThrottle(source: Source, fingerprint: string, now: number): boolean {
+  const s = state[source];
+  if (now - s.windowStart >= 60_000) {
+    s.windowStart = now;
+    s.windowCount = 0;
   }
-  if (windowCount >= MAX_RECORDS_PER_MINUTE) return false;
-  const last = lastByFingerprint.get(fingerprint);
+  if (s.windowCount >= BUDGETS[source].maxPerMinute) return false;
+  const key = `${source}:${fingerprint}`;
+  const last = lastByFingerprint.get(key);
   if (last !== undefined && now - last < SAME_FINGERPRINT_MIN_GAP_MS) return false;
-  windowCount += 1;
-  lastByFingerprint.set(fingerprint, now);
+  s.windowCount += 1;
+  lastByFingerprint.set(key, now);
   if (lastByFingerprint.size > 500) {
-    for (const [key, at] of lastByFingerprint) if (now - at > 60_000) lastByFingerprint.delete(key);
+    for (const [k, at] of lastByFingerprint) if (now - at > 60_000) lastByFingerprint.delete(k);
   }
   return true;
 }
 
 /** Só para testes. */
 export function __resetCaptureThrottleForTests() {
-  inFlight = 0;
-  windowStart = 0;
-  windowCount = 0;
+  for (const source of ["SERVER", "CLIENT"] as const) Object.assign(state[source], { inFlight: 0, windowStart: 0, windowCount: 0 });
   lastByFingerprint.clear();
 }
 
@@ -53,11 +70,12 @@ export type RecordOutcome = { recorded: false; reason: "THROTTLED" | "BUSY" } | 
 
 /** Grava e devolve o resultado (usado nos testes e pela rota do navegador). Pode lançar: quem chama decide. */
 export async function recordError(input: RawErrorInput, now: Date = new Date()): Promise<RecordOutcome> {
-  if (inFlight >= MAX_IN_FLIGHT) return { recorded: false, reason: "BUSY" };
-  inFlight += 1;
+  const source = sourceOf(input);
+  if (state[source].inFlight >= BUDGETS[source].maxInFlight) return { recorded: false, reason: "BUSY" };
+  state[source].inFlight += 1;
   try {
     const prepared = prepareError({ ...input, version: input.version ?? APP_VERSION });
-    if (!allowedByThrottle(prepared.fingerprint, now.getTime())) return { recorded: false, reason: "THROTTLED" };
+    if (!allowedByThrottle(source, prepared.fingerprint, now.getTime())) return { recorded: false, reason: "THROTTLED" };
 
     const group = await upsertErrorGroup({
       fingerprint: prepared.fingerprint,
@@ -90,7 +108,7 @@ export async function recordError(input: RawErrorInput, now: Date = new Date()):
     if (group.status === "OPEN" && group.alertedAt === null) scheduleErrorAlertFlush();
     return { recorded: true, groupId: group.id, status: group.status };
   } finally {
-    inFlight -= 1;
+    state[source].inFlight -= 1;
   }
 }
 

@@ -19,7 +19,7 @@ const userIds: string[] = [];
 let saved: { salesWhatsappE164: string | null } | null = null;
 
 async function makeUser(isPlatformAdmin: boolean) {
-  const u = await prisma.user.create({ data: { email: `it-sw-${randomUUID().slice(0, 8)}@example.test`, passwordHash: "x", isPlatformAdmin } });
+  const u = await prisma.user.create({ data: { email: `it-sw-${randomUUID().slice(0, 8)}@example.test`, passwordHash: "x", isPlatformAdmin, totpSecretEnc: isPlatformAdmin ? "enc:v1:x" : null, totpEnabledAt: isPlatformAdmin ? new Date() : null } });
   userIds.push(u.id);
   return u;
 }

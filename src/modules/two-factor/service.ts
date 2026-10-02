@@ -6,6 +6,7 @@ import { logger } from "@/lib/logger";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { decryptSecret, encryptSecret } from "@/lib/crypto";
 import { forgetSessionVersion } from "@/modules/auth/session-version";
+import { loadEmailContext, sendMail, twoFactorChangedEmail, type TwoFactorChange } from "@/lib/email";
 import { buildOtpauthUri, formatSecretForHumans, generateTotpSecret, matchTotpStep, normalizeTotpInput } from "./totp";
 import { generateRecoveryCodes, hashRecoveryCode, normalizeRecoveryInput, RECOVERY_CODE_COUNT } from "./recovery";
 
@@ -23,6 +24,27 @@ export const TWO_FACTOR_ISSUER = "InnoChat";
 
 const VERIFY_USER_LIMIT = 10;
 const VERIFY_USER_WINDOW_MS = 15 * 60 * 1000;
+
+/**
+ * Avisa o dono da conta por e-mail quando a verificação em 2 etapas muda (ligou, desligou, admin redefiniu). Quem não
+ * fez a mudança precisa saber na hora. Fire-and-forget: SMTP fora do ar ou lento nunca atrasa nem derruba a ação, e o
+ * e-mail não leva segredo nenhum (só o fato e a data).
+ */
+export function notifyTwoFactorChange(userId: string, change: TwoFactorChange, at: Date = new Date()): Promise<void> {
+  const task = (async () => {
+    try {
+      const user = await getPrisma().user.findUnique({ where: { id: userId }, select: { email: true } });
+      if (!user) return;
+      const whenBr = at.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" });
+      const mail = twoFactorChangedEmail({ change, whenBr, ctx: await loadEmailContext().catch(() => undefined) });
+      await sendMail({ to: user.email, subject: mail.subject, html: mail.html, text: mail.text });
+    } catch (error) {
+      // `warn`, nunca `error`: não vira alerta do monitor por causa de um aviso que não saiu.
+      logger.warn("two_factor.notice_failed", { change, errorName: error instanceof Error ? error.name : "unknown" });
+    }
+  })();
+  return task;
+}
 
 export type TwoFactorStatus = {
   /** Ligada e valendo no login. */
@@ -111,13 +133,17 @@ export async function confirmTwoFactorSetup(userId: string, code: string, nowMs 
     // Condicional: duas confirmações simultâneas não ligam (nem geram códigos) duas vezes.
     const { count } = await tx.user.updateMany({
       where: { id: userId, totpEnabledAt: null, totpSecretEnc: user.totpSecretEnc },
-      data: { totpEnabledAt: new Date(nowMs), totpLastUsedStep: step },
+      // `sessionVersion` + 1: derruba as OUTRAS sessões (uma sessão roubada antes da 2FA não sobrevive a ela). Quem
+      // ativou segue logado: a Server Action renova o `sv` do JWT dela (`src/modules/auth/session-refresh.ts`).
+      data: { totpEnabledAt: new Date(nowMs), totpLastUsedStep: step, sessionVersion: { increment: 1 } },
     });
     if (count !== 1) throw new DomainError("TWO_FACTOR_ALREADY_ENABLED", "A verificação em 2 etapas já está ativa.");
     await tx.twoFactorRecoveryCode.deleteMany({ where: { userId } });
     await tx.twoFactorRecoveryCode.createMany({ data: recoveryRows(userId, recoveryCodes) });
   });
+  forgetSessionVersion(userId);
   logger.info("two_factor.enabled", { userId });
+  void notifyTwoFactorChange(userId, "ENABLED");
   return { recoveryCodes };
 }
 
@@ -193,6 +219,7 @@ export async function disableTwoFactor(userId: string, proof: { password?: strin
   await requireProof(userId, proof);
   await clearTwoFactor(userId);
   logger.info("two_factor.disabled", { userId });
+  void notifyTwoFactorChange(userId, "DISABLED");
 }
 
 /** Gera 10 códigos novos (os antigos deixam de valer). Exige senha ou código. */
@@ -240,6 +267,7 @@ export async function adminResetTwoFactor(adminId: string, targetUserId: string)
   if (!target) throw new DomainError("NOT_FOUND", "Usuário não encontrado.");
   await clearTwoFactor(targetUserId, { bumpSession: true });
   logger.info("two_factor.reset_by_admin", { adminId, targetUserId });
+  void notifyTwoFactorChange(targetUserId, "RESET_BY_ADMIN");
 }
 
 export type TwoFactorMemberRow = { userId: string; email: string; name: string | null; roleLabel: string; enabled: boolean };

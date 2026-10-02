@@ -262,7 +262,7 @@ afterAll(async () => {
 
 async function makeAdminUser() {
   const email = `it-n8n-sync-${Date.now()}-${randomUUID().slice(0, 6)}@example.com`;
-  const admin = await prisma.user.create({ data: { email, passwordHash: "x", isPlatformAdmin: true } });
+  const admin = await prisma.user.create({ data: { email, passwordHash: "x", isPlatformAdmin: true, totpSecretEnc: "enc:v1:x", totpEnabledAt: new Date() } });
   createdUserIds.push(admin.id);
   return admin;
 }

@@ -11,6 +11,7 @@ import { sendMail } from "@/lib/email";
 import { tryGetPublicBaseUrl } from "@/lib/public-url";
 import { encryptSecret } from "@/lib/crypto";
 import { readEncryptedSecret } from "@/modules/platform/secrets";
+import { checkS3EndpointResolved, checkS3EndpointShape } from "./s3-endpoint";
 import { pageInfoOf, resolvePage, type PageInfo, type PageSize } from "@/modules/billing/paging";
 import {
   DriveFailure,
@@ -172,6 +173,11 @@ export async function saveBackupConfig(input: BackupConfigInput, adminId: string
     if (input[key] !== undefined) data[key] = input[key];
   }
   if (input.s3SecretKey) data.s3SecretKeyEnc = encryptSecret(input.s3SecretKey);
+  // Endereço do bucket: https, sem IP privado/loopback/link-local (o DNS é conferido na hora de testar e de copiar).
+  if (typeof input.s3Endpoint === "string" && input.s3Endpoint.trim() !== "") {
+    const shape = checkS3EndpointShape(input.s3Endpoint);
+    if (!shape.ok) throw new DomainError("BACKUP_S3_ENDPOINT_INVALID", shape.message);
+  }
 
   // Pasta do Drive: aceita id ou URL. Recusar aqui é o único momento em que dá para avisar; um id
   // errado só apareceria de madrugada, como "pasta inacessível".
@@ -269,7 +275,10 @@ function driveAccess(config: BackupConfigRow): { getToken: TokenGetter; folderId
   return { getToken: serviceAccountTokenGetter(parseServiceAccountKey(key)), folderId: config.driveFolderId };
 }
 
-function s3Client(config: BackupConfigRow): S3Client {
+/** Cliente do S3, só depois de conferir o endereço (https, fora de rede interna) com o DNS de agora. */
+async function s3Client(config: BackupConfigRow): Promise<S3Client> {
+  const refusal = await checkS3EndpointResolved(config.s3Endpoint ?? "");
+  if (refusal) throw new BackupError(`Endereço do bucket recusado. ${refusal}`, "CONFIG");
   const secretAccessKey = secretOrThrow(config.s3SecretKeyEnc, "backup.s3SecretKey", "o segredo do bucket", "CREDENTIAL");
   return new S3Client({
     region: config.s3Region || "auto",
@@ -292,11 +301,14 @@ function s3Key(config: BackupConfigRow, fileName: string): string {
 function s3Failure(error: unknown, doing: string): BackupError {
   const name = error instanceof Error ? error.name : "";
   const message = error instanceof Error ? error.message : String(error);
+  // O detalhe cru do SDK fica só no log: ele pode trazer pedaços da resposta do servidor de destino (e, num endereço
+  // malicioso, virar canal de leitura de uma rede interna). A tela recebe uma mensagem amigável.
+  logger.warn("backup.s3.failed", { doing, errorName: name || "unknown", errorMessage: message.slice(0, 300) });
   if (["InvalidAccessKeyId", "SignatureDoesNotMatch", "AccessDenied", "InvalidToken", "ExpiredToken"].includes(name)) {
     return new BackupError(`${doing}: o bucket recusou a chave (${name}). Confira a chave de acesso, o segredo e se a chave tem permissão de gravar e apagar neste bucket.`, "CREDENTIAL");
   }
   if (name === "NoSuchBucket") return new BackupError(`${doing}: o bucket não existe nesse endereço. Confira o nome do bucket e o endereço.`, "FOLDER");
-  return new BackupError(`${doing}: ${message.slice(0, 300)}. Confira o endereço e a região. Se estiver certo, pode ser instabilidade de rede.`, "NETWORK");
+  return new BackupError(`${doing}: não deu para concluir. Confira o endereço e a região. Se estiver certo, pode ser instabilidade de rede; o detalhe técnico está no log do servidor.`, "NETWORK");
 }
 
 async function pruneS3(config: BackupConfigRow, s3: S3Client, keep: string): Promise<number> {
@@ -441,9 +453,16 @@ export async function runBackup(opts: { trigger: BackupTrigger; createdById?: st
   });
 
   const fileName = backupFileName(now);
-  const file = path.join(os.tmpdir(), `${randomUUID()}-${fileName}`);
+  // Dump com tudo da plataforma: pasta própria 0700 e arquivo 0600 (em /tmp o padrão seria legível por outros usuários).
+  // A pasta inteira some no `finally`. (Em Windows o modo é ignorado; produção é Linux.)
+  let workDir: string | null = null;
+  let file = "";
 
   try {
+    workDir = await fs.mkdtemp(path.join(os.tmpdir(), "innochat-backup-"));
+    await fs.chmod(workDir, 0o700);
+    file = path.join(workDir, `${randomUUID()}-${fileName}`);
+    await fs.writeFile(file, "", { mode: 0o600 });
     const env = pgEnvFromUrl(databaseUrl);
     await assertPgClientCompatible(exec, env);
 
@@ -460,7 +479,7 @@ export async function runBackup(opts: { trigger: BackupTrigger; createdById?: st
 
     let objectKey: string | null = null;
     if (destination === "S3") {
-      const s3 = s3Client(config);
+      const s3 = await s3Client(config);
       objectKey = s3Key(config, fileName);
       try {
         // Stream, não Buffer: um dump de 2 GB na memória derruba o container.
@@ -506,7 +525,7 @@ export async function runBackup(opts: { trigger: BackupTrigger; createdById?: st
   } finally {
     // Sempre: a trava presa impediria todo backup seguinte, e o arquivo temporário enche o disco do container.
     await releaseLock();
-    await fs.unlink(file).catch(() => undefined);
+    if (workDir) await fs.rm(workDir, { recursive: true, force: true }).catch(() => undefined);
   }
 }
 
@@ -651,7 +670,7 @@ export async function testBackupConnection(): Promise<ConnectionTestResult> {
   }
   try {
     if (destination === "S3") {
-      const s3 = s3Client(config);
+      const s3 = await s3Client(config);
       const key = s3Key(config, `.teste-conexao-${randomUUID().slice(0, 8)}.tmp`);
       try {
         await s3.send(new PutObjectCommand({ Bucket: config.s3Bucket!, Key: key, Body: "teste de conexão do InnoChat", ContentType: "text/plain" }));

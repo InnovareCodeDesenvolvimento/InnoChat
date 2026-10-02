@@ -49,7 +49,7 @@ beforeEach(async () => {
   h.resetMail();
   h.resetWhatsapp();
   if (!adminId) {
-    const admin = await prisma.user.create({ data: { email: `f6-admin-${randomUUID()}@example.com`, passwordHash: "x", emailVerifiedAt: new Date(), isPlatformAdmin: true } });
+    const admin = await prisma.user.create({ data: { email: `f6-admin-${randomUUID()}@example.com`, passwordHash: "x", emailVerifiedAt: new Date(), isPlatformAdmin: true, totpSecretEnc: "enc:v1:x", totpEnabledAt: new Date() } });
     adminId = admin.id;
     fixtures.userIds.push(admin.id);
   }

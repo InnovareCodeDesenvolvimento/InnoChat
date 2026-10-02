@@ -51,7 +51,7 @@ beforeAll(async () => {
   // usuário de verdade (não um id inventado), diferente do resto deste arquivo (que só lê/conta,
   // sem FK a satisfazer).
   const admin = await prisma.user.create({
-    data: { email: `it-legal-admin-${Date.now()}-${randomUUID().slice(0, 6)}@example.com`, passwordHash: "x", isPlatformAdmin: true },
+    data: { email: `it-legal-admin-${Date.now()}-${randomUUID().slice(0, 6)}@example.com`, passwordHash: "x", isPlatformAdmin: true, totpSecretEnc: "enc:v1:x", totpEnabledAt: new Date() },
   });
   cleanupUserIds.push(admin.id);
   adminId = admin.id;

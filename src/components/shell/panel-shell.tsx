@@ -38,6 +38,8 @@ type PanelShellProps = {
   saveBillingContact?: SaveBillingContact;
   onboardingIncomplete?: boolean;
   whatsappNeedsAttention?: boolean;
+  /** Papel do usuário: STAFF não vê itens só do dono no menu. */
+  isOwner?: boolean;
   /** Status simples, já resolvido pelo servidor (`layout.tsx`) para o chip "ao vivo" da topbar —
    * ver docs/design/premium-spec.md §1/§10. Nunca calculado aqui: este componente só desenha. */
   whatsappStatus?: WhatsappTopbarStatus;
@@ -103,6 +105,7 @@ export function PanelShell({
   saveBillingContact,
   onboardingIncomplete = false,
   whatsappNeedsAttention = false,
+  isOwner = true,
   whatsappStatus = "none",
   emailVerified = true,
   tourAutoStart = false,
@@ -124,6 +127,7 @@ export function PanelShell({
             tenantSlug={tenantSlug}
             onboardingIncomplete={onboardingIncomplete}
             whatsappNeedsAttention={whatsappNeedsAttention}
+            isOwner={isOwner}
             billingOnly={billingOnly}
           />
         </div>
@@ -141,6 +145,7 @@ export function PanelShell({
               tenantSlug={tenantSlug}
               onboardingIncomplete={onboardingIncomplete}
               whatsappNeedsAttention={whatsappNeedsAttention}
+              isOwner={isOwner}
               billingOnly={billingOnly}
               brand={<Brand tenantName={tenantName} />}
               footer={

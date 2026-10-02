@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const record = vi.hoisted(() => vi.fn(async (...args: unknown[]) => (void args, { recorded: true as const, groupId: "g", status: "OPEN" })));
 vi.mock("./capture", () => ({ recordError: record }));
 
-const { handleClientErrorReport, isSameOrigin, CLIENT_ERROR_PER_IP_PER_MINUTE, CLIENT_ERROR_MAX_BODY_BYTES } = await import("./client-report");
+const { handleClientErrorReport, isSameOrigin, readBodyWithLimit, CLIENT_ERROR_PER_IP_PER_MINUTE, CLIENT_ERROR_MAX_BODY_BYTES } = await import("./client-report");
 const { __resetRateLimitsForTests } = await import("@/lib/rate-limit");
 
 const ok = JSON.stringify({ message: "boom", type: "TypeError", route: "/login" });
@@ -43,6 +43,39 @@ describe("relato do navegador", () => {
     record.mockRejectedValueOnce(new Error("db fora"));
     expect((await call(ok)).status).toBe(202);
     warn.mockRestore();
+  });
+});
+
+describe("leitura do corpo com limite (sem Content-Length)", () => {
+  const streamOf = (chunks: string[]) => {
+    const enc = new TextEncoder();
+    return new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const c of chunks) controller.enqueue(enc.encode(c));
+        controller.close();
+      },
+    });
+  };
+
+  it("lê corpo pequeno em vários pedaços", async () => {
+    expect(await readBodyWithLimit({ body: streamOf(['{"mess', 'age":"ok"}']) }, 100)).toBe('{"message":"ok"}');
+  });
+
+  it("para e devolve null assim que passa do limite, sem ler o resto", async () => {
+    let pulled = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulled += 1;
+        controller.enqueue(new Uint8Array(1024));
+        if (pulled > 1000) controller.close();
+      },
+    });
+    expect(await readBodyWithLimit({ body }, 4096)).toBeNull();
+    expect(pulled).toBeLessThan(20);
+  });
+
+  it("sem corpo devolve texto vazio", async () => {
+    expect(await readBodyWithLimit({ body: null }, 100)).toBe("");
   });
 });
 

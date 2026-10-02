@@ -4,6 +4,7 @@ import {
   Bot,
   Bug,
   Building2,
+  BarChart3,
   Calendar,
   CircleUser,
   ClipboardList,
@@ -11,6 +12,7 @@ import {
   CreditCard,
   LayoutDashboard,
   Headset,
+  Hourglass,
   Layers,
   MessageCircle,
   Receipt,
@@ -48,7 +50,7 @@ export type NavGroup = {
  * navegação colapsável — grupos fixos e sempre abertos (padrão anterior) ficam ruins quando há
  * 9+ seções. "Início" abre o grupo Operação porque é onde o dono passa mais tempo no dia a dia.
  */
-const TENANT_GROUPS_DEF: { id: string; label: string; items: { label: string; path: string; icon: LucideIcon }[] }[] = [
+const TENANT_GROUPS_DEF: { id: string; label: string; items: { label: string; path: string; icon: LucideIcon; ownerOnly?: boolean }[] }[] = [
   {
     id: "operacao",
     label: "Operação",
@@ -57,7 +59,9 @@ const TENANT_GROUPS_DEF: { id: string; label: string; items: { label: string; pa
       { label: "Atendimento", path: "atendimento", icon: Headset },
       { label: "Agenda", path: "agenda", icon: Calendar },
       { label: "Agendamentos", path: "agendamentos", icon: ClipboardList },
+      { label: "Lista de espera", path: "lista-de-espera", icon: Hourglass },
       { label: "Clientes", path: "clientes", icon: Users },
+      { label: "Relatórios", path: "relatorios", icon: BarChart3, ownerOnly: true },
     ],
   },
   {
@@ -98,12 +102,13 @@ export function tenantOnboardingItem(tenantSlug: string): NavItem | null {
 
 export function tenantNavGroups(
   tenantSlug: string,
-  options: { whatsappNeedsAttention?: boolean } = {},
+  options: { whatsappNeedsAttention?: boolean; isOwner?: boolean } = {},
 ): NavGroup[] {
+  const isOwner = options.isOwner ?? true;
   return TENANT_GROUPS_DEF.map((group) => ({
     id: group.id,
     label: group.label,
-    items: group.items.map(({ label, path, icon }) => ({
+    items: group.items.filter((item) => isOwner || !item.ownerOnly).map(({ label, path, icon }) => ({
       label,
       icon,
       href: `/${tenantSlug}/${path}`,
@@ -116,7 +121,7 @@ export function tenantNavGroups(
 /** Lista plana — usada pela paleta de comando e por `section-label.tsx` (não precisam de grupo). */
 export function tenantNavItems(
   tenantSlug: string,
-  options: { includeOnboarding?: boolean; whatsappNeedsAttention?: boolean } = {},
+  options: { includeOnboarding?: boolean; whatsappNeedsAttention?: boolean; isOwner?: boolean } = {},
 ): NavItem[] {
   const items = tenantNavGroups(tenantSlug, options).flatMap((g) => g.items);
   const onboarding = options.includeOnboarding ? tenantOnboardingItem(tenantSlug) : null;

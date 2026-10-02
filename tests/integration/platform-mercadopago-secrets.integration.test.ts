@@ -61,7 +61,7 @@ function webhook(secret: string, requestId: string) {
 
 beforeAll(async () => {
   const admin = await prisma.user.create({
-    data: { email: `it-mp-admin-${Date.now()}-${randomUUID().slice(0, 6)}@example.com`, passwordHash: "x", isPlatformAdmin: true },
+    data: { email: `it-mp-admin-${Date.now()}-${randomUUID().slice(0, 6)}@example.com`, passwordHash: "x", isPlatformAdmin: true, totpSecretEnc: "enc:v1:x", totpEnabledAt: new Date() },
   });
   adminId = admin.id;
 });

@@ -50,13 +50,25 @@ function assertRateLimit(scope: string, key: string, limit: number, windowMs: nu
 const PREVIEW_LIMIT = 20;
 const PREVIEW_WINDOW_MS = 10 * 60 * 1000;
 
-/** Validação ao vivo do cupom no cadastro: vale para o plano padrão do cadastro e o ciclo escolhido? Quanto fica a 1ª fatura? */
+/** Única resposta pública para qualquer cupom que não vale (não existe, venceu, esgotou, outro plano ou ciclo). */
+const PUBLIC_COUPON_REFUSAL = "Esse cupom não existe ou não vale para este cadastro.";
+
+/**
+ * Validação ao vivo do cupom no cadastro: vale para o plano padrão do cadastro e o ciclo escolhido? Quanto fica a 1ª fatura?
+ * Rota pública: o motivo da recusa NUNCA sai daqui (vencido/esgotado/outro plano confirmaria que o código existe e
+ * ajudaria a minerar códigos). Os motivos detalhados ficam para o dono logado (`previewMyCouponAction`) e para o Admin.
+ */
 export async function previewSignupCouponAction(input: unknown): Promise<Result<CouponPreview>> {
   return runAction(async () => {
     assertRateLimit("coupon-preview", await clientIp(), PREVIEW_LIMIT, PREVIEW_WINDOW_MS);
     const data = z.object({ code: codeSchema, billingCycle: cycleSchema.optional() }).parse(input);
     const plan = await getDefaultSignupPlan();
-    return previewCoupon({ code: data.code, planId: plan.id, cycle: data.billingCycle ?? "MONTHLY" });
+    try {
+      return await previewCoupon({ code: data.code, planId: plan.id, cycle: data.billingCycle ?? "MONTHLY" });
+    } catch (error) {
+      if (error instanceof DomainError && error.code.startsWith("COUPON_")) throw new DomainError("COUPON_INVALID", PUBLIC_COUPON_REFUSAL);
+      throw error;
+    }
   });
 }
 

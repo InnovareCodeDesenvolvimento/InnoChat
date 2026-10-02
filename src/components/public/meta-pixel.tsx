@@ -9,6 +9,8 @@ import {
   clearConsent,
   loadPixel,
   readConsent,
+  revokePixel,
+  stripQueryFromLocation,
   trackPixel,
   writeConsent,
   type ConsentChoice,
@@ -20,7 +22,7 @@ import {
  * antes do "Aceitar"; "Recusar" grava a escolha e nada é carregado. Nas próximas visitas a escolha
  * é lembrada (localStorage) e o banner não volta, a não ser pelo link "Preferências de cookies".
  */
-export function MetaPixel({ pixelId }: { pixelId: string }) {
+export function MetaPixel({ pixelId, stripQuery = false }: { pixelId: string; stripQuery?: boolean }) {
   const [choice, setChoice] = useState<ConsentChoice | null>(null);
   const [ready, setReady] = useState(false);
   const [reopened, setReopened] = useState(false);
@@ -38,6 +40,7 @@ export function MetaPixel({ pixelId }: { pixelId: string }) {
   useEffect(() => {
     function reopen() {
       clearConsent();
+      revokePixel();
       setChoice(null);
       setReopened(true);
     }
@@ -48,9 +51,11 @@ export function MetaPixel({ pixelId }: { pixelId: string }) {
   // Aceitou: carrega o Pixel e conta a visita desta página.
   useEffect(() => {
     if (choice !== "granted") return;
+    // O Pixel manda a URL da página à Meta: no cadastro ela sai sem query (nada de e-mail, nome ou token).
+    if (stripQuery) stripQueryFromLocation();
     loadPixel(pixelId);
     trackPixel("PageView");
-  }, [choice, pixelId]);
+  }, [choice, pixelId, stripQuery]);
 
   // Banner reaberto pelo rodapé leva o foco para dentro (quem pediu está no teclado ou no leitor de tela).
   useEffect(() => {
@@ -59,6 +64,7 @@ export function MetaPixel({ pixelId }: { pixelId: string }) {
 
   const decide = useCallback((next: ConsentChoice) => {
     writeConsent(next);
+    if (next === "denied") revokePixel();
     setChoice(next);
     setReopened(false);
   }, []);

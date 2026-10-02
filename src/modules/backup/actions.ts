@@ -36,7 +36,7 @@ const saveSchema = z.object({
   alertAfterHours: z.number().int().min(6).max(720).optional(),
   destination: z.enum(["S3", "DRIVE"]).nullable().optional(),
   driveMode: z.enum(["SERVICE_ACCOUNT", "OAUTH"]).optional(),
-  s3Endpoint: z.string().trim().url("O endereço do bucket precisa começar com https://").max(255).nullable().optional().or(z.literal("")),
+  s3Endpoint: z.string().trim().url("O endereço do bucket precisa começar com https://").startsWith("https://", "O endereço do bucket precisa começar com https://").max(255).nullable().optional().or(z.literal("")),
   s3Bucket: optionalText(255),
   s3Region: optionalText(60),
   s3Prefix: optionalText(120),

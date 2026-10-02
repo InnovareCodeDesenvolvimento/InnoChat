@@ -46,7 +46,7 @@ const CLIENT_SECRET = ["GOCSPX", "segredo-de-teste-falso"].join("-");
 
 beforeAll(async () => {
   process.env.AUTH_SECRET ??= "test-secret-not-used-in-integration-tests";
-  const admin = await prisma.user.create({ data: { email: `it-google-admin-${run}@example.com`, passwordHash: await hashPassword("x-senha-longa-123"), isPlatformAdmin: true } });
+  const admin = await prisma.user.create({ data: { email: `it-google-admin-${run}@example.com`, passwordHash: await hashPassword("x-senha-longa-123"), isPlatformAdmin: true, totpSecretEnc: "enc:v1:x", totpEnabledAt: new Date() } });
   adminId = admin.id;
   createdUserIds.push(admin.id);
 });

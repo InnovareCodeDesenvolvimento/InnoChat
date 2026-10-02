@@ -8,19 +8,23 @@
  * existe ainda).
  */
 
+import { globalState } from "./global-state";
+
 type Bucket = { count: number; resetAt: number };
 
-const buckets = new Map<string, Bucket>();
+// Em `globalThis`: o Next empacota este módulo uma vez por bundle (Server Action x Route Handler) e um `Map` de módulo
+// viraria vários contadores, dobrando o teto de tentativas (ver `global-state.ts`).
+const state = globalState("rate-limit", () => ({ buckets: new Map<string, Bucket>(), callsSinceSweep: 0 }));
+const buckets = state.buckets;
 
 // Evita crescimento sem limite do Map em um processo de vida longa: poda entradas expiradas a
 // cada N chamadas em vez de um setInterval (sem timer para gerenciar em teste/serverless).
-let callsSinceSweep = 0;
 const SWEEP_EVERY = 200;
 
 function sweep(now: number) {
-  callsSinceSweep += 1;
-  if (callsSinceSweep < SWEEP_EVERY) return;
-  callsSinceSweep = 0;
+  state.callsSinceSweep += 1;
+  if (state.callsSinceSweep < SWEEP_EVERY) return;
+  state.callsSinceSweep = 0;
   for (const [key, bucket] of buckets) {
     if (bucket.resetAt <= now) buckets.delete(key);
   }

@@ -70,7 +70,10 @@ const FBEVENTS_SRC = "https://connect.facebook.net/en_US/fbevents.js";
 /** Carrega o fbevents.js (uma vez) e inicia o Pixel. O ID já foi validado no servidor (só dígitos). */
 export function loadPixel(pixelId: string): void {
   if (typeof window === "undefined" || !/^\d{5,20}$/.test(pixelId)) return;
-  if (window.__innochatPixelId === pixelId) return;
+  if (window.__innochatPixelId === pixelId) {
+    window.fbq?.("consent", "grant");
+    return;
+  }
   if (!window.fbq) {
     const fbq = function (...args: unknown[]) {
       if (fbq.callMethod) fbq.callMethod(...args);
@@ -91,9 +94,35 @@ export function loadPixel(pixelId: string): void {
   window.__innochatPixelId = pixelId;
 }
 
-/** `true` só se o visitante aceitou e o Pixel foi iniciado nesta página. */
+/**
+ * `true` só se o visitante aceitou (a escolha é relida AGORA, então quem recusa depois de aceitar
+ * para de enviar na hora) e o Pixel foi iniciado nesta página.
+ */
 export function isPixelActive(): boolean {
-  return typeof window !== "undefined" && typeof window.fbq === "function" && !!window.__innochatPixelId;
+  return (
+    typeof window !== "undefined" &&
+    typeof window.fbq === "function" &&
+    !!window.__innochatPixelId &&
+    readConsent() === "granted"
+  );
+}
+
+/** Quem retira o consentimento: avisa o Pixel já carregado para não enviar mais nada. */
+export function revokePixel(): void {
+  if (typeof window !== "undefined" && typeof window.fbq === "function") window.fbq("consent", "revoke");
+}
+
+/** A mesma URL sem query e sem fragmento (função pura, testável). */
+export function urlWithoutQuery(href: string): string {
+  const url = new URL(href);
+  return `${url.origin}${url.pathname}`;
+}
+
+/** Tira a query da barra de endereço (sem recarregar) antes de o Pixel ler a URL. */
+export function stripQueryFromLocation(): void {
+  if (typeof window === "undefined") return;
+  if (!window.location.search && !window.location.hash) return;
+  window.history.replaceState(window.history.state, "", urlWithoutQuery(window.location.href));
 }
 
 /** Dispara um evento do navegador. Sem Pixel ativo, não faz nada. `eventId` é o do par com a CAPI. */

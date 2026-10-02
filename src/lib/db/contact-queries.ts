@@ -56,12 +56,16 @@ export async function queryContactsWithStats(params: {
       )`
     : Prisma.empty;
 
+  // `botPausedUntil` é `timestamp(3)` SEM fuso (UTC): a data entra como texto ISO + `::timestamp` (padrão da casa), senão o
+  // Postgres converteria pelo fuso da sessão e o filtro "bot pausado" sairia deslocado. As colunas `startsAt` são
+  // `timestamptz`, então comparam com a data direta, sem risco.
+  const nowUtcText = now.toISOString();
   const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
   const filterClause =
     filter === "upcoming"
       ? Prisma.sql`AND stats."nextAppointmentAt" IS NOT NULL`
       : filter === "botPaused"
-        ? Prisma.sql`AND c."botPausedUntil" IS NOT NULL AND c."botPausedUntil" > ${now}`
+        ? Prisma.sql`AND c."botPausedUntil" IS NOT NULL AND c."botPausedUntil" > ${nowUtcText}::timestamp`
         : filter === "inactive90d"
           ? Prisma.sql`AND stats."appointmentsCount" > 0 AND (stats."lastAppointmentAt" IS NULL OR stats."lastAppointmentAt" < ${ninetyDaysAgo})`
           : Prisma.empty;

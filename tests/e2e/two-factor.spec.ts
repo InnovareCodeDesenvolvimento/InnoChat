@@ -59,9 +59,15 @@ test.describe.serial("Verificação em 2 etapas", () => {
     await prisma.user.deleteMany({ where: { email: { in: [ownerEmail, adminEmail] } } });
   });
 
-  test("dono ativa pela tela Minha conta e recebe os 10 códigos de recuperação", async ({ page }) => {
+  test("dono ativa pela tela Minha conta e recebe os 10 códigos de recuperação", async ({ page, browser }) => {
     await login(page, ownerEmail, PASSWORD);
     await expect(page).toHaveURL(new RegExp(`/${slug}/inicio`));
+    // Cópia da sessão em outro aparelho (uma sessão esquecida ou roubada): ativar a 2FA derruba essa cópia.
+    // Clona o cookie em vez de logar de novo: um login a mais gastaria o teto de logins por IP da suíte.
+    const otherDevice = await browser.newContext({ storageState: await page.context().storageState() });
+    const otherPage = await otherDevice.newPage();
+    await otherPage.goto(`/${slug}/inicio`);
+    await expect(otherPage).toHaveURL(new RegExp(`/${slug}/inicio`));
     // Convite discreto para o dono sem 2FA.
     await expect(page.getByTestId("two-factor-nudge")).toBeVisible();
 
@@ -87,6 +93,14 @@ test.describe.serial("Verificação em 2 etapas", () => {
     recoveryCodes = (await codesBox.locator("li").allTextContents()).map((t) => t.trim());
     expect(recoveryCodes).toHaveLength(10);
     await expectNoHorizontalOverflow(page);
+    // Quem ativou continua logado (o cookie dele foi renovado); o outro aparelho caiu.
+    expect(page.url()).toContain("/minha-conta");
+    // A revogação vale em até 5 s (cache do `sessionVersion`, src/modules/auth/session-version.ts): repete até cair.
+    await expect(async () => {
+      await otherPage.goto(`/${slug}/inicio`);
+      await expect(otherPage).toHaveURL(/\/login/, { timeout: 1_000 });
+    }).toPass({ timeout: 20_000 });
+    await otherDevice.close();
 
     await page.getByRole("button", { name: "Já guardei, concluir" }).click();
     await expect(page.getByTestId("two-factor-card").getByText("Ativada", { exact: true })).toBeVisible();

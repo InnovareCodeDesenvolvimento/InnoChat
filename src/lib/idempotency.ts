@@ -8,9 +8,12 @@
  * - Erro: NÃO é guardado (a operação não aconteceu; repetir deve poder tentar de novo).
  */
 
+import { globalState } from "./global-state";
+
 type Entry = { promise: Promise<unknown>; expiresAt: number | null };
 
-const entries = new Map<string, Entry>();
+// Em `globalThis` (ver `global-state.ts`): um só mapa por processo, mesmo com o módulo duplicado entre bundles.
+const entries = globalState("idempotency", () => new Map<string, Entry>());
 const MAX_ENTRIES = 5000;
 
 function prune(now: number) {

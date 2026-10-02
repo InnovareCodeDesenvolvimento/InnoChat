@@ -1,4 +1,5 @@
 import { getPrisma } from "@/lib/db/prisma";
+import { globalState } from "@/lib/global-state";
 
 /**
  * Revogação de sessão JWT — `User.sessionVersion`.
@@ -22,7 +23,9 @@ import { getPrisma } from "@/lib/db/prisma";
 export const SESSION_VERSION_CACHE_TTL_MS = 5_000;
 const CACHE_MAX_ENTRIES = 5_000;
 
-const cache = new Map<string, { version: number; at: number }>();
+// Em `globalThis`: sem isto cada bundle (página, Server Action, rota) tem o PRÓPRIO cache e a revogação de sessão feita em um
+// deles só chega nos outros quando o TTL de 5 s vence (ver `src/lib/global-state.ts`).
+const cache = globalState("session-version-cache", () => new Map<string, { version: number; at: number }>());
 
 /** Versão atual da sessão do usuário; `null` se o usuário não existe mais (sessão deve cair). */
 export async function readSessionVersion(userId: string, options: { fresh?: boolean; nowMs?: number } = {}): Promise<number | null> {

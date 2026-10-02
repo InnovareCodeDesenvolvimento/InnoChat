@@ -63,3 +63,7 @@
 - [2FA TOTP: login em 2 passos, gate do admin, E2E](two_factor_totp_design.md) — credentials recusa conta com 2FA; edição multi-linha em arquivo CRLF falha em silêncio.
 
 - [Plano anual + cupons (Melhoria 6)](annual_coupons_design.md) — ciclo da fatura manda, piso R$ 1, resgate atômico, lacunas assumidas (Google, VOID, termos).
+- [Lista de espera / encaixe (Melhoria 7)](waitlist_design.md) — claim override pela oferta pendente, hook sem ciclo, tick, pendências (cron 5 min, probe n8n).
+- [Script Node via Bash des-escapa \n em strings de código](bash_node_e_escapes_newline.md) — use Edit/Write para trechos com barras; confira com Read.
+- [Estado em memória duplicado entre bundles do Next](module_state_duplicated_across_next_bundles.md) — travas/limites em Map de módulo valem o dobro em produção; usar globalState (src/lib/global-state.ts).
+- [Server Action que troca cookie de sessão desloga a si mesma](server_action_cookie_rerender_old_session.md) — confirmar 2FA é rota POST; guards exigem TOTP; admin já é negado no Google.

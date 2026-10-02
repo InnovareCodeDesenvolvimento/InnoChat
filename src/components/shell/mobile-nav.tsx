@@ -12,7 +12,7 @@ type MobileNavProps = {
   brand: React.ReactNode;
   footer: React.ReactNode;
 } & (
-  | { variant: "tenant"; tenantSlug: string; onboardingIncomplete?: boolean; whatsappNeedsAttention?: boolean; billingOnly?: boolean }
+  | { variant: "tenant"; tenantSlug: string; onboardingIncomplete?: boolean; whatsappNeedsAttention?: boolean; isOwner?: boolean; billingOnly?: boolean }
   | { variant: "admin" }
 );
 
@@ -77,6 +77,7 @@ export function MobileNav(props: MobileNavProps) {
                       tenantSlug={props.tenantSlug}
                       onboardingIncomplete={props.onboardingIncomplete}
                       whatsappNeedsAttention={props.whatsappNeedsAttention}
+                      isOwner={props.isOwner}
                       billingOnly={props.billingOnly}
                       onNavigate={() => setOpen(false)}
                     />

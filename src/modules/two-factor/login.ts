@@ -2,6 +2,7 @@ import { getPrisma } from "@/lib/db/prisma";
 import { DomainError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { globalState } from "@/lib/global-state";
 import { signGoogleToken, verifyGoogleToken } from "@/modules/google-auth/tokens";
 import { verifyCredentials, type AuthorizedUser } from "@/modules/auth/service";
 import { consumeSecondFactor, enforceSecondFactorRateLimit } from "./service";
@@ -34,7 +35,9 @@ const IP_LIMIT = 30;
 const IP_WINDOW_MS = 5 * 60 * 1000;
 
 type ChallengeState = { fails: number; expiresAtMs: number; done: boolean; inFlight: boolean };
-const challenges = new Map<string, ChallengeState>();
+// Em `globalThis`: o uso único do desafio vale entre a Server Action da tela e a rota `/api/auth/callback/two-factor`, que o
+// build de produção empacota em módulos separados (um `Map` de módulo deixaria usar o mesmo desafio uma vez em cada).
+const challenges = globalState("two-factor-challenges", () => new Map<string, ChallengeState>());
 
 function sweepChallenges(nowMs: number) {
   if (challenges.size < 500) return;

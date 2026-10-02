@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { clientIp } from "@/lib/http/client-ip";
-import { CLIENT_ERROR_MAX_BODY_BYTES, handleClientErrorReport, isSameOrigin } from "@/modules/error-monitor/client-report";
+import { CLIENT_ERROR_MAX_BODY_BYTES, handleClientErrorReport, isSameOrigin, readBodyWithLimit } from "@/modules/error-monitor/client-report";
 
 /**
  * `POST /api/client-errors`: relato de erro do navegador (error boundary, `window.onerror`, promessa rejeitada).
@@ -32,11 +32,16 @@ export async function POST(request: Request) {
   if (Number.isFinite(declared) && declared > CLIENT_ERROR_MAX_BODY_BYTES) {
     return NextResponse.json({ error: { code: "PAYLOAD_TOO_LARGE", message: "Relato grande demais." } }, { status: 413, headers: NO_STORE });
   }
-  let rawBody = "";
+  let rawBody: string | null;
   try {
-    rawBody = await request.text();
+    // Com limite mesmo sem `Content-Length` (chunked): nunca bufferiza mais que o teto.
+    rawBody = await readBodyWithLimit(request, CLIENT_ERROR_MAX_BODY_BYTES);
   } catch {
     return NextResponse.json({ error: { code: "INVALID_PAYLOAD", message: "Relato inválido." } }, { status: 400, headers: NO_STORE });
+  }
+
+  if (rawBody === null) {
+    return NextResponse.json({ error: { code: "PAYLOAD_TOO_LARGE", message: "Relato grande demais." } }, { status: 413, headers: NO_STORE });
   }
 
   const ip = await clientIp();

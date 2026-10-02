@@ -27,16 +27,21 @@ export async function requireSessionUser(): Promise<SessionUser> {
 
 /**
  * Guarda do admin da plataforma (docs/arquitetura.md §9, "Plataforma"). Nunca confia em nada
- * vindo do client — sempre relê `isPlatformAdmin` do banco a partir do id da sessão.
+ * vindo do client — sempre relê `isPlatformAdmin` (e a 2FA) do banco a partir do id da sessão.
  */
 export async function requirePlatformAdmin(): Promise<SessionUser> {
   const sessionUser = await requireSessionUser();
   const user = await getPrisma().user.findUnique({
     where: { id: sessionUser.id },
-    select: { id: true, isPlatformAdmin: true },
+    select: { id: true, isPlatformAdmin: true, totpEnabledAt: true },
   });
   if (!user?.isPlatformAdmin) {
     throw new DomainError("FORBIDDEN", "Requer acesso de administrador da plataforma.");
+  }
+  // O layout do /admin só esconde a interface; Server Actions são endpoints POST. Sem 2FA ligada, o
+  // admin não opera nada além de ativar a própria 2FA (essas actions usam `requireSessionUser`).
+  if (!user.totpEnabledAt) {
+    throw new DomainError("TWO_FACTOR_SETUP_REQUIRED", "Ative a verificação em 2 etapas para usar o painel de administração.");
   }
   return { id: user.id };
 }
@@ -84,6 +89,16 @@ export async function requireTenantMember(slug: string, roles?: MembershipRole[]
   });
   if (!membership) {
     throw new DomainError("NOT_FOUND", "Empresa não encontrada.");
+  }
+
+  // Usuário com exigência individual de 2FA (`twoFactorRequired`) e ainda sem ela ligada: o layout só
+  // mostra a tela de ativação, e as actions do painel recusam aqui (não dá para burlar pelo POST).
+  const twoFactor = await getPrisma().user.findUnique({
+    where: { id: sessionUser.id },
+    select: { twoFactorRequired: true, totpEnabledAt: true },
+  });
+  if (twoFactor?.twoFactorRequired && !twoFactor.totpEnabledAt) {
+    throw new DomainError("TWO_FACTOR_SETUP_REQUIRED", "Ative a verificação em 2 etapas para continuar usando o painel.");
   }
 
   if (roles && roles.length > 0 && !roles.includes(membership.role)) {

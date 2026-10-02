@@ -167,6 +167,7 @@ export default async function TenantLayout({
             saveBillingContact={updateBillingContactAction}
             onboardingIncomplete={onboardingIncomplete}
             whatsappNeedsAttention={whatsappNeedsAttention}
+            isOwner={membership.role === "OWNER"}
             whatsappStatus={whatsappStatus}
             emailVerified={emailVerified}
             tourAutoStart={tourAutoStart}

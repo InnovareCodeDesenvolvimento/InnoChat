@@ -14,7 +14,6 @@ import { FormSection, TermsCheckbox } from "@/components/public/signup-shared";
 import { normalizeDocumentDigits, validateCpfCnpj } from "@/core/billing/document";
 import { maskCpfCnpj } from "@/components/lib/document-mask";
 import { signInWithGoogleAction } from "@/app/(public)/google-actions";
-import { isPixelActive, newEventId, trackPixel } from "@/components/public/meta-events";
 import { completeGoogleSignUpAction } from "@/modules/signup/actions";
 
 /** Estado de erro do link: token ausente, inválido, expirado (ou falha ao ler). */
@@ -111,11 +110,8 @@ export function GoogleSignupForm({
     setFormError(null);
     if (!validate()) return;
 
-    const metaEventId = isPixelActive() ? newEventId() : undefined;
-
     startTransition(async () => {
       const result = await completeGoogleSignUpAction({
-        metaEventId,
         token,
         tenantName: tenantName.trim(),
         document: normalizeDocumentDigits(document),
@@ -135,7 +131,6 @@ export function GoogleSignupForm({
         setFormError(result.error.message);
         return;
       }
-      if (metaEventId) trackPixel("CompleteRegistration", metaEventId);
       router.push(result.data.redirectTo);
     });
   }

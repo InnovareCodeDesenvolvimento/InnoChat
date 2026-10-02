@@ -193,17 +193,20 @@ export function TenantSidebarNav({
   tenantSlug,
   onboardingIncomplete,
   whatsappNeedsAttention,
+  isOwner = true,
   billingOnly,
   onNavigate,
 }: {
   tenantSlug: string;
   onboardingIncomplete?: boolean;
   whatsappNeedsAttention?: boolean;
+  /** STAFF não vê itens só do dono (ex.: Relatórios). */
+  isOwner?: boolean;
   /** Assinatura cancelada: só o item Assinatura (Termos §9). */
   billingOnly?: boolean;
   onNavigate?: () => void;
 }) {
-  const groups = tenantNavGroups(tenantSlug, { whatsappNeedsAttention });
+  const groups = tenantNavGroups(tenantSlug, { whatsappNeedsAttention, isOwner });
   const visibleGroups = billingOnly
     ? groups.map((g) => ({ ...g, items: g.items.filter((item) => item.href.endsWith("/assinatura")) })).filter((g) => g.items.length > 0)
     : groups;
