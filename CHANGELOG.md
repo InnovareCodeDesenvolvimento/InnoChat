@@ -7,6 +7,15 @@ Versão semântica (`MAJOR.MINOR.PATCH`), lida do `version` do `package.json` e 
 
 Toda publicação em produção sobe a versão e ganha uma entrada aqui.
 
+## v1.6.0 — 2026-10-02
+
+### Novidades: monitor da cobrança
+- **Endereço de saúde da cobrança** (`/api/health/billing`), que diz se a rotina está ok, em atenção ou parada, sem nenhum dado pessoal. É ele que o UptimeRobot confere.
+- **Alertas no sino do Admin** quando a cobrança fica mais de 3 horas sem rodar ou quando há avisos travados.
+- **Tela Saúde:** card "Cobrança" com última execução, enviados, falhas, avisos presos e o status do WhatsApp de cobrança.
+- **E-mail para o admin** quando a cobrança para, no máximo um a cada 6 horas.
+- Passo a passo do monitor externo (UptimeRobot) no runbook.
+
 ## v1.5.1 — 2026-10-02
 
 ### Correções
