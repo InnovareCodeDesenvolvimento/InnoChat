@@ -5,6 +5,23 @@ para clínicas, salões e qualquer negócio de serviços com horário marcado.
 Repositório: https://github.com/InnovareCodeDesenvolvimento/InnoChat (branch `main`; o antigo é o remote `antigo`).
 Decisões do dono: memória `decisoes-iniciais-innochat` e `docs/arquitetura.md` §15.
 
+## Atualização (2026-10-02, fim do dia): v1.6.0 no ar
+
+**Publicado:**
+- **Financeiro no Admin** (v1.5.0): visão geral, Envios de cobrança (destinatário completo, texto enviado, reenvio seguro) e cobrança de cada empresa com linha do tempo.
+- **Paginação numerada** (10/25/50/100).
+- **Evidência do SMTP** em cada aviso e e-mail de teste no Admin (v1.5.1).
+- **Monitor da cobrança** (v1.6.0): `/api/health/billing`, alertas no sino, card na Saúde e e-mail ao admin.
+
+**Operação:**
+- O dono criou o monitor no UptimeRobot e conectou o chip de cobrança.
+- Domínio de e-mail com SPF, DKIM (`titan1`) e DMARC `p=none`.
+- O push usa a conta fixa InnovareCodeDesenvolvimento, sem prompt.
+
+**Próximo:**
+- F8: documentação da régua (Alexandria).
+- Avaliar DMARC `p=quarantine` em 2 a 4 semanas.
+
 ## Atualização (2026-10-02): v1.4.1 no ar
 
 **Publicado desde a v1.1.1:**
