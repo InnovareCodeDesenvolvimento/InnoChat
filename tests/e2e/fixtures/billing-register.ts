@@ -144,7 +144,8 @@ export async function seedNotices(company: { tenantId: string; subscriptionId: s
     status: "FAILED",
     recipient: phone,
     recipientKind: "BILLING_WHATSAPP",
-    attempts: 3,
+    // Esgotado (NOTICE_MAX_ATTEMPTS = 5): só FAILED sem nova tentativa automática pode ser reenviado.
+    attempts: 5,
     lastErrorCode: "WHATSAPP_SEND_FAILED",
     senderPhoneE164: "5584988880000",
     hoursAgo: 5,

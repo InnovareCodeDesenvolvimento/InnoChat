@@ -992,3 +992,23 @@ html:has(.landing-root) {
   from { opacity: 0; transform: translateY(8px) scale(0.96); }
   to { opacity: 1; transform: none; }
 }
+
+/* Ícone "i" de ajuda: some (opacity, sem tirar do fluxo nem do foco) depois de HELP_VISIBLE_MS —
+   ver components/help/help-visibility.tsx. Reaparece com hover no ícone, no pai (card/cabeçalho,
+   só onde há hover real), foco de teclado ou diálogo aberto. Sem movimento com reduced-motion. */
+.help-fade {
+  transition: opacity 400ms ease;
+}
+.help-fade[data-help-hidden="true"]:not(:hover, :focus-visible, [data-state="open"]) {
+  opacity: 0;
+}
+@media (hover: hover) {
+  :hover > .help-fade[data-help-hidden="true"] {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .help-fade {
+    transition: none;
+  }
+}

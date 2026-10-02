@@ -8,6 +8,7 @@ import { effectiveStatus } from "@/core/billing";
 import { resolveBillingBanner } from "@/components/shell/billing-banner-state";
 import { updateBillingContactAction } from "@/modules/billing/contact-actions";
 import { ToastProvider } from "@/components/ui/toast";
+import { HelpVisibilityProvider } from "@/components/help/help-visibility";
 import { NavigationProgress } from "@/components/shell/navigation-progress";
 import { PanelShell } from "@/components/shell/panel-shell";
 import { getOnboardingStateAction } from "@/modules/onboarding/actions";
@@ -139,6 +140,7 @@ export default async function TenantLayout({
       <body>
         <NavigationProgress />
         <ToastProvider>
+          <HelpVisibilityProvider>
           <PanelShell
             tenantName={membership.tenant.name}
             tenantSlug={tenantSlug}
@@ -158,6 +160,7 @@ export default async function TenantLayout({
           >
             {children}
           </PanelShell>
+          </HelpVisibilityProvider>
         </ToastProvider>
       </body>
     </html>

@@ -28,7 +28,7 @@ test.describe("Minha conta", () => {
     await expect(email).toHaveValue(SEED_OWNER_EMAIL);
     await expect(email).toHaveAttribute("readonly", "");
 
-    const save = page.getByRole("button", { name: "Salvar" });
+    const save = page.getByRole("button", { name: "Salvar", exact: true });
     await expect(save).toBeDisabled(); // nada mudou ainda
 
     const name = page.getByLabel("Seu nome");

@@ -5,6 +5,7 @@ import { fontVariables } from "@/app/fonts";
 import { auth } from "@/lib/auth";
 import { getPrisma } from "@/lib/db/prisma";
 import { ToastProvider } from "@/components/ui/toast";
+import { HelpVisibilityProvider } from "@/components/help/help-visibility";
 import { NavigationProgress } from "@/components/shell/navigation-progress";
 import { AdminShell } from "@/components/shell/admin-shell";
 
@@ -36,7 +37,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       <body>
         <NavigationProgress />
         <ToastProvider>
-          <AdminShell userEmail={user.email} userName={user.name}>{children}</AdminShell>
+          <HelpVisibilityProvider>
+            <AdminShell userEmail={user.email} userName={user.name}>{children}</AdminShell>
+          </HelpVisibilityProvider>
         </ToastProvider>
       </body>
     </html>

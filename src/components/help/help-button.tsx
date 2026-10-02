@@ -6,6 +6,7 @@ import { cn } from "@/components/lib/cn";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { HELP, type HelpKey } from "./help-content";
+import { useHelpVisible } from "./help-visibility";
 
 export type HelpButtonProps = {
   helpKey: HelpKey;
@@ -23,9 +24,13 @@ export type HelpButtonProps = {
  * exemplos concretos (texto em `help-content.ts`). Abre num diálogo — no celular sobe como folha
  * de baixo — com foco preso, Esc para fechar e devolução do foco ao "i" (Radix). Recebe só a
  * CHAVE (string): nunca componente/função como prop vinda de Server Component.
+ *
+ * Some depois de `HELP_VISIBLE_MS` (opacity 0, mantém espaço e foco; ver `help-visibility.tsx`) e
+ * reaparece com hover (no ícone ou no pai), foco de teclado ou diálogo aberto.
  */
 export function HelpButton({ helpKey, placement = "inline", className }: HelpButtonProps) {
   const entry = HELP[helpKey];
+  const visible = useHelpVisible();
   return (
     <Dialog>
       <DialogTrigger asChild>
@@ -33,8 +38,9 @@ export function HelpButton({ helpKey, placement = "inline", className }: HelpBut
           type="button"
           aria-label={`Como funciona: ${entry.title}`}
           data-help-key={helpKey}
+          data-help-hidden={visible ? undefined : "true"}
           className={cn(
-            "group/help inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full",
+            "help-fade group/help inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full",
             "focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary",
             placement === "corner" ? "absolute right-2 top-2 z-10" : "-my-2 -mr-1.5",
             className,
