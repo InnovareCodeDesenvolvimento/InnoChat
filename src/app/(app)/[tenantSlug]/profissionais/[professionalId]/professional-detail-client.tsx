@@ -19,10 +19,13 @@ import { useToast } from "@/components/ui/toast";
 import {
   createScheduleExceptionAction,
   deleteScheduleExceptionAction,
+  setProfessionalCommissionAction,
   setProfessionalServicesAction,
   setProfessionalWorkingHoursAction,
   updateProfessionalAction,
 } from "@/modules/agenda/catalog-actions";
+import { formatPctText, parsePctText } from "@/core/reports/commission";
+import type { ProfessionalCommission } from "@/modules/agenda/commissions";
 import type { ProfessionalRow } from "../profissionais-client";
 import type { ServiceRow } from "../../servicos/servicos-client";
 
@@ -45,12 +48,15 @@ export function ProfessionalDetailClient({
   professional,
   allServices,
   initialExceptions,
+  commission = null,
   writeBlocked = false,
 }: {
   tenantSlug: string;
   professional: ProfessionalRow;
   allServices: ServiceRow[];
   initialExceptions: ExceptionRow[];
+  /** Só o dono recebe (nulo para STAFF): a comissão não aparece para quem não é dono. */
+  commission?: ProfessionalCommission | null;
   writeBlocked?: boolean;
 }) {
   const { notify } = useToast();
@@ -64,6 +70,18 @@ export function ProfessionalDetailClient({
   const [serviceIds, setServiceIds] = useState<Set<string>>(
     new Set(professional.professionalServices.map((s) => s.serviceId)),
   );
+
+  // Serviços já gravados (a comissão por serviço só vale para quem o profissional realmente atende).
+  const [savedServiceIds, setSavedServiceIds] = useState<Set<string>>(
+    new Set(professional.professionalServices.map((s) => s.serviceId)),
+  );
+
+  // Comissão (texto digitado; vazio = usa o padrão)
+  const [defaultPct, setDefaultPct] = useState(formatPctText(commission?.pct ?? null));
+  const [servicePct, setServicePct] = useState<Record<string, string>>(
+    Object.fromEntries((commission?.overrides ?? []).map((o) => [o.serviceId, formatPctText(o.pct)])),
+  );
+  const [commissionError, setCommissionError] = useState<string | null>(null);
 
   // Expediente
   const [hours, setHours] = useState<WorkingHourRow[]>(
@@ -111,7 +129,35 @@ export function ProfessionalDetailClient({
         notify({ variant: "error", title: "Não foi possível salvar", description: result.error.message });
         return;
       }
+      setSavedServiceIds(new Set(serviceIds));
       notify({ variant: "success", title: "Serviços atualizados." });
+    });
+  }
+
+  function saveCommission() {
+    setCommissionError(null);
+    const parsedDefault = parsePctText(defaultPct);
+    if (!parsedDefault.ok) {
+      setCommissionError("Comissão padrão inválida. Use um número de 0 a 100, como 40 ou 12,5.");
+      return;
+    }
+    const overrides: { serviceId: string; pct: number | null }[] = [];
+    for (const service of allServices) {
+      if (!savedServiceIds.has(service.id)) continue;
+      const parsed = parsePctText(servicePct[service.id] ?? "");
+      if (!parsed.ok) {
+        setCommissionError(`Comissão inválida em ${service.name}. Use um número de 0 a 100, ou deixe em branco.`);
+        return;
+      }
+      overrides.push({ serviceId: service.id, pct: parsed.value });
+    }
+    startTransition(async () => {
+      const result = await setProfessionalCommissionAction(tenantSlug, professional.id, { pct: parsedDefault.value, overrides });
+      if (!result.ok) {
+        notify({ variant: "error", title: "Não foi possível salvar a comissão", description: result.error.message });
+        return;
+      }
+      notify({ variant: "success", title: "Comissão atualizada." });
     });
   }
 
@@ -279,6 +325,66 @@ export function ProfessionalDetailClient({
           </Button>
         </CardFooter>
       </Card>
+
+      {commission ? (
+        <Card className="rounded-hero">
+          <CardHeader help="profissional.comissao">
+            <CardTitle>Comissão</CardTitle>
+            <CardDescription>Quanto do valor de cada atendimento concluído fica para {professional.name}. Só você vê isso.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            {commissionError ? (
+              <p role="alert" className="text-sm text-danger">
+                {commissionError}
+              </p>
+            ) : null}
+            <Field label="Comissão padrão (%)" hint="Vale para todos os serviços que não tiverem um percentual próprio. Em branco conta como 0%.">
+              {(fieldProps) => (
+                <Input
+                  {...fieldProps}
+                  inputMode="decimal"
+                  value={defaultPct}
+                  onChange={(e) => setDefaultPct(e.target.value)}
+                  placeholder="Ex.: 40"
+                  className="w-full sm:w-40"
+                  disabled={writeBlocked}
+                />
+              )}
+            </Field>
+            {allServices.filter((service) => savedServiceIds.has(service.id)).length === 0 ? (
+              <p className="text-sm text-text-secondary">Marque e salve os serviços que ele realiza para definir um percentual por serviço.</p>
+            ) : (
+              <div className="flex flex-col gap-2">
+                <p className="text-sm font-medium text-text">Por serviço (opcional)</p>
+                {allServices
+                  .filter((service) => savedServiceIds.has(service.id))
+                  .map((service) => (
+                    <div key={service.id} className="flex items-center justify-between gap-3">
+                      <label htmlFor={`pct-${service.id}`} className="min-w-0 flex-1 truncate text-sm text-text">
+                        {service.name}
+                      </label>
+                      <Input
+                        id={`pct-${service.id}`}
+                        inputMode="decimal"
+                        value={servicePct[service.id] ?? ""}
+                        onChange={(e) => setServicePct((prev) => ({ ...prev, [service.id]: e.target.value }))}
+                        placeholder={defaultPct.trim() ? `Padrão (${defaultPct.trim()})` : "Padrão"}
+                        className="w-32 shrink-0 sm:w-40"
+                        aria-label={`Comissão em ${service.name}, em porcentagem`}
+                        disabled={writeBlocked}
+                      />
+                    </div>
+                  ))}
+              </div>
+            )}
+          </CardContent>
+          <CardFooter>
+            <Button icon={Check} onClick={saveCommission} isLoading={isPending} disabled={writeBlocked} title={writeBlocked ? WRITE_BLOCKED_HINT : undefined} loadingText="Salvando…">
+              Salvar comissão
+            </Button>
+          </CardFooter>
+        </Card>
+      ) : null}
 
       <Card className="rounded-hero">
         <CardHeader help="profissional.expediente">

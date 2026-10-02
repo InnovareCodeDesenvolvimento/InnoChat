@@ -19,6 +19,7 @@ import {
   updateProfessional,
   updateService,
 } from "./catalog";
+import { getCommissionConfig, setProfessionalCommission, type ProfessionalCommission } from "./commissions";
 
 // ---------------------------------------------------------------------------
 // Service
@@ -176,5 +177,35 @@ export async function deleteScheduleExceptionAction(tenantSlug: string, exceptio
     await assertTenantCanWrite(tenant.id);
     await deleteScheduleException(tenant.id, exceptionId);
     return { id: exceptionId };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Comissão (Melhoria 8) — SÓ o dono vê e grava; STAFF recebe FORBIDDEN.
+// ---------------------------------------------------------------------------
+
+const pctSchema = z.coerce
+  .number()
+  .min(0, "A comissão não pode ser negativa.")
+  .max(100, "A comissão não pode passar de 100%.")
+  .refine((n) => Math.abs(n * 100 - Math.round(n * 100)) < 1e-6, "Use no máximo 2 casas decimais.");
+const commissionSchema = z.object({
+  pct: pctSchema.nullable(),
+  overrides: z.array(z.object({ serviceId: z.string().min(1), pct: pctSchema.nullable() })).max(500),
+});
+
+export async function getCommissionConfigAction(tenantSlug: string): Promise<Result<ProfessionalCommission[]>> {
+  return runAction(async () => {
+    const { tenant } = await requireTenantMember(tenantSlug, ["OWNER"]);
+    return getCommissionConfig(tenant.id);
+  });
+}
+
+export async function setProfessionalCommissionAction(tenantSlug: string, professionalId: string, input: unknown): Promise<Result<ProfessionalCommission>> {
+  return runAction(async () => {
+    const { tenant } = await requireTenantMember(tenantSlug, ["OWNER"]);
+    await assertTenantCanWrite(tenant.id);
+    const data = commissionSchema.parse(input);
+    return setProfessionalCommission(tenant.id, professionalId, data);
   });
 }

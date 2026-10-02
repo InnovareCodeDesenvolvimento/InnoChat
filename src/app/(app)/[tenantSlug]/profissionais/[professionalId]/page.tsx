@@ -4,7 +4,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { navIconFor } from "@/components/shell/nav-items";
 import { EmptyState } from "@/components/ui/empty-state";
 import { getPrisma } from "@/lib/db/prisma";
-import { listProfessionalsAction, listServicesAction } from "@/modules/agenda/catalog-actions";
+import { getCommissionConfigAction, listProfessionalsAction, listServicesAction } from "@/modules/agenda/catalog-actions";
 import { listScheduleExceptionsAction } from "@/modules/agenda/catalog-actions";
 import { isTenantWriteBlocked } from "../../_lib/write-blocked";
 import { ProfessionalDetailClient } from "./professional-detail-client";
@@ -18,10 +18,12 @@ export default async function ProfessionalDetailPage({
 }) {
   const { tenantSlug, professionalId } = await params;
 
-  const [professionalsResult, servicesResult, exceptionsResult] = await Promise.all([
+  const [professionalsResult, servicesResult, exceptionsResult, commissionResult] = await Promise.all([
     listProfessionalsAction(tenantSlug),
     listServicesAction(tenantSlug),
     listScheduleExceptionsAction(tenantSlug),
+    // FORBIDDEN para STAFF: sem resposta ok, a tela nem monta o cartão de comissão.
+    getCommissionConfigAction(tenantSlug),
   ]);
 
   if (!professionalsResult.ok) {
@@ -59,6 +61,7 @@ export default async function ProfessionalDetailPage({
       professional={professional}
       allServices={services}
       writeBlocked={writeBlocked}
+      commission={commissionResult.ok ? (commissionResult.data.find((c) => c.professionalId === professionalId) ?? null) : null}
       initialExceptions={exceptions.map((exc) => ({
         ...exc,
         startsAt: new Date(exc.startsAt).toISOString(),

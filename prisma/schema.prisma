@@ -542,6 +542,13 @@ model Appointment {
   idempotencyKey    String?
   // Lembrete de véspera já enviado (null = pendente). Zerar ao remarcar.
   reminderSentAt    DateTime? @db.Timestamptz
+  // Relatórios (item 8): fotografia dos valores NO MOMENTO em que o atendimento virou COMPLETED, para o
+  // histórico não mudar quando o preço ou a comissão forem editados depois. NULO = atendimento concluído
+  // antes desta versão (ou ainda não concluído): o relatório usa o preço/comissão atuais e marca como estimado.
+  // Reabrir o atendimento zera os três campos.
+  priceCentsSnapshot      Int?
+  commissionPctSnapshot   Decimal? @db.Decimal(5, 2)
+  commissionCentsSnapshot Int?
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
 
@@ -845,6 +852,23 @@ enum BotTextKey {
   STAFF_RESCHEDULED
   STAFF_CANCELED
   HANDOFF_CLOSED
+  // Lista de espera (melhoria 7)
+  WAITLIST_INVITE
+  WAITLIST_JOINED
+  WAITLIST_ALREADY
+  WAITLIST_OFFER
+  WAITLIST_ACCEPTED
+  WAITLIST_DECLINED
+  WAITLIST_OFFER_GONE
+  WAITLIST_SLOT_TAKEN
+  WAITLIST_VIEW
+  WAITLIST_EMPTY
+  WAITLIST_LEFT
+  LABEL_MENU_WAITLIST
+  LABEL_WAITLIST_JOIN
+  LABEL_WAITLIST_SKIP
+  LABEL_WAITLIST_ACCEPT
+  LABEL_WAITLIST_DECLINE
 }
 
 model BotText {

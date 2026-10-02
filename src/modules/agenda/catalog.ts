@@ -131,9 +131,11 @@ export async function setProfessionalServices(tenantId: string, professionalId: 
     }
   }
 
+  // Não apaga tudo e recria: `ProfessionalService.commissionPct` (comissão por serviço) moraria nessas linhas e
+  // seria zerada a cada "Salvar serviços". Remove só o que saiu da lista e cria só o que entrou.
   const prisma = getPrisma();
   await prisma.$transaction([
-    prisma.professionalService.deleteMany({ where: { professionalId } }),
+    prisma.professionalService.deleteMany({ where: { professionalId, serviceId: { notIn: uniqueIds } } }),
     ...(uniqueIds.length > 0
       ? [
           prisma.professionalService.createMany({

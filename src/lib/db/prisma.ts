@@ -29,7 +29,16 @@ export function getPrisma(): PrismaClient {
   if (!globalThis.__innochatPrisma__) {
     globalThis.__innochatPrisma__ = new PrismaClient({
       log: process.env.NODE_ENV === "development" ? ["warn", "error"] : ["error"],
-    });
+      // Comissão (Melhoria 8) é dado só do dono: fica FORA de toda leitura que não peça o campo com `select`.
+      // Sem isso, `include: { professional: true }` nas telas de agenda levaria a comissão (e o `Decimal`, que
+      // não atravessa a fronteira servidor/cliente do Next) para o navegador do STAFF. Quem precisa lê com
+      // `select` explícito (src/modules/reports, src/modules/agenda/commissions.ts e a foto ao concluir).
+      omit: {
+        professional: { commissionPct: true },
+        professionalService: { commissionPct: true },
+        appointment: { commissionPctSnapshot: true, commissionCentsSnapshot: true },
+      },
+    }) as unknown as PrismaClient;
   }
   return globalThis.__innochatPrisma__;
 }

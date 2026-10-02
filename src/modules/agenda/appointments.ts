@@ -2,8 +2,10 @@ import { randomUUID } from "node:crypto";
 import { addMinutes } from "date-fns";
 import { checkBookingWindow, computeAvailableSlots, isRangeFreeOfBusy } from "@/core/agenda";
 import { getPrisma } from "@/lib/db/prisma";
+import { recordCompletionSnapshot } from "@/lib/db/appointment-snapshot";
 import { forTenant } from "@/lib/db/tenant-client";
 import { DomainError } from "@/lib/errors";
+import { notifySlotFreed } from "@/modules/waitlist/hook";
 import { loadProfessionalScheduleInputs } from "./availability-loader";
 
 const MAX_LIST_RANGE_DAYS = 95;
@@ -360,7 +362,7 @@ export async function cancelAppointmentDetailed(
     throw new DomainError("TOO_LATE", "Já passou do prazo para cancelar este horário.");
   }
 
-  return getPrisma().$transaction(async (tx) => {
+  const result = await getPrisma().$transaction(async (tx) => {
     const { count } = await tx.appointment.updateMany({
       where: { id: appointmentId, tenantId, status: { not: "CANCELED" } },
       data: { status: "CANCELED" },
@@ -372,6 +374,12 @@ export async function cancelAppointmentDetailed(
     });
     return { appointment: updated, changed: true };
   });
+
+  // Horário aberto: a lista de espera é avisada (em segundo plano, depois do commit).
+  if (result.changed && appointment.status === "SCHEDULED" && appointment.blockEndsAt.getTime() > now.getTime()) {
+    notifySlotFreed(tenantId, { professionalId: appointment.professionalId, from: appointment.startsAt, to: appointment.blockEndsAt });
+  }
+  return result;
 }
 
 export async function rescheduleAppointment(
@@ -411,6 +419,8 @@ export async function rescheduleAppointment(
       });
       return result;
     });
+    // O horário antigo ficou livre: a lista de espera é avisada (em segundo plano, depois do commit).
+    notifySlotFreed(tenantId, { professionalId: appointment.professionalId, from: appointment.startsAt, to: appointment.blockEndsAt });
     return updated;
   } catch (error) {
     if (isExclusionViolation(error)) {
@@ -470,6 +480,7 @@ export async function finishAppointment(tenantId: string, appointmentId: string,
       assertStartedAndOpen(fresh);
       throw new DomainError("INVALID_STATE", "O agendamento mudou enquanto você agia. Recarregue e tente de novo.");
     }
+    if (outcome === "COMPLETED") await recordCompletionSnapshot(tx, tenantId, appointmentId);
     await tx.appointmentEvent.create({ data: { appointmentId, action: outcome, authorType: "USER", authorId: actorId } });
     return tx.appointment.findFirstOrThrow({ where: { id: appointmentId, tenantId } });
   });
@@ -491,7 +502,8 @@ export async function reopenAppointment(tenantId: string, appointmentId: string,
     return await getPrisma().$transaction(async (tx) => {
       const { count } = await tx.appointment.updateMany({
         where: { id: appointmentId, tenantId, status: { in: ["COMPLETED", "NO_SHOW"] } },
-        data: { status: "SCHEDULED" },
+        // Reabrir apaga a foto de valores: ao concluir de novo, vale o preço/comissão daquele momento.
+        data: { status: "SCHEDULED", priceCentsSnapshot: null, commissionPctSnapshot: null, commissionCentsSnapshot: null },
       });
       if (count === 0) {
         const fresh = await tx.appointment.findFirst({ where: { id: appointmentId, tenantId } });
