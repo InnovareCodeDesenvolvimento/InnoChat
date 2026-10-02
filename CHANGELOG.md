@@ -7,6 +7,18 @@ Versão semântica (`MAJOR.MINOR.PATCH`), lida do `version` do `package.json` e 
 
 Toda publicação em produção sobe a versão e ganha uma entrada aqui.
 
+## v1.5.0 — 2026-10-02
+
+### Novidades: Financeiro no Admin
+- **Menu "Financeiro"** com três submenus: Visão geral, Cobranças e Envios de cobrança.
+- **Visão geral:** receita mensal recorrente, assinantes por situação, recebido no mês comparado ao anterior, próximos vencimentos, inadimplência, cancelamentos do mês (por vontade da empresa ou por falta de pagamento) e quantos voltaram a pagar graças aos avisos. Também dá para baixar as faturas em planilha (CSV).
+- **Envios de cobrança:** cada aviso enviado, com empresa, etapa, canal, **para quem foi** (e-mail ou telefone completo), situação e motivo. "Ver mensagem" mostra o texto exato e "Reenviar" fica disponível quando o sistema já desistiu de tentar. Tem filtros e totais.
+- **Cobrança de cada empresa:** resumo, faturas e a linha do tempo de tudo o que aconteceu.
+- **Paginação numerada** com 10, 25, 50 ou 100 itens por página nas listas do Admin.
+
+### Privacidade
+- Os destinatários e os textos dos avisos são apagados depois de 12 meses, ou 90 dias depois do cancelamento da empresa.
+
 ## v1.4.1 — 2026-10-01
 
 ### Correções (revisão de segurança da cobrança)
