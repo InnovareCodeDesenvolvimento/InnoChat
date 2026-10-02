@@ -10,6 +10,7 @@ import {
   buildWhatsappMessages,
   DEFAULT_BILLING_TIMEZONE,
   isDunningStep,
+  NOTICE_MAX_ATTEMPTS,
   noticeErrorLabel,
   noticeStatusLabel,
   skippedReasonLabel,
@@ -20,7 +21,8 @@ import {
 import { formatPhoneDisplay } from "@/core/platform-whatsapp/rules";
 import { buildNoticeCopyContext } from "./dunning/context";
 import { dispatchDueNotices, type DispatchDeps } from "./dunning/dispatcher";
-import { RENDERED_PARTS_SEPARATOR, RESEND_CYCLE_MARKER, type NoticeRecipientKind } from "./dunning/outbox";
+import { recordBillingEvent } from "./dunning/events";
+import { baseCycleKey, RENDERED_PARTS_SEPARATOR, RESEND_CYCLE_MARKER, type NoticeRecipientKind } from "./dunning/outbox";
 import { resolveNoticeRecipients } from "./dunning/recipients";
 import { loadDunningSubject } from "./dunning/snapshot";
 import { NOT_LEGACY_NOTICE } from "./finance-service";
@@ -81,7 +83,7 @@ export type NoticeRegisterItem = {
   lastErrorLabel?: string;
   /** Há texto guardado (snapshot) para a prévia exata. */
   hasSnapshot: boolean;
-  /** Pode ser reenviado pelo botão (falhou, ou não saiu por motivo temporário). */
+  /** Pode ser reenviado pelo botão: a régua desistiu (falha esgotada) ou não saiu por motivo temporário, e não há outro aviso igual enviado ou em andamento. */
   canResend: boolean;
   invoice?: { id: string; amountCents: number; dueAt: string };
 };
@@ -100,9 +102,50 @@ const RESENDABLE_SKIP_REASONS = ["NO_PLATFORM_NUMBER", "CHANNEL_DOWN", "OUT_OF_W
 
 const LEGACY_MASKED_NOTE = "Registro anterior: o destino completo não foi guardado, só a versão mascarada.";
 
-function isResendable(status: string, skippedReason: string | null): boolean {
-  if (status === "FAILED") return true;
-  return status === "SKIPPED" && skippedReason !== null && (RESENDABLE_SKIP_REASONS as readonly string[]).includes(skippedReason);
+type ResendCandidate = {
+  id: string;
+  tenantId: string;
+  step: string;
+  channel: string;
+  cycleKey: string;
+  status: string;
+  skippedReason: string | null;
+  attempts: number;
+  expiresAt: Date;
+};
+
+/**
+ * Situação do próprio aviso. `FAILED` só é reenviável quando a régua DESISTIU dele (tentativas esgotadas ou prazo
+ * vencido): enquanto o despachante ainda vai tentar de novo, reenviar manda a mensagem duas vezes.
+ */
+function isResendableState(n: Pick<ResendCandidate, "status" | "skippedReason" | "attempts" | "expiresAt">, now: Date): boolean {
+  if (n.status === "FAILED") return n.attempts >= NOTICE_MAX_ATTEMPTS || n.expiresAt <= now;
+  return n.status === "SKIPPED" && n.skippedReason !== null && (RESENDABLE_SKIP_REASONS as readonly string[]).includes(n.skippedReason);
+}
+
+/** Avisos da MESMA chave base (`step`, `channel`, `baseCycleKey`), inclusive reenvios anteriores, já enviados ou em andamento. */
+async function loadBlockingNotices(candidates: ResendCandidate[]): Promise<Array<{ id: string; step: string; channel: string; cycleKey: string }>> {
+  if (candidates.length === 0) return [];
+  return getPrisma().billingNotice.findMany({
+    where: {
+      status: { in: ["SENT", "PENDING", "SENDING"] },
+      OR: candidates.map((c) => {
+        const base = baseCycleKey(c.cycleKey);
+        return {
+          tenantId: c.tenantId,
+          step: c.step,
+          channel: c.channel,
+          OR: [{ cycleKey: base }, { cycleKey: { startsWith: `${base}${RESEND_CYCLE_MARKER}` } }],
+        };
+      }),
+    },
+    select: { id: true, step: true, channel: true, cycleKey: true },
+  });
+}
+
+function isBlockedBy(c: ResendCandidate, blockers: Array<{ id: string; step: string; channel: string; cycleKey: string }>): boolean {
+  const base = baseCycleKey(c.cycleKey);
+  return blockers.some((b) => b.id !== c.id && b.step === c.step && b.channel === c.channel && baseCycleKey(b.cycleKey) === base);
 }
 
 function localDayStart(date: string): Date {
@@ -112,12 +155,13 @@ function localDayStart(date: string): Date {
 function buildBaseWhere(filters: NoticeRegisterFilters): Prisma.BillingNoticeWhereInput[] {
   const and: Prisma.BillingNoticeWhereInput[] = [NOT_LEGACY_NOTICE];
   if (filters.from || filters.to) {
-    and.push({
-      updatedAt: {
-        ...(filters.from ? { gte: localDayStart(filters.from) } : {}),
-        ...(filters.to ? { lt: localDayStart(addDaysToLocalDate(filters.to, 1)) } : {}),
-      },
-    });
+    // A coluna "Quando" mostra `sentAt ?? updatedAt`: filtra pelo MESMO instante. `sentAt` só é gravado em SENT (e `updatedAt`
+    // não muda depois, salvo na retenção, que usa SQL cru justamente para isso); as demais situações caem no `updatedAt`. Sem índice novo em `sentAt` (migration só aditiva seria possível): o registro é pequeno (alguns avisos por empresa ao mês) e a consulta já filtra por período, então a varredura é aceitável; reavaliar se passar de centenas de milhares de linhas.
+    const range = {
+      ...(filters.from ? { gte: localDayStart(filters.from) } : {}),
+      ...(filters.to ? { lt: localDayStart(addDaysToLocalDate(filters.to, 1)) } : {}),
+    };
+    and.push({ OR: [{ sentAt: range }, { sentAt: null, updatedAt: range }] });
   }
   if (filters.tenantId) and.push({ tenantId: filters.tenantId });
   if (filters.tenantQuery) and.push({ tenant: { name: { contains: filters.tenantQuery, mode: "insensitive" } } });
@@ -157,6 +201,10 @@ export async function listBillingNotices(filters: NoticeRegisterFilters = {}): P
   });
 
   const count = (status: string) => grouped.find((g) => g.status === status)?._count._all ?? 0;
+  const resendNow = new Date();
+  const resendCandidates = page.filter((n) => isResendableState(n, resendNow));
+  const blockers = await loadBlockingNotices(resendCandidates);
+  const canResendIds = new Set(resendCandidates.filter((n) => !isBlockedBy(n, blockers)).map((n) => n.id));
   const items = page.map((n): NoticeRegisterItem => {
     const full = n.recipient;
     const recipient = full ?? n.recipientMasked ?? null;
@@ -177,7 +225,7 @@ export async function listBillingNotices(filters: NoticeRegisterFilters = {}): P
       recipientKind: kind,
       attempts: n.attempts,
       hasSnapshot: n.renderedText !== null,
-      canResend: isResendable(n.status, n.skippedReason),
+      canResend: canResendIds.has(n.id),
     };
     if (item.recipientIsMasked) item.recipientNote = LEGACY_MASKED_NOTE;
     if (n.skippedReason) {
@@ -286,15 +334,25 @@ export async function resendBillingNotice(noticeId: string, adminId: string, now
   const prisma = getPrisma();
   const original = await prisma.billingNotice.findUnique({ where: { id: noticeId } });
   if (!original) throw new DomainError("NOT_FOUND", "Aviso não encontrado.");
-  if (!isResendable(original.status, original.skippedReason)) {
-    throw new DomainError("NOT_RESENDABLE", "Só dá para reenviar um aviso que falhou ou que não saiu por um motivo temporário.");
+  if (!isResendableState(original, now)) {
+    throw new DomainError("NOT_RESENDABLE", "Só dá para reenviar um aviso que falhou de vez (a régua já desistiu) ou que não saiu por um motivo temporário.");
+  }
+  if (isBlockedBy(original, await loadBlockingNotices([original]))) {
+    // Idempotência: o MESMO reenvio já criado volta como "já na fila" (abaixo); qualquer outro aviso igual enviado ou em andamento barra.
+    const sameResendKey = `${baseCycleKey(original.cycleKey)}${RESEND_CYCLE_MARKER}${original.id}`;
+    const already = await prisma.billingNotice.findUnique({
+      where: { cycleKey_step_channel: { cycleKey: sameResendKey, step: original.step, channel: original.channel } },
+      select: { id: true, status: true },
+    });
+    if (already) return { noticeId: already.id, alreadyQueued: true, status: already.status as NoticeStatusFilter };
+    throw new DomainError("NOT_RESENDABLE", "Este aviso já foi enviado, ou já está na fila para envio. Não dá para reenviar de novo.");
   }
   if (original.channel === "WHATSAPP") {
     const tenant = await prisma.tenant.findUnique({ where: { id: original.tenantId }, select: { billingWhatsappOptOutAt: true } });
     if (tenant?.billingWhatsappOptOutAt) throw new DomainError("OPTED_OUT", "O cliente pediu para não receber avisos no WhatsApp.");
   }
 
-  const cycleKey = `${original.cycleKey}${RESEND_CYCLE_MARKER}${original.id}`;
+  const cycleKey = `${baseCycleKey(original.cycleKey)}${RESEND_CYCLE_MARKER}${original.id}`;
   let created: { id: string } | null = null;
   try {
     created = await prisma.billingNotice.create({
@@ -322,6 +380,16 @@ export async function resendBillingNotice(noticeId: string, adminId: string, now
     return { noticeId: existing.id, alreadyQueued: true, status: existing.status as NoticeStatusFilter };
   }
 
+  // Trilha de auditoria (append-only): quem reenviou e qual aviso originou qual. Falha ao gravar nunca desfaz o pedido.
+  await recordBillingEvent({
+    tenantId: original.tenantId,
+    subscriptionId: original.subscriptionId,
+    invoiceId: original.invoiceId,
+    type: "NOTICE_RESENT",
+    actorType: "ADMIN",
+    actorUserId: adminId,
+    metadata: { originalNoticeId: original.id, noticeId: created.id },
+  });
   logger.info("billing.notice.manual_resend", { adminId, originalNoticeId: original.id, noticeId: created.id, step: original.step, channel: original.channel });
   try {
     await Promise.race([

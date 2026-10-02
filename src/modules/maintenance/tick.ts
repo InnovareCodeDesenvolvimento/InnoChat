@@ -1,4 +1,4 @@
-import { clearExpiredNoticePersonalData } from "@/lib/db/billing-notice-queries";
+import { clearExpiredNoticePersonalData, clearNoticePersonalDataOfCanceledTenants } from "@/lib/db/billing-notice-queries";
 import { getPrisma } from "@/lib/db/prisma";
 import { logger } from "@/lib/logger";
 import { CANCELED_RETENTION_DAYS } from "@/core/billing";
@@ -140,13 +140,19 @@ export async function runMaintenanceTick(now: Date = new Date()): Promise<Mainte
     logger.warn("maintenance.billing_email_marks_purge_failed", { errorMessage: error instanceof Error ? error.message : String(error) });
   }
 
-  // Registro de envios da régua (F6): o destino completo (e-mail/telefone) e o texto enviado saem depois de 12 meses.
-  // Falha isolada; não entra no summary (contrato do tick estável).
+  // Registro de envios da régua (F6): o destino completo (e-mail/telefone) e o texto enviado saem depois de 12 meses
+  // e, para empresa CANCELED há mais de 90 dias, junto com a anonimização dos contatos (mesmo `cancellationCutoff`).
+  // Falhas isoladas uma da outra; não entram no summary (contrato do tick estável).
   try {
     const noticeCutoff = new Date(now.getTime() - BILLING_NOTICE_PERSONAL_DATA_RETENTION_DAYS * 24 * 60 * 60 * 1000);
     await clearExpiredNoticePersonalData(noticeCutoff);
   } catch (error) {
     logger.warn("maintenance.billing_notice_personal_data_purge_failed", { errorMessage: error instanceof Error ? error.message : String(error) });
+  }
+  try {
+    await clearNoticePersonalDataOfCanceledTenants(cancellationCutoff);
+  } catch (error) {
+    logger.warn("maintenance.billing_notice_canceled_purge_failed", { errorMessage: error instanceof Error ? error.message : String(error) });
   }
 
   const summary: MaintenanceTickSummary = {

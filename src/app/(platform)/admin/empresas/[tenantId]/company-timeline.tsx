@@ -50,6 +50,7 @@ const EVENT_ICON: Record<string, LucideIcon> = {
   MANUAL_SUSPEND: Ban,
   MANUAL_REACTIVATE: RotateCcw,
   TRIAL_EXTENDED: Timer,
+  NOTICE_RESENT: RotateCcw,
 };
 
 function eventTone(type: string | null | undefined, to: string | null | undefined): Tone {

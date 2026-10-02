@@ -33,7 +33,7 @@ const { buildInvoicesCsv } = await import("@/modules/billing/finance-csv");
 const { runBillingTick } = await import("@/modules/billing/tick");
 const { applyInvoicePayment } = await import("@/modules/billing/service");
 const { createMockMercadoPagoGateway } = await import("@/modules/billing/mercadopago.mock");
-const { clearExpiredNoticePersonalData } = await import("@/lib/db/billing-notice-queries");
+const { clearExpiredNoticePersonalData, clearNoticePersonalDataOfCanceledTenants } = await import("@/lib/db/billing-notice-queries");
 const { runMaintenanceTick } = await import("@/modules/maintenance/tick");
 const csvRoute = await import("@/app/api/admin/finance/invoices.csv/route");
 
@@ -283,7 +283,9 @@ describe("registro de envios: destino completo, snapshot, prévia e totais", () 
     expect(wa!.recipientKind).toBe("BILLING_WHATSAPP");
     expect(wa!.renderedText).toBeTruthy();
 
-    const page = await listBillingNotices({ tenantId: s.tenant.id, from: todaySp(), to: todaySp() });
+    // O período filtra pelo MESMO instante que a coluna mostra (`sentAt`): enviado em 27/10/2026 (SP), não "hoje".
+    const page = await listBillingNotices({ tenantId: s.tenant.id, from: "2026-10-27", to: "2026-10-27" });
+    expect((await listBillingNotices({ tenantId: s.tenant.id, from: "2026-10-28", to: "2026-10-28" })).items).toHaveLength(0);
     const item = page.items.find((i) => i.id === email!.id)!;
     expect(item.stepLabel).toMatch(/Fatura gerada|Lembrete da véspera/);
     expect(item.statusLabel).toBe("Enviado");
@@ -406,7 +408,8 @@ describe("registro de envios: destino completo, snapshot, prévia e totais", () 
     const failed = await listBillingNotices({ ...period, tenantQuery: q, status: "FAILED" });
     expect(failed.items).toHaveLength(1);
     expect(failed.items[0].lastErrorLabel).toContain("e-mail");
-    expect(failed.items[0].canResend).toBe(true);
+    // FAILED com tentativas restantes e prazo aberto: a régua ainda vai tentar, então o botão fica escondido.
+    expect(failed.items[0].canResend).toBe(false);
     expect(failed.totals.sent).toBe(3);
 
     const onlyFailures = await listBillingNotices({ ...period, tenantQuery: q, onlyFailures: true });
@@ -433,6 +436,9 @@ describe("resendBillingNoticeAction: reenvio manual", () => {
     const failed = await prisma.billingNotice.findFirst({ where: { subscriptionId: s.sub.id, channel: "EMAIL", step: "DUE_D1" } });
     expect(failed?.status).toBe("FAILED");
     expect(failed?.recipient).toBeTruthy(); // até a tentativa que falhou guarda para quem era
+    // A régua desistiu deste aviso (tentativas esgotadas): só então o reenvio manual é permitido.
+    await prisma.billingNotice.update({ where: { id: failed!.id }, data: { attempts: 5 } });
+    expect((await listBillingNotices({ tenantId: s.tenant.id, status: "FAILED" })).items.find((i) => i.id === failed!.id)?.canResend).toBe(true);
     h.sentEmails.length = 0;
     h.mailControl.mode = "ok";
 
@@ -450,6 +456,65 @@ describe("resendBillingNoticeAction: reenvio manual", () => {
     expect(second.noticeId).toBe(first.noticeId);
     expect(h.sentEmails.filter((m) => m.to === s.email)).toHaveLength(1);
     expect((await prisma.billingNotice.findUnique({ where: { id: failed!.id } }))?.status).toBe("FAILED");
+
+    // Auditoria append-only: quem reenviou e qual aviso originou qual; a linha do tempo mostra a frase humana.
+    const events = await prisma.billingEvent.findMany({ where: { tenantId: s.tenant.id, type: "NOTICE_RESENT" } });
+    expect(events).toHaveLength(1); // o 2º clique (idempotente) não grava outro
+    expect(events[0]).toMatchObject({ actorType: "ADMIN", actorUserId: adminId, metadata: { originalNoticeId: failed!.id, noticeId: first.noticeId } });
+    const timeline = await listCompanyBillingTimeline(s.tenant.id);
+    expect(timeline.items.some((i) => i.kind === "EVENT" && i.label === "Aviso reenviado pelo admin")).toBe(true);
+    // Depois do reenvio enviado, o original não mostra mais o botão.
+    expect((await listBillingNotices({ tenantId: s.tenant.id, status: "FAILED" })).items.find((i) => i.id === failed!.id)?.canResend).toBe(false);
+  });
+
+  it("recusa FAILED que a régua ainda vai retentar, e o original retentado depois do reenvio não duplica", async () => {
+    const s = await engineScenario(`rs4${token()}`);
+    h.mailControl.mode = "fail";
+    await tick(D1_NOON);
+    h.mailControl.mode = "ok";
+    h.sentEmails.length = 0;
+    const failed = (await prisma.billingNotice.findFirst({ where: { subscriptionId: s.sub.id, channel: "EMAIL", step: "DUE_D1" } }))!;
+    expect(failed.status).toBe("FAILED");
+    expect(failed.attempts).toBeLessThan(5);
+    expect(failed.expiresAt.getTime()).toBeGreaterThan(D1_NOON.getTime());
+
+    const refused = await actions.resendBillingNoticeAction(failed.id);
+    expect(refused.ok).toBe(false);
+    if (!refused.ok) expect(refused.error.code).toBe("NOT_RESENDABLE");
+    expect(await prisma.billingNotice.count({ where: { cycleKey: { startsWith: `${failed.cycleKey}:resend:` } } })).toBe(0);
+
+    // A régua retenta sozinha e entrega UMA vez; nenhum reenvio paralelo existe para duplicar.
+    await tick(new Date(D1_NOON.getTime() + 2 * 3_600_000));
+    expect((await prisma.billingNotice.findUnique({ where: { id: failed.id } }))?.status).toBe("SENT");
+    expect(h.sentEmails.filter((m) => m.to === s.email && m.subject === failed.renderedSubject)).toHaveLength(1);
+  });
+
+  it("um SENT (ou aviso em andamento) com a mesma chave base bloqueia o reenvio, inclusive reenvios anteriores", async () => {
+    const s = await engineScenario(`rs5${token()}`);
+    const mk = (over: Record<string, unknown>) =>
+      prisma.billingNotice.create({
+        data: { tenantId: s.tenant.id, subscriptionId: s.sub.id, invoiceId: s.invoice.id, step: "DUE_D0", channel: "EMAIL", cycleKey: s.invoice.id, status: "FAILED", attempts: 5, notBefore: D1_NOON, expiresAt: D1_NOON, nextAttemptAt: D1_NOON, ...over },
+      });
+    const failed = await mk({});
+    const canResend = async () => (await listBillingNotices({ tenantId: s.tenant.id, status: "FAILED" })).items.find((i) => i.id === failed.id)?.canResend;
+    expect(await canResend()).toBe(true);
+
+    // Reenvio anterior já ENVIADO (chave `<base>:resend:<outro id>`): bloqueia.
+    const earlier = await mk({ cycleKey: `${s.invoice.id}:resend:outro-aviso`, status: "SENT", sentAt: D1_NOON });
+    expect(await canResend()).toBe(false);
+    const sentRefused = await actions.resendBillingNoticeAction(failed.id);
+    expect(sentRefused.ok).toBe(false);
+    if (!sentRefused.ok) expect(sentRefused.error.code).toBe("NOT_RESENDABLE");
+
+    // Em andamento (PENDING) também bloqueia; quando só sobra um reenvio que falhou, libera de novo.
+    await prisma.billingNotice.update({ where: { id: earlier.id }, data: { status: "PENDING", sentAt: null } });
+    expect(await canResend()).toBe(false);
+    await prisma.billingNotice.update({ where: { id: earlier.id }, data: { status: "FAILED" } });
+    expect(await canResend()).toBe(true);
+
+    // Outra etapa/canal com a mesma fatura NÃO bloqueia.
+    await mk({ step: "DUE_D1", cycleKey: s.invoice.id, status: "SENT", sentAt: D1_NOON });
+    expect(await canResend()).toBe(true);
   });
 
   it("não reenvia o que não deve: já pago, opt-out, e quem pagou depois do erro vira SKIPPED/PAID", async () => {
@@ -459,6 +524,7 @@ describe("resendBillingNoticeAction: reenvio manual", () => {
     h.mailControl.mode = "ok";
     h.sentEmails.length = 0;
     const failed = (await prisma.billingNotice.findFirst({ where: { subscriptionId: s.sub.id, channel: "EMAIL", step: "DUE_D1" } }))!;
+    await prisma.billingNotice.update({ where: { id: failed.id }, data: { attempts: 5 } }); // a régua desistiu
 
     // Pagou depois do erro (a fatura do AVISO: o tick já gerou a do próximo ciclo): o reenvio é criado mas o despachante
     // reconfere e NÃO cobra.
@@ -782,6 +848,39 @@ describe("retenção de 12 meses e carga inicial de eventos", () => {
     expect((await getBillingNoticePreview(old.id)).approximate).toBe(true);
 
     expect(await clearExpiredNoticePersonalData(new Date(Date.now() - 365 * DAY))).toBe(0); // idempotente
+  });
+
+  it("empresa CANCELED há mais de 90 dias tem destino e texto dos avisos zerados junto com a anonimização, sem mexer na data", async () => {
+    const mkNotice = (s: { tenant: { id: string }; sub: { id: string } }, cycleKey: string, updatedAt: Date) =>
+      prisma.billingNotice.create({
+        data: {
+          tenantId: s.tenant.id, subscriptionId: s.sub.id, step: "DUE_D1", channel: "EMAIL", cycleKey, status: "SENT",
+          notBefore: updatedAt, expiresAt: updatedAt, nextAttemptAt: updatedAt, updatedAt,
+          recipient: "alguem@example.com", recipientKind: "OWNER", recipientMasked: "al***@example.com", renderedSubject: "Assunto", renderedText: "Texto",
+        },
+      });
+    const recentAt = new Date(Date.now() - 10 * DAY);
+    const old90 = await engineScenario(`can90${token()}`);
+    await prisma.subscription.update({ where: { id: old90.sub.id }, data: { status: "CANCELED", canceledAt: new Date(Date.now() - 91 * DAY) } });
+    const young = await engineScenario(`can30${token()}`);
+    await prisma.subscription.update({ where: { id: young.sub.id }, data: { status: "CANCELED", canceledAt: new Date(Date.now() - 30 * DAY) } });
+    const active = await engineScenario(`act${token()}`);
+    const n90 = await mkNotice(old90, `can-${token()}`, recentAt);
+    const nYoung = await mkNotice(young, `can-${token()}`, recentAt);
+    const nActive = await mkNotice(active, `can-${token()}`, recentAt);
+
+    await runMaintenanceTick(new Date());
+
+    const after90 = await prisma.billingNotice.findUnique({ where: { id: n90.id } });
+    expect(after90).toMatchObject({ recipient: null, renderedSubject: null, renderedText: null, recipientMasked: "al***@example.com" });
+    expect(after90!.updatedAt.getTime()).toBe(recentAt.getTime());
+    for (const id of [nYoung.id, nActive.id]) {
+      expect(await prisma.billingNotice.findUnique({ where: { id } })).toMatchObject({ recipient: "alguem@example.com", renderedText: "Texto" });
+    }
+    // Idempotente: a 2ª execução não encontra mais nada para zerar e nada muda.
+    await runMaintenanceTick(new Date());
+    expect((await prisma.billingNotice.findUnique({ where: { id: n90.id } }))!.updatedAt.getTime()).toBe(recentAt.getTime());
+    expect(await clearNoticePersonalDataOfCanceledTenants(new Date(Date.now() - 90 * DAY))).toBe(0);
   });
 
   it("a carga inicial deriva cancelamentos e pagamentos antigos, marcada como backfill, e é idempotente", async () => {

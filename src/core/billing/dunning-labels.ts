@@ -130,6 +130,8 @@ export function billingEventLabel(type: string, ctx: { from?: string | null; to?
       return "Reativada manualmente pelo admin";
     case "TRIAL_EXTENDED":
       return "Teste grátis estendido pelo admin";
+    case "NOTICE_RESENT":
+      return "Aviso reenviado pelo admin";
     default:
       return type;
   }

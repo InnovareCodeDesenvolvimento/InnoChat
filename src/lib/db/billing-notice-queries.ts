@@ -86,3 +86,21 @@ export async function clearExpiredNoticePersonalData(before: Date): Promise<numb
        AND ("recipient" IS NOT NULL OR "renderedSubject" IS NOT NULL OR "renderedText" IS NOT NULL)
   `);
 }
+
+/**
+ * Acompanha a anonimização de 90 dias do cancelamento: zera o destino completo e o snapshot do texto dos avisos das
+ * empresas com assinatura CANCELED há mais que `canceledBefore`. Mesmo critério do tick de manutenção para os contatos.
+ * SQL cru pelo mesmo motivo da retenção de 12 meses (não reescrever `updatedAt`). Idempotente: só toca linhas que ainda têm dado.
+ */
+export async function clearNoticePersonalDataOfCanceledTenants(canceledBefore: Date): Promise<number> {
+  const cutoff = canceledBefore.toISOString();
+  return getPrisma().$executeRaw(Prisma.sql`
+    UPDATE "billing_notices" AS n
+       SET "recipient" = NULL, "renderedSubject" = NULL, "renderedText" = NULL
+      FROM "subscriptions" AS s
+     WHERE s."tenantId" = n."tenantId"
+       AND s."status" = 'CANCELED'
+       AND s."canceledAt" < ${cutoff}::timestamp
+       AND (n."recipient" IS NOT NULL OR n."renderedSubject" IS NOT NULL OR n."renderedText" IS NOT NULL)
+  `);
+}

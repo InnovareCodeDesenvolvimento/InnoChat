@@ -22,7 +22,8 @@ export type BillingEventType =
   | "MANUAL_PAYMENT"
   | "MANUAL_SUSPEND"
   | "MANUAL_REACTIVATE"
-  | "TRIAL_EXTENDED";
+  | "TRIAL_EXTENDED"
+  | "NOTICE_RESENT";
 
 export type BillingActorType = "SYSTEM" | "OWNER" | "ADMIN";
 
