@@ -4,7 +4,7 @@ import { getPrisma } from "@/lib/db/prisma";
 import { forTenant } from "@/lib/db/tenant-client";
 import { DomainError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
-import { sendMail, SmtpNotConfiguredError, loadEmailContext, invoiceGeneratedEmail, subscriptionSuspendedEmail, type SendMailInput } from "@/lib/email";
+import { sendMail, SmtpNotConfiguredError, loadEmailContext, invoiceGeneratedEmail, subscriptionSuspendedEmail, type SendMailInput, type SendMailResult } from "@/lib/email";
 import { getPublicBaseUrl } from "@/lib/public-url";
 import { CANCEL_AFTER_SUSPENDED_TRIAL_DAYS, computeTrialEndsAt, effectiveStatus, validateCpfCnpj, type SubscriptionStatus } from "@/core/billing";
 import { formatCentsBRL, formatDateBR } from "./format";
@@ -639,17 +639,21 @@ export async function listActivePlans() {
  * com dado pessoal ou corpo (o assunto/erro de transporte já são logados por `sendMail`).
  */
 export async function sendBillingMail(input: SendMailInput, logEvent: string): Promise<boolean> {
+  return (await sendBillingMailDetailed(input, logEvent)).sent;
+}
+
+/** Igual a `sendBillingMail`, mas devolve a evidência (messageId, resposta do SMTP, recusas) para a régua gravar no aviso. */
+export async function sendBillingMailDetailed(input: SendMailInput, logEvent: string): Promise<SendMailResult> {
   try {
     const result = await sendMail(input);
-    if (result.sent) return true;
-    logger.warn(logEvent, { reason: "SEND_FAILED" });
-    return false;
+    if (!result.sent) logger.warn(logEvent, { reason: result.failure === "REJECTED" ? "REJECTED" : "SEND_FAILED" });
+    return result;
   } catch (error) {
     logger.warn(logEvent, {
       reason: error instanceof SmtpNotConfiguredError ? "SMTP_NOT_CONFIGURED" : "UNEXPECTED_ERROR",
       errorName: error instanceof Error ? error.name : "unknown",
     });
-    return false;
+    return { sent: false, rejectedCount: 0, accepted: [], rejected: [], failure: "TRANSPORT_ERROR" };
   }
 }
 

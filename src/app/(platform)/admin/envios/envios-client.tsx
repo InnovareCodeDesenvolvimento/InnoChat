@@ -137,6 +137,18 @@ function StatusBlock({ item }: { item: BillingNoticeItem }) {
         <p className="mt-1 text-xs text-text-secondary">{item.lastErrorLabel ?? `Código do erro: ${item.lastErrorCode}`}</p>
       ) : null}
       <p className="mt-1 text-xs text-text-secondary">{attemptsLabel(item.attempts)}</p>
+      {item.channel === "EMAIL" && item.status === "SENT" && (item.providerMessageId || item.providerResponse) ? (
+        <p className="mt-1 break-all text-xs text-text-secondary" data-testid="notice-delivery-evidence">
+          Aceito pelo servidor de e-mail
+          {item.providerMessageId ? ` (id ${item.providerMessageId}` : ""}
+          {item.providerResponse ? `${item.providerMessageId ? ", " : " ("}resposta ${item.providerResponse}` : ""}
+          {")"}
+          . Aceito não quer dizer que chegou na caixa de entrada.
+        </p>
+      ) : null}
+      {item.channel === "EMAIL" && item.status === "FAILED" && item.providerResponse ? (
+        <p className="mt-1 break-all text-xs text-text-secondary">Resposta do servidor: {item.providerResponse}</p>
+      ) : null}
     </div>
   );
 }

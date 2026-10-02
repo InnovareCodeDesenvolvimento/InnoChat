@@ -14,7 +14,7 @@ export const prisma = getPrisma();
 
 export type SentMail = { to: string; subject: string; text: string };
 export const sentEmails: SentMail[] = [];
-export const mailControl: { mode: "ok" | "fail" | "not_configured" | "throw"; gate: Promise<void> | null } = { mode: "ok", gate: null };
+export const mailControl: { mode: "ok" | "fail" | "rejected" | "not_configured" | "throw"; gate: Promise<void> | null } = { mode: "ok", gate: null };
 
 export function fakeSendMail(actual: { SmtpNotConfiguredError: new () => Error }) {
   return vi.fn(async (input: SentMail) => {
@@ -22,8 +22,18 @@ export function fakeSendMail(actual: { SmtpNotConfiguredError: new () => Error }
     if (mailControl.mode === "not_configured") throw new actual.SmtpNotConfiguredError();
     if (mailControl.mode === "throw") throw new Error("boom");
     if (mailControl.mode === "fail") return { sent: false };
+    if (mailControl.mode === "rejected") {
+      return { sent: false, rejectedCount: 1, accepted: [], rejected: [input.to], failure: "REJECTED", smtpResponse: "550 5.1.1 destinatario recusado" };
+    }
     sentEmails.push({ to: input.to, subject: input.subject, text: input.text });
-    return { sent: true };
+    return {
+      sent: true,
+      rejectedCount: 0,
+      accepted: [input.to],
+      rejected: [],
+      messageId: `<msg-${sentEmails.length}@innochat.test>`,
+      smtpResponse: "250 2.0.0 OK 1700000000 teste-gsmtp",
+    };
   });
 }
 

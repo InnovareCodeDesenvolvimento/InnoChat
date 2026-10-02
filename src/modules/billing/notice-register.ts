@@ -81,6 +81,9 @@ export type NoticeRegisterItem = {
   attempts: number;
   lastErrorCode?: string;
   lastErrorLabel?: string;
+  /** E-mail: id da mensagem atribuído no envio e resposta do servidor SMTP (evidência de que foi ACEITO; não prova que chegou na caixa). */
+  providerMessageId?: string;
+  providerResponse?: string;
   /** Há texto guardado (snapshot) para a prévia exata. */
   hasSnapshot: boolean;
   /** Pode ser reenviado pelo botão: a régua desistiu (falha esgotada) ou não saiu por motivo temporário, e não há outro aviso igual enviado ou em andamento. */
@@ -232,6 +235,8 @@ export async function listBillingNotices(filters: NoticeRegisterFilters = {}): P
       item.skippedReason = n.skippedReason;
       item.skippedReasonLabel = skippedReasonLabel(n.skippedReason);
     }
+    if (n.channel === "EMAIL" && n.providerMessageId) item.providerMessageId = n.providerMessageId;
+    if (n.channel === "EMAIL" && n.providerResponse) item.providerResponse = n.providerResponse;
     if (n.senderPhoneE164) item.senderPhoneDisplay = formatPhoneDisplay(n.senderPhoneE164) ?? undefined;
     if (n.lastErrorCode) {
       item.lastErrorCode = n.lastErrorCode;

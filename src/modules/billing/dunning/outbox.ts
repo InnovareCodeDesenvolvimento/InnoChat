@@ -113,6 +113,8 @@ export type NoticeAuditFields = {
   recipientKind?: NoticeRecipientKind | null;
   renderedSubject?: string | null;
   renderedText?: string | null;
+  /** Resposta curta do SMTP (já sem e-mails). Evidência de entrega; grava também na falha. */
+  providerResponse?: string | null;
 };
 
 function auditData(extra: NoticeAuditFields | undefined) {
@@ -122,6 +124,7 @@ function auditData(extra: NoticeAuditFields | undefined) {
     ...(extra.recipientKind !== undefined ? { recipientKind: extra.recipientKind } : {}),
     ...(extra.renderedSubject !== undefined ? { renderedSubject: extra.renderedSubject?.slice(0, 300) ?? null } : {}),
     ...(extra.renderedText !== undefined ? { renderedText: extra.renderedText?.slice(0, SNAPSHOT_MAX_CHARS) ?? null } : {}),
+    ...(extra.providerResponse !== undefined ? { providerResponse: extra.providerResponse?.slice(0, 300) ?? null } : {}),
   };
 }
 
@@ -170,6 +173,7 @@ export async function markNoticeSentSafely(...args: Parameters<typeof markNotice
       recipientKind: data.recipientKind,
       renderedSubject: data.renderedSubject,
       renderedText: data.renderedText,
+      providerResponse: data.providerResponse,
     });
     return;
   } catch (error) {

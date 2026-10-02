@@ -111,6 +111,32 @@ describe("idempotência: o mesmo aviso nunca sai duas vezes", () => {
   });
 });
 
+describe("evidência de entrega do e-mail", () => {
+  it("grava o id da mensagem e a resposta do SMTP no aviso enviado, e a resposta de recusa no aviso que falhou", async () => {
+    const s = await scenario("evidence-mail", { billingWhatsappE164: null });
+    h.mailControl.mode = "rejected";
+    await tick(D1_NOON);
+    expect(await row(s.sub.id, "DUE_D1", "EMAIL")).toMatchObject({
+      status: "FAILED",
+      lastErrorCode: "EMAIL_REJECTED",
+      providerMessageId: null,
+      providerResponse: "550 5.1.1 destinatario recusado",
+    });
+
+    h.mailControl.mode = "ok";
+    await tick(at("2026-10-27T15:06:00Z"));
+    const sent = await row(s.sub.id, "DUE_D1", "EMAIL");
+    expect(sent).toMatchObject({ status: "SENT", lastErrorCode: null, providerResponse: "250 2.0.0 OK 1700000000 teste-gsmtp" });
+    expect(sent!.providerMessageId).toMatch(/^<msg-\d+@innochat\.test>$/);
+
+    // O registro do Admin expõe a evidência só para e-mail.
+    const { listBillingNotices } = await import("@/modules/billing/notice-register");
+    const page = await listBillingNotices({ tenantId: s.tenant.id, channel: "EMAIL", status: "SENT" });
+    const item = page.items.find((i) => i.step === "DUE_D1");
+    expect(item).toMatchObject({ providerResponse: "250 2.0.0 OK 1700000000 teste-gsmtp", providerMessageId: sent!.providerMessageId });
+  });
+});
+
 describe("falha e nova tentativa (espera crescente)", () => {
   it("SMTP fora: FAILED com código, espera de 5 min, não reenvia antes, reenvia depois e conta a tentativa", async () => {
     const s = await scenario("retry-mail", { billingWhatsappE164: null });

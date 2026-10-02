@@ -1103,6 +1103,8 @@ model BillingNotice {
 
   recipientMasked   String?
   providerMessageId String?
+  // Resposta curta do servidor SMTP no envio de e-mail (sem endereços, até 200 caracteres). Evidência de que o servidor aceitou.
+  providerResponse  String?
 
   // F6 (registro global do Admin). `recipient` = destino COMPLETO (dado pessoal, só no banco, nunca em log; a manutenção zera
   // após 12 meses junto com `renderedText`). `recipientKind`: OWNER | BILLING_EMAIL | BILLING_WHATSAPP (CHECK).

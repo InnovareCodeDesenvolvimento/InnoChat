@@ -67,6 +67,7 @@ export function skippedReasonLabel(reason: string): string {
 
 export const NOTICE_ERROR_LABELS: Record<string, string> = {
   EMAIL_NOT_SENT: "O servidor de e-mail não aceitou o envio",
+  EMAIL_REJECTED: "O servidor de e-mail recusou o destinatário",
   WHATSAPP_SEND_FAILED: "O WhatsApp não conseguiu enviar",
   UNEXPECTED_ERROR: "Erro inesperado no envio",
   STUCK_MAX_ATTEMPTS: "O envio travou e esgotou as tentativas",

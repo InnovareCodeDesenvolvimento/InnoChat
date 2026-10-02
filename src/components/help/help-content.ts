@@ -396,6 +396,21 @@ const HELP_ENTRIES = {
     tip: "Um chip só para os avisos isola o risco: se for bloqueado, o WhatsApp do seu atendimento não é afetado. Número novo envia menos por hora nos 3 primeiros dias.",
     warning: "Não use o WhatsApp comercial do site nem o número do bot de uma empresa: o sistema recusa.",
   },
+  "admin.smtpTeste": {
+    title: "E-mail de teste",
+    purpose: "Manda um e-mail simples, pelo mesmo servidor e remetente dos avisos de cobrança, e mostra o que o servidor respondeu. Serve para saber se a mensagem chega de verdade na sua caixa.",
+    steps: [
+      "Salve o SMTP antes. O teste usa o que está salvo, não o que está digitado na tela.",
+      "Digite o seu e-mail (de preferência um Gmail) e clique em \"Enviar e-mail de teste\".",
+      "Veja a resposta do servidor e depois confira a caixa de entrada, o spam e a aba Promoções.",
+    ],
+    examples: [
+      "Resposta \"250 2.0.0 OK\" e o e-mail não chegou: o servidor aceitou, mas o Gmail pode ter filtrado. Olhe o spam e o SPF, DKIM e DMARC do domínio do remetente.",
+      "Destinatário recusado: o endereço não existe ou o servidor bloqueou o envio. A resposta diz o motivo.",
+    ],
+    tip: "\"Aceito pelo servidor\" quer dizer que o servidor pegou a mensagem. Só você, olhando a caixa, confirma que ela chegou.",
+    warning: "Cada administrador pode mandar 5 testes a cada 10 minutos.",
+  },
   "pagina.adminFinanceiro": {
     title: "Painel financeiro",
     purpose: "Mostra quanto a plataforma fatura, quem está pagando em dia, quem atrasou e quanto dinheiro está para entrar. Os valores do mês seguem o horário de Brasília.",

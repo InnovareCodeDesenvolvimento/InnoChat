@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requirePlatformAdmin } from "@/lib/auth/guards";
+import { checkRateLimit } from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
 import { UnsafeUrlError } from "@/lib/net/safe-fetch";
 import { N8nApiError } from "./n8n-client";
@@ -34,6 +35,7 @@ import {
   testSmtpConnection,
   type ConnectionTestResult,
 } from "./connection-tests";
+import { sendSmtpTestEmail, type SmtpTestEmailResult } from "./smtp-test-email";
 import { activateBotWorkflow, deactivateBotWorkflow, syncN8n, type N8nSyncSummary } from "./n8n-sync";
 import { getPlatformLegalInfo, updatePlatformLegalInfo } from "./legal-service";
 import type { PlatformLegalInfo } from "@/core/legal/placeholders";
@@ -234,6 +236,23 @@ export async function testSmtpConnectionAction(input: unknown): Promise<Result<C
       user: data.smtpUser,
       password: data.smtpPassword || (await getSavedIntegrationSecrets()).smtpPassword || undefined,
     });
+  });
+}
+
+const testSmtpEmailSchema = z.object({ to: z.string().trim().email("Informe um e-mail válido.").max(254) });
+const SMTP_TEST_EMAIL_LIMIT = 5;
+const SMTP_TEST_EMAIL_WINDOW_MS = 10 * 60_000;
+
+/** Envia um e-mail simples de teste pelo SMTP salvo e devolve a resposta real do servidor (admin da plataforma, com limite de uso). */
+export async function sendSmtpTestEmailAction(input: unknown): Promise<Result<SmtpTestEmailResult>> {
+  return runAction(async () => {
+    const admin = await requirePlatformAdmin();
+    const data = testSmtpEmailSchema.parse(input);
+    const rate = checkRateLimit(`smtp-test-email:${admin.id}`, SMTP_TEST_EMAIL_LIMIT, SMTP_TEST_EMAIL_WINDOW_MS);
+    if (!rate.allowed) {
+      throw new DomainError("RATE_LIMITED", "Muitos e-mails de teste seguidos. Aguarde alguns minutos.", { retryAfterMs: rate.retryAfterMs });
+    }
+    return sendSmtpTestEmail(data.to);
   });
 }
 

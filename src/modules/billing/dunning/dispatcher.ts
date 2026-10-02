@@ -3,7 +3,7 @@ import { claimDueBillingNotices, type ClaimedBillingNotice } from "@/lib/db/bill
 import { getPrisma } from "@/lib/db/prisma";
 import { describeDbError } from "@/lib/db/prisma-errors";
 import { logger } from "@/lib/logger";
-import { loadEmailContext, renderDunningEmail } from "@/lib/email";
+import { loadEmailContext, renderDunningEmail, type SendMailResult } from "@/lib/email";
 import {
   buildWhatsappMessages,
   CRITICAL_WAIT_FOR_CHANNEL_HOURS,
@@ -19,7 +19,7 @@ import {
 } from "@/core/billing";
 import { getPlatformWhatsappRoundBudget, sendPlatformWhatsapp } from "@/modules/platform-whatsapp/sender";
 import type { MercadoPagoGateway } from "../mercadopago";
-import { regeneratePixForInvoice, sendBillingMail } from "../service";
+import { regeneratePixForInvoice, sendBillingMailDetailed } from "../service";
 import { buildNoticeCopyContext } from "./context";
 import {
   expireStaleNotices,
@@ -296,6 +296,12 @@ async function ensureFreshPix(
   return invoice.pixCopyPaste && invoice.pixExpiresAt && invoice.pixExpiresAt > now ? invoice.pixCopyPaste : null;
 }
 
+/** Respostas do SMTP (já sem e-mails) unidas para guardar no aviso; `null` se o servidor não respondeu nada utilizável. */
+function joinSmtpResponses(results: SendMailResult[]): string | null {
+  const parts = results.map((r) => r.smtpResponse).filter((r): r is string => !!r);
+  return parts.length > 0 ? parts.join(" | ") : null;
+}
+
 async function sendEmail(
   notice: ClaimedBillingNotice,
   step: DunningStep,
@@ -312,17 +318,28 @@ async function sendEmail(
   }
   // Snapshot do que vai sair e para quem (registro do Admin). Dado pessoal: só no banco, nunca em log.
   const audit = { recipient: emails.join(", "), recipientKind: emailKind, renderedSubject: mail.subject, renderedText: mail.text };
-  let delivered = 0;
+  const accepted: SendMailResult[] = [];
+  const refused: SendMailResult[] = [];
   for (const to of emails) {
-    if (await sendBillingMail({ to, subject: mail.subject, html: mail.html, text: mail.text }, "billing.notice.email_not_sent")) delivered += 1;
+    const result = await sendBillingMailDetailed({ to, subject: mail.subject, html: mail.html, text: mail.text }, "billing.notice.email_not_sent");
+    (result.sent ? accepted : refused).push(result);
   }
-  if (delivered === 0) {
-    await markNoticeFailed(notice.id, now, notice.attempts, "EMAIL_NOT_SENT", audit);
+  if (accepted.length === 0) {
+    // Guarda a resposta do servidor também na falha (diz se foi recusa do destinatário ou problema de conexão).
+    const evidence = { providerResponse: joinSmtpResponses(refused) };
+    const code = refused.some((r) => r.failure === "REJECTED") ? "EMAIL_REJECTED" : "EMAIL_NOT_SENT";
+    await markNoticeFailed(notice.id, now, notice.attempts, code, { ...audit, ...evidence });
     summary.failed += 1;
     summary.emailsFailed += 1;
     return "FAILED";
   }
-  await markNoticeSentSafely(notice.id, now, { recipientMasked: emails.map(maskEmail).join(", "), ...audit });
+  // Evidência do envio: id da mensagem (do primeiro destinatário aceito) e resposta do servidor SMTP.
+  await markNoticeSentSafely(notice.id, now, {
+    recipientMasked: emails.map(maskEmail).join(", "),
+    providerMessageId: accepted.find((r) => r.messageId)?.messageId ?? null,
+    ...audit,
+    providerResponse: joinSmtpResponses(accepted),
+  });
   summary.sent += 1;
   summary.emailsSent += 1;
   summary.emailSentSteps.push(step);

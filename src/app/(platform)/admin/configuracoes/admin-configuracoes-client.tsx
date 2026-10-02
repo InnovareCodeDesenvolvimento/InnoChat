@@ -37,6 +37,7 @@ import type { N8nSyncSummary } from "@/modules/platform/n8n-sync";
 import type { PlatformSettingsView } from "@/modules/platform/service";
 import type { PlatformLegalInfo } from "@/core/legal/placeholders";
 import type { SalesWhatsapp } from "@/modules/platform/sales-contact";
+import { SmtpTestEmailBox } from "@/components/admin/smtp-test-email-box";
 import { HelpButton } from "@/components/help/help-button";
 import { formatBrPhoneDisplay, normalizeBrPhoneToE164 } from "@/core/contact/br-phone";
 
@@ -687,6 +688,7 @@ export function AdminConfiguracoesClient({
             </Button>
           </CardFooter>
         </form>
+        <SmtpTestEmailBox />
       </Card>
 
       <Card className="rounded-hero">
