@@ -7,6 +7,11 @@ Versão semântica (`MAJOR.MINOR.PATCH`), lida do `version` do `package.json` e 
 
 Toda publicação em produção sobe a versão e ganha uma entrada aqui.
 
+## v1.6.1 — 2026-10-02
+
+### Melhorias
+- Os ícones de ajuda ⓘ aparecem por 6 segundos quando cada tela abre e depois somem, deixando a tela mais limpa. Voltam ao passar o mouse sobre o card ou título e ao navegar pelo teclado; no celular, tocar no cantinho ainda abre a ajuda.
+
 ## v1.6.0 — 2026-10-02
 
 ### Novidades: monitor da cobrança
