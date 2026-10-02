@@ -26,6 +26,11 @@
  *   ser CROSS-tenant. Colocar aqui faria `forTenant()` filtrar por tenant e
  *   quebrar exatamente a checagem que este model existe para fazer (ver
  *   comentário em `prisma/schema.prisma` no model `TrialClaim`).
+ * - Onda 0 (melhorias 2026-10), globais ou lidos cross-tenant pelo Admin, sempre via `getPrisma()`:
+ *   `ErrorGroup`, `ErrorEvent`, `BackupConfig`, `BackupRun`, `BackupDriveOauthNonce`,
+ *   `TwoFactorRecoveryCode`, `Coupon`, `CouponPlan`. `AuditLog` e `CouponRedemption` TÊM `tenantId`
+ *   mas ficam de fora (o Admin lê todas as empresas; a tela da empresa filtra `tenantId` à mão).
+ *   `WaitlistEntry` é o único novo que ENTRA na lista (tenant-scoped puro).
  * - Tenant-scoped SEM coluna `tenantId` própria — o isolamento é por relação
  *   (join até o pai que tem `tenantId`), então este mecanismo genérico não
  *   serve: `ProfessionalService` (via `professionalId` → `Professional`),
@@ -49,6 +54,7 @@ export const TENANT_SCOPED_MODELS = [
   "Subscription",
   "ChatMessage",
   "HandoffRequest",
+  "WaitlistEntry",
 ] as const;
 
 export type TenantScopedModel = (typeof TENANT_SCOPED_MODELS)[number];

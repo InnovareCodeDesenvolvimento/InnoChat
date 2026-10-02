@@ -37,9 +37,22 @@ model User {
   name              String?
   // Notificações da plataforma (admin): "marcar todas como lidas" = tudo com data <= este instante.
   platformNotificationsReadAllAt DateTime?
+
+  // 2FA por TOTP (Onda 0, item 3). `totpSecretEnc` = segredo base32 cifrado (`enc:v1:`). Com
+  // `totpEnabledAt` NULO e segredo preenchido = cadastro iniciado, ainda NÃO confirmado (não vale
+  // no login). `totpEnabledAt` preenchido = 2FA ligada (CHECK: exige segredo). `totpLastUsedStep` =
+  // último passo de 30 s aceito (anti-replay: o mesmo código não entra duas vezes).
+  // `twoFactorRequired` = exigência por usuário; a regra efetiva é `isPlatformAdmin || twoFactorRequired`
+  // (calculada no código, sem CHECK: admins já existentes ainda não têm a flag).
+  totpSecretEnc     String?
+  totpEnabledAt     DateTime?
+  totpLastUsedStep  Int?
+  twoFactorRequired Boolean   @default(false)
+
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
+  twoFactorRecoveryCodes    TwoFactorRecoveryCode[]
   platformNotificationReads PlatformNotificationRead[]
   memberships       Membership[]
   authTokens        AuthToken[]
@@ -165,6 +178,9 @@ model Tenant {
   handoffRequests    HandoffRequest[]
   billingNotices     BillingNotice[]
   billingEvents      BillingEvent[]
+  auditLogs          AuditLog[]
+  couponRedemptions  CouponRedemption[]
+  waitlistEntries    WaitlistEntry[]
 
   @@map("tenants")
 }
@@ -257,6 +273,15 @@ model PlatformSettings {
   // n8n-sync.ts) — opcional: pode não existir ainda no n8n do dono, `syncN8n` não falha por
   // isso, só avisa no resumo.
   n8nWorkflowCronId   String?
+
+  // Pixel do Meta + API de Conversões (Onda 0, item 5). `metaPixelId` não é segredo (aparece no HTML
+  // da landing); o token da CAPI é cifrado (`enc:v1:`) e nunca volta à tela. `metaTestEventCode` é o
+  // código do "Testar eventos" do Gerenciador de Eventos (só em teste; vazio em produção).
+  // `metaEnabled=false` desliga pixel e CAPI sem apagar a configuração.
+  metaPixelId       String?
+  metaCapiTokenEnc  String?
+  metaTestEventCode String?
+  metaEnabled       Boolean @default(false)
 
   // Publicação do fluxo do bot pelo painel (bot v2, docs/bot-v2-plano.md §3.1/§3.6).
   n8nBotFlowVersion           String?   // Config.flowVersion do JSON publicado, ex.: "2.0.0"
@@ -374,6 +399,7 @@ model Service {
   tenant                Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   professionalServices  ProfessionalService[]
   appointments          Appointment[]
+  waitlistEntries      WaitlistEntry[]
 
   @@index([tenantId, active, sortOrder])
   @@map("services")
@@ -385,6 +411,10 @@ model Professional {
   name      String
   active    Boolean  @default(true)
   sortOrder Int      @default(0)
+  // Comissão padrão do profissional, em % do valor do serviço (0 a 100, 2 casas; CHECK no banco).
+  // NULO = sem comissão cadastrada (relatório trata como 0). O Prisma devolve Decimal: converter
+  // com Number() antes de calcular em centavos.
+  commissionPct Decimal? @db.Decimal(5, 2)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -393,6 +423,8 @@ model Professional {
   professionalServices ProfessionalService[]
   scheduleExceptions   ScheduleException[]
   appointments         Appointment[]
+  waitlistEntries      WaitlistEntry[]       @relation("WaitlistProfessional")
+  waitlistOffers       WaitlistEntry[]       @relation("WaitlistOfferedProfessional")
 
   @@index([tenantId, active, sortOrder])
   @@map("professionals")
@@ -402,6 +434,9 @@ model ProfessionalService {
   id             String @id @default(cuid())
   professionalId String
   serviceId      String
+  // Override da comissão para ESTE serviço neste profissional (% 0 a 100). NULO = vale
+  // `Professional.commissionPct`. 0 é um valor válido ("este serviço não comissiona").
+  commissionPct  Decimal? @db.Decimal(5, 2)
 
   professional Professional @relation(fields: [professionalId], references: [id], onDelete: Cascade)
   service      Service      @relation(fields: [serviceId], references: [id], onDelete: Cascade)
@@ -468,6 +503,7 @@ model Contact {
   chatSessions ChatSession[]
   chatMessages ChatMessage[]
   handoffRequests HandoffRequest[]
+  waitlistEntries WaitlistEntry[]
 
   @@unique([tenantId, waJid])
   @@index([tenantId])
@@ -515,17 +551,23 @@ model Appointment {
   professional     Professional      @relation(fields: [professionalId], references: [id], onDelete: Cascade)
   whatsappInstance WhatsappInstance? @relation(fields: [whatsappInstanceId], references: [id], onDelete: SetNull)
   events           AppointmentEvent[]
+  waitlistEntry    WaitlistEntry?
 
+  @@unique([tenantId, idempotencyKey])
   // Índices para as consultas quentes (§5, §8):
   // - disponibilidade por profissional e dia
   // - agendamentos por tenant e período
+  // Relatórios (item 8): faturamento/faltas por período filtram `tenantId + startsAt` e depois `status`.
+  // Este índice já cobre o intervalo; o filtro de status roda sobre as linhas do período (milhares por
+  // mês). Um índice (tenantId, status, startsAt) NÃO foi criado: custo em toda escrita de agendamento
+  // sem ganho mensurável nesse volume. Reavaliar se um tenant passar de ~50 mil/mês.
   @@index([professionalId, startsAt])
   @@index([tenantId, startsAt])
   // Job de lembrete: status = SCHEDULED AND reminderSentAt IS NULL AND startsAt entre X e Y.
   @@index([status, reminderSentAt, startsAt])
-  @@unique([tenantId, idempotencyKey])
   @@map("appointments")
 }
+
 // A constraint EXCLUDE USING gist (professionalId, tstzrange(startsAt, blockEndsAt, '[)')) WHERE
 // status = 'SCHEDULED' está na migration SQL manual 0002_appointment_exclude_no_overlap (precisa
 // de btree_gist; Prisma não expressa EXCLUDE no schema).
@@ -838,6 +880,11 @@ model Plan {
   name String
 
   priceCents Int
+  // Preço do plano ANUAL, cobrado de uma vez a cada 12 meses (centavos). NULO = o plano não tem
+  // opção anual. Preço explícito (e não % de desconto): o dono decide o número que o cliente vê, sem
+  // arredondamento escondido; o desconto exibido ("2 meses grátis") é derivado de priceCents*12.
+  // CHECK: > 0. MRR do anual = annualPriceCents / 12.
+  annualPriceCents Int?
 
   maxWhatsappNumbers Int
   // null = ilimitado (plano Clínica, §7.2). maxWhatsappNumbers nunca é ilimitado nos 3 planos
@@ -852,6 +899,7 @@ model Plan {
 
   subscriptions        Subscription[] @relation("SubscriptionPlan")
   pendingSubscriptions Subscription[] @relation("SubscriptionPendingPlan")
+  couponPlans          CouponPlan[]
 
   @@map("plans")
 }
@@ -917,9 +965,19 @@ model Subscription {
   // Gravada em `suspendCompanyManually`; volta a nulo no pagamento e na reativação manual.
   manualSuspendedAt DateTime?
 
+  // Ciclo de cobrança (Onda 0, item 6): MONTHLY | ANNUAL (CHECK). Todas as assinaturas existentes
+  // são MONTHLY. No ANUAL, `currentPeriodEnd` avança 12 meses e a fatura usa `Plan.annualPriceCents`.
+  billingCycle          String  @default("MONTHLY")
+  // Cupom em vigor. Sem cupom: os dois nulos. `couponCyclesRemaining` NULO com cupom = FOREVER; número
+  // = faturas ainda descontadas (decrementa a cada fatura gerada com desconto; ao chegar a 0 o código
+  // zera `couponId`). Cupom nunca é apagado (ON DELETE RESTRICT): desative-o.
+  couponId              String?
+  couponCyclesRemaining Int?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  coupon         Coupon?         @relation(fields: [couponId], references: [id], onDelete: Restrict)
   tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   plan        Plan      @relation("SubscriptionPlan", fields: [planId], references: [id])
   pendingPlan Plan?     @relation("SubscriptionPendingPlan", fields: [pendingPlanId], references: [id])
@@ -932,6 +990,7 @@ model Subscription {
   // - quem ainda está no trial de 1 dia, para fechar TRIALING → PAST_DUE → (status, trialEndsAt)
   @@index([status, currentPeriodEnd])
   @@index([status, trialEndsAt])
+  @@index([couponId])
   @@map("subscriptions")
 }
 
@@ -996,12 +1055,21 @@ model Invoice {
   paidByPaymentId    String?
   duplicatePaymentAt DateTime?
 
+  // Cupom e ciclo (Onda 0, item 6). `amountCents` continua sendo o valor LÍQUIDO a cobrar (o que o Pix
+  // e todo código existente já usam); `discountCents` é o desconto já abatido, então bruto =
+  // amountCents + discountCents. `couponCode` = snapshot do código (o cupom pode mudar/desativar depois).
+  // `cycle` = MONTHLY | ANNUAL do período desta fatura. CHECKs: discountCents >= 0 e cycle fechado.
+  discountCents Int     @default(0)
+  couponCode    String?
+  cycle         String  @default("MONTHLY")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   subscription   Subscription    @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
   billingNotices BillingNotice[]
   billingEvents  BillingEvent[]
+  couponRedemptions CouponRedemption[]
 
   // Uma fatura por ciclo de cobrança (§5): impede o billing/tick gerar duas faturas para o mesmo
   // período se rodar em cima da hora (idempotência "por desenho", não só pelo `{ invoicesCreated }`
@@ -1265,4 +1333,311 @@ model PlatformNotificationRead {
 
   @@unique([userId, notificationKey])
   @@map("platform_notification_reads")
+}
+
+// ---------------------------------------------------------------------------
+// Melhorias de outubro/2026 (docs/plano-melhorias-2026-10.md) — schema da Onda 0.
+// Conjuntos fechados (status, papel, origem...) são String + CHECK, como BillingNotice/BillingEvent:
+// somar um valor é uma migration de CHECK, sem ALTER TYPE. Nada aqui entra em env var.
+// ---------------------------------------------------------------------------
+
+// Item 1 — Monitor de erros próprio. Um grupo = uma "assinatura" (fingerprint) de erro; cada
+// ocorrência é um ErrorEvent. Global (plataforma): fora de TENANT_SCOPED_MODELS; lido só pelo Admin.
+// `fingerprint` = sha256 hex de (origem + tipo + mensagem normalizada + 1º frame útil), calculado no
+// código. O upsert é `INSERT ... ON CONFLICT (fingerprint) DO UPDATE SET count = count + 1,
+// lastSeenAt = now(), ...`. Reocorrência de grupo RESOLVED reabre (status OPEN, resolvedAt nulo).
+// `source`: SERVER | CLIENT. `status`: OPEN | RESOLVED | IGNORED. `message` até 300 e `type` até 120
+// (CHECK). `alertedAt` = quando saiu o aviso de "erro novo" (sino + e-mail): evita reenviar.
+// Nunca guardar PII: só ids, rota sem query string e stack truncada.
+model ErrorGroup {
+  id               String    @id @default(cuid())
+  fingerprint      String    @unique
+  message          String
+  type             String
+  source           String
+  // Rota da ÚLTIMA ocorrência (atualizada junto com lastSeenAt).
+  route            String?
+  firstSeenAt      DateTime  @default(now())
+  lastSeenAt       DateTime  @default(now())
+  count            Int       @default(1)
+  status           String    @default("OPEN")
+  firstVersion     String?
+  lastVersion      String?
+  alertedAt        DateTime?
+  resolvedAt       DateTime?
+  // Sem FK: a auditoria sobrevive à exclusão do usuário.
+  resolvedByUserId String?
+
+  events ErrorEvent[]
+
+  // Tela Admin → Erros: lista por última ocorrência, filtrada por status.
+  @@index([lastSeenAt])
+  @@index([status, lastSeenAt])
+  @@map("error_groups")
+}
+
+// Ocorrência. RETENÇÃO: a manutenção apaga eventos com mais de 30 dias (índice em occurredAt) e o
+// código limita ocorrências guardadas por grupo; o ErrorGroup (contador) permanece. `userId`/`tenantId`
+// são só ids (sem FK, sem PII: sobrevivem à exclusão e não travam o purge). `stack` até 8000 bytes e
+// `context` até 4096 bytes (CHECKs).
+model ErrorEvent {
+  id         String   @id @default(cuid())
+  groupId    String
+  occurredAt DateTime @default(now())
+  version    String?
+  route      String?
+  stack      String?
+  userId     String?
+  tenantId   String?
+  context    Json?
+
+  group ErrorGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@index([groupId, occurredAt])
+  @@index([occurredAt])
+  @@map("error_events")
+}
+
+// Item 2 — Backup (espelha o Parque das Feiras). Singleton `id = 1` (CHECK id = 1; o código faz upsert,
+// e a migration já cria a linha, desligada). Destino é ESCOLHA explícita (`destination`), nunca deduzido
+// de campos preenchidos; nulo = o agendamento não liga. `destination`: S3 | DRIVE. `driveMode`:
+// SERVICE_ACCOUNT | OAUTH. `hourLocal` 0-23 em hora de Brasília (UTC-3 fixo). Segredos (`*Enc`)
+// cifrados com src/lib/crypto.ts e nunca devolvidos à tela. `runningSince` = trava de execução única
+// (UPDATE condicional). `lastSuccessAt`/`lastAttemptAt` desnormalizados para a tela e o alerta.
+// `lastLateAlertAt` limita o e-mail "backup atrasado".
+model BackupConfig {
+  id Int @id @default(1)
+
+  enabled         Boolean @default(false)
+  hourLocal       Int     @default(3)
+  retentionDays   Int     @default(14)
+  alertAfterHours Int     @default(36)
+  destination     String?
+  driveMode       String  @default("SERVICE_ACCOUNT")
+
+  s3Endpoint     String?
+  s3Bucket       String?
+  s3Region       String?
+  s3Prefix       String?
+  s3AccessKey    String?
+  s3SecretKeyEnc String?
+
+  driveFolderId          String?
+  driveClientEmail       String?
+  driveServiceAccountEnc String?
+
+  driveOauthClientId        String?
+  driveOauthClientSecretEnc String?
+  driveOauthRefreshTokenEnc String?
+  driveOauthEmail           String?
+  driveOauthFolderId        String?
+  driveOauthConnectedAt     DateTime?
+  driveOauthConnectedById   String?
+
+  runningSince    DateTime?
+  lastSuccessAt   DateTime?
+  lastAttemptAt   DateTime?
+  lastLateAlertAt DateTime?
+
+  updatedAt   DateTime @updatedAt
+  // Sem FK (config sobrevive ao usuário).
+  updatedById String?
+
+  @@map("backup_config")
+}
+
+// Histórico de execuções. `status`: RUNNING | SUCCESS | FAILED. `trigger`: SCHEDULED | MANUAL.
+// `destination` = snapshot do destino usado (S3 | DRIVE; nulo = dump conferido mas sem destino: vale
+// como teste, não como backup). `errorCode` = causa classificada (CREDENTIAL, FOLDER, QUOTA, NETWORK,
+// DUMP...); `errorDetail` truncado, nunca com DATABASE_URL. `objectKey` = objeto (S3) ou id/nome do
+// arquivo (Drive). BigInt em `sizeBytes`.
+model BackupRun {
+  id             String    @id @default(cuid())
+  status         String    @default("RUNNING")
+  trigger        String    @default("SCHEDULED")
+  destination    String?
+  startedAt      DateTime  @default(now())
+  finishedAt     DateTime?
+  sizeBytes      BigInt?
+  tablesWithData Int?
+  objectKey      String?
+  errorCode      String?
+  errorDetail    String?
+  createdById    String?
+
+  // Tela lista por data decrescente.
+  @@index([startedAt])
+  @@map("backup_runs")
+}
+
+// `state` de uso único do OAuth do Drive (o callback chega pelo navegador, sem sessão de API).
+model BackupDriveOauthNonce {
+  id        String   @id @default(cuid())
+  nonce     String   @unique
+  adminId   String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([expiresAt])
+  @@map("backup_drive_oauth_nonces")
+}
+
+// Item 3 — Códigos de recuperação do 2FA: uma linha por código, só o HASH (sha256) em repouso.
+// Tabela (e não JSON no User) para consumir um código de forma atômica e sem corrida:
+// `UPDATE ... SET usedAt = now() WHERE userId = ? AND codeHash = ? AND usedAt IS NULL`.
+// Global (via User): fora de TENANT_SCOPED_MODELS.
+model TwoFactorRecoveryCode {
+  id        String    @id @default(cuid())
+  userId    String
+  codeHash  String
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Também serve a "listar/contar códigos do usuário" (prefixo userId).
+  @@unique([userId, codeHash])
+  @@map("two_factor_recovery_codes")
+}
+
+// Item 4 — Auditoria APPEND-ONLY (trigger bloqueia UPDATE; DELETE vale só para o CASCADE da empresa e a
+// retenção). Por isso `actorUserId` e `targetId` NÃO têm FK: SetNull seria um UPDATE e o trigger o
+// barraria. `tenantId` nulo = ação da plataforma (admin) sem empresa. `actorRole`: OWNER | STAFF |
+// PLATFORM_ADMIN | SYSTEM. `action` = código estável tipo "service.price_changed". `summary` = frase
+// curta em português (até 300). `changes` = { campo: { de, para } } SEM segredos, até 8 KB (CHECKs).
+// `ipTruncated` = IPv4 /24 ou IPv6 /48 (LGPD: dá região, não identifica o aparelho). Fora de
+// TENANT_SCOPED_MODELS: o Admin lê todas as empresas; as telas da empresa filtram por tenantId à mão.
+model AuditLog {
+  id          String   @id @default(cuid())
+  tenantId    String?
+  actorUserId String?
+  actorRole   String
+  action      String
+  targetType  String?
+  targetId    String?
+  summary     String
+  changes     Json?
+  ipTruncated String?
+  createdAt   DateTime @default(now())
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Histórico da empresa (paginado, mais recente primeiro) e visão do Admin (todas).
+  @@index([tenantId, createdAt])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// Item 6 — Cupons. Global (a plataforma cria); não entra em TENANT_SCOPED_MODELS. `code` é gravado
+// em MAIÚSCULAS (CHECK code = upper(code)) e @unique => único sem diferenciar caixa; o código
+// normaliza a entrada com trim().toUpperCase(). `kind`: PERCENT (value 1-100) | AMOUNT (value em
+// centavos > 0, abatido de CADA fatura coberta). `duration`: ONCE (só a 1ª fatura) | N_CYCLES
+// (durationCycles >= 1) | FOREVER. `appliesToCycle`: ANY | MONTHLY | ANNUAL. Planos válidos: linhas em
+// CouponPlan; NENHUMA linha = vale para todos os planos. `maxRedemptions` nulo = ilimitado; o CHECK
+// (redemptionsCount <= maxRedemptions) garante o teto no banco: resgatar =
+// `UPDATE coupons SET redemptionsCount = redemptionsCount + 1 WHERE id = ? AND active AND
+// (maxRedemptions IS NULL OR redemptionsCount < maxRedemptions)`. Nunca apagar (FKs RESTRICT).
+model Coupon {
+  id               String    @id @default(cuid())
+  code             String    @unique
+  description      String?
+  kind             String
+  value            Int
+  validFrom        DateTime?
+  validUntil       DateTime?
+  maxRedemptions   Int?
+  redemptionsCount Int       @default(0)
+  duration         String    @default("ONCE")
+  durationCycles   Int?
+  appliesToCycle   String    @default("ANY")
+  active           Boolean   @default(true)
+  // Sem FK (quem criou).
+  createdByUserId  String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  plans         CouponPlan[]
+  subscriptions Subscription[]
+  redemptions   CouponRedemption[]
+
+  @@map("coupons")
+}
+
+model CouponPlan {
+  couponId String
+  planId   String
+
+  coupon Coupon @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  plan   Plan   @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@id([couponId, planId])
+  @@index([planId])
+  @@map("coupon_plans")
+}
+
+// Um resgate = a empresa ADOTOU o cupom (as N faturas descontadas depois NÃO geram novo resgate; ficam
+// em Invoice.discountCents). Único por (cupom, empresa): a mesma empresa não reaproveita o cupom.
+// Fora de TENANT_SCOPED_MODELS (lido pelo Admin e no cadastro, antes de haver sessão).
+// `invoiceId` = fatura em que o desconto entrou pela primeira vez (nula até existir).
+model CouponRedemption {
+  id            String   @id @default(cuid())
+  couponId      String
+  tenantId      String
+  invoiceId     String?
+  discountCents Int      @default(0)
+  createdAt     DateTime @default(now())
+
+  coupon  Coupon   @relation(fields: [couponId], references: [id], onDelete: Restrict)
+  tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  invoice Invoice? @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+
+  @@unique([couponId, tenantId])
+  @@index([tenantId])
+  @@index([invoiceId])
+  @@map("coupon_redemptions")
+}
+
+// Item 7 — Lista de espera / encaixe. Tenant-scoped (entra em TENANT_SCOPED_MODELS).
+// `desiredDate` = dia local do tenant (DATE, sem hora). `period`: ANY | MORNING | AFTERNOON | EVENING.
+// Janela fina opcional: `windowStartMin`/`windowEndMin` (minutos desde 00:00 local; os dois ou nenhum,
+// start < end); quando presente, vale no lugar do `period`. `professionalId` nulo = qualquer.
+// `status`: WAITING | OFFERED | ACCEPTED | EXPIRED | CANCELED | FULFILLED. OFFERED exige
+// offeredSlotStart/offeredAt/offerExpiresAt/offeredProfessionalId (CHECK). `appointmentId` = agendamento
+// gerado (único; SetNull se o agendamento sumir). `source`: BOT | PANEL.
+// Dois ÚNICOS PARCIAIS (SQL à mão): no máximo 1 entrada ativa (WAITING/OFFERED) por
+// contato+serviço+dia+profissional(ou qualquer); e no máximo 1 oferta OFFERED por horário+profissional
+// (o mesmo horário não é oferecido a duas pessoas ao mesmo tempo).
+// Ordem da fila: createdAt ASC (FIFO), com `id` de desempate.
+model WaitlistEntry {
+  id                    String    @id @default(cuid())
+  tenantId              String
+  contactId             String
+  serviceId             String
+  professionalId        String?
+  desiredDate           DateTime  @db.Date
+  period                String    @default("ANY")
+  windowStartMin        Int?
+  windowEndMin          Int?
+  status                String    @default("WAITING")
+  offeredSlotStart      DateTime? @db.Timestamptz
+  offeredProfessionalId String?
+  offeredAt             DateTime? @db.Timestamptz
+  offerExpiresAt        DateTime? @db.Timestamptz
+  appointmentId         String?   @unique
+  source                String    @default("BOT")
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  tenant              Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contact             Contact       @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  service             Service       @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  professional        Professional? @relation("WaitlistProfessional", fields: [professionalId], references: [id], onDelete: Cascade)
+  offeredProfessional Professional? @relation("WaitlistOfferedProfessional", fields: [offeredProfessionalId], references: [id], onDelete: SetNull)
+  appointment         Appointment?  @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+
+  // Achar a fila de um serviço num dia, por status, em ordem de chegada.
+  @@index([tenantId, serviceId, desiredDate, status, createdAt])
+  // Job de expiração de oferta: status OFFERED vencido.
+  @@index([status, offerExpiresAt])
+  @@map("waitlist_entries")
 }

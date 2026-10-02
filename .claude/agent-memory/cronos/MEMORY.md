@@ -6,3 +6,4 @@
 - [Atendimento humano](atendimento_humano_schema.md) — migration 20261002100000, sem índice em authorUserId, checklist de chave nova (79 chaves)
 - [Régua F1 schema](regua_f1_schema_decisoes.md) — BillingNotice/BillingEvent/PlatformWhatsappConnection, cycleKey, backfill LEGACY_SENT, telefone do dono não existe
 - [Fase 2 schema](fase2_schema_decisoes.md) — índice do lembrete, dedup ChatMessage, onde espelhar nova BotTextKey
+- [Onda 0 melhorias](onda0_melhorias_schema.md) — 8 migrations 20261010100000..700, CHECK com NULL passa, refazer migration local, decisoes de modelagem

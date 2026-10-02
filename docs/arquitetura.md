@@ -293,6 +293,41 @@ nunca vem da requisição:** vem da sessão (painel) ou da instância resolvida 
     `Tenant.billingWhatsappE164` (CHECK 12 a 13 dígitos) e `Tenant.billingWhatsappOptOutAt` (WhatsApp ativo
     para todos, com opt-out; decisão D5).
 
+### Melhorias de outubro/2026 (Onda 0; migrations `20261010100000` a `20261010100700`)
+Plano em `docs/plano-melhorias-2026-10.md`. Todas aditivas, com `DOWN.sql`. Conjuntos fechados são `String`
++ CHECK (como a régua). Segredos têm sufixo `Enc` (cifrados por `src/lib/crypto.ts`).
+- **Erros**: `ErrorGroup` (`fingerprint` único, `source` SERVER|CLIENT, `status` OPEN|RESOLVED|IGNORED,
+  `count`, `firstSeenAt`/`lastSeenAt`, `lastVersion`, `alertedAt`, `resolvedAt`/`resolvedByUserId`) e
+  `ErrorEvent` (`groupId`, `occurredAt`, `version`, `route`, `stack` ≤ 8000 B, `userId`/`tenantId` só ids sem
+  FK, `context` ≤ 4 KB). Índices `(lastSeenAt)`, `(status, lastSeenAt)`, `(groupId, occurredAt)`,
+  `(occurredAt)`. Retenção: eventos > 30 dias são apagados pela manutenção; o grupo permanece.
+- **Backup**: `BackupConfig` (singleton `id = 1`, CHECK; destino `S3|DRIVE` explícito, modo do Drive
+  `SERVICE_ACCOUNT|OAUTH`, segredos `s3SecretKeyEnc`, `driveServiceAccountEnc`, `driveOauthClientSecretEnc`,
+  `driveOauthRefreshTokenEnc`; automático exige destino), `BackupRun` (`RUNNING|SUCCESS|FAILED`,
+  `SCHEDULED|MANUAL`, `sizeBytes` BigInt, `errorCode`) e `BackupDriveOauthNonce` (state de uso único).
+- **2FA**: em `User`, `totpSecretEnc`, `totpEnabledAt` (CHECK: ligada exige segredo), `totpLastUsedStep`
+  (anti-replay), `twoFactorRequired`; `TwoFactorRecoveryCode` (só hash, único por usuário, `usedAt`).
+- **Auditoria**: `AuditLog` append-only (trigger bloqueia UPDATE; DELETE vale para cascata/retenção).
+  `tenantId` opcional (CASCADE), `actorUserId`/`targetId` sem FK, `actorRole` OWNER|STAFF|PLATFORM_ADMIN|SYSTEM,
+  `summary` ≤ 300, `changes` ≤ 8 KB, `ipTruncated`. Índices `(tenantId, createdAt)` e `(createdAt)`.
+- **Pixel do Meta**: `PlatformSettings.metaPixelId` (só dígitos), `metaCapiTokenEnc`, `metaTestEventCode`,
+  `metaEnabled` (default false).
+- **Anual e cupons**: `Plan.annualPriceCents?`; `Subscription.billingCycle` (MONTHLY|ANNUAL),
+  `couponId?` (RESTRICT), `couponCyclesRemaining?`; `Invoice.discountCents` (líquido em `amountCents`),
+  `couponCode`, `cycle`. `Coupon` (código MAIÚSCULO único por CHECK, `kind` PERCENT|AMOUNT, `duration`
+  ONCE|N_CYCLES|FOREVER, `appliesToCycle`, teto `redemptionsCount <= maxRedemptions` no banco),
+  `CouponPlan` (sem linhas = todos os planos) e `CouponRedemption` (único por cupom + empresa).
+- **Lista de espera**: `WaitlistEntry` (tenant-scoped): `desiredDate` (DATE local), `period`
+  ANY|MORNING|AFTERNOON|EVENING, janela opcional em minutos, `status` WAITING|OFFERED|ACCEPTED|EXPIRED|
+  CANCELED|FULFILLED, oferta (`offeredSlotStart`, `offeredProfessionalId`, `offeredAt`, `offerExpiresAt`),
+  `appointmentId` único, `source` BOT|PANEL. Únicos parciais: 1 entrada ativa por contato+serviço+dia+
+  profissional e 1 oferta aberta por horário+profissional. Índices `(tenantId, serviceId, desiredDate,
+  status, createdAt)` e `(status, offerExpiresAt)`.
+- **Comissões**: `Professional.commissionPct` e `ProfessionalService.commissionPct` (`Decimal(5,2)`, 0 a 100,
+  nulo = herda). Sem índice novo em `Appointment`: `(tenantId, startsAt)` cobre os relatórios.
+- Em `TENANT_SCOPED_MODELS` entra só `WaitlistEntry`. `AuditLog` e `CouponRedemption` têm `tenantId` mas
+  são lidos cross-tenant (filtrar à mão nas telas da empresa); os demais são globais.
+
 ### Catálogo e agenda
 - **Service**: `name`, `durationMin`, `bufferAfterMin`, `priceCents?`, `active`, `sortOrder`.
 - **Professional**: `name`, `active`, `sortOrder`.
