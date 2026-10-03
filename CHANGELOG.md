@@ -7,6 +7,23 @@ Versão semântica (`MAJOR.MINOR.PATCH`), lida do `version` do `package.json` e 
 
 Toda publicação em produção sobe a versão e ganha uma entrada aqui.
 
+## v1.7.2 — 2026-10-03
+
+### WhatsApp de cobrança
+- A resposta automática do número de cobrança voltou a sair sempre. Ela não respondia quem chegava pelo novo identificador de privacidade do WhatsApp e só respondia uma vez por dia. Agora responde de novo depois de 10 minutos, com limite de 6 respostas por dia para cada número. SAIR e SIM sempre recebem resposta.
+- Texto novo da resposta automática, com negrito, itálico e emoji.
+- Admin → Configurações, card do WhatsApp de cobrança: última mensagem recebida, última resposta automática e o motivo quando não respondeu.
+- O sistema confere sozinho se o número de cobrança está recebendo as mensagens e corrige o endereço quando precisa.
+
+### Contato de cobrança
+- Card "Contato de cobrança" também em Configurações, levando direto ao campo do WhatsApp.
+- Aviso no painel do dono quando um WhatsApp de cobrança não chega, com botão para corrigir o número.
+- Ao salvar, o sistema confere se o número tem WhatsApp.
+- O Admin pode corrigir o contato de cobrança de uma empresa.
+
+### Monitor de erros
+- Erros que vêm de extensões do navegador de quem acessa não aparecem mais.
+
 ## v1.7.1 — 2026-10-02
 
 ### Fluxo do bot com versão de verdade
