@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   buildPlatformInstanceName,
+  decideAutoreply,
+  describeSkipReason,
   formatPhoneDisplay,
   hashPhoneForDedup,
   hashWebhookToken,
@@ -64,9 +66,62 @@ describe("rules do WhatsApp da plataforma", () => {
 describe("autoreplyText", () => {
   it("indica o WhatsApp comercial cadastrado no Admin, ou o painel se não houver", async () => {
     const { autoreplyText } = await import("./rules");
-    expect(autoreplyText("(84) 3113-2584")).toContain("Para falar com a gente, chame no (84) 3113-2584.");
+    expect(autoreplyText("(84) 3113-2584")).toContain("Para falar com a gente, chame no *(84) 3113-2584*.");
     expect(autoreplyText(null)).toContain("pelo painel");
-    expect(autoreplyText("(84) 3113-2584")).toContain("responda SAIR");
+    expect(autoreplyText("(84) 3113-2584")).toContain("Responda *SAIR*");
+  });
+
+  it("texto novo (2026-10-03): formatação do WhatsApp, quebras de linha e nenhum travessão", async () => {
+    const { autoreplyText, OPT_OUT_CONFIRMATION, CONFIRM_REPLY, optOutNotFoundText } = await import("./rules");
+    expect(autoreplyText("(84) 3113-2584")).toBe(
+      "Oi! 👋 Aqui é o *InnoChat*.\n\nEste número só envia *avisos de cobrança* e não lê respostas.\n\n💬 Para falar com a gente, chame no *(84) 3113-2584*.\n\n🔕 Não quer mais receber os avisos por aqui? Responda *SAIR*.\n\n_Os avisos continuam chegando por e-mail e no seu painel._",
+    );
+    for (const text of [autoreplyText("(84) 3113-2584"), autoreplyText(null), OPT_OUT_CONFIRMATION, CONFIRM_REPLY, optOutNotFoundText(null), optOutNotFoundText("(84) 3113-2584")]) {
+      expect(text).not.toMatch(/[—–]/);
+    }
+    expect(OPT_OUT_CONFIRMATION).toContain("não vai mais receber");
+    expect(CONFIRM_REPLY).toContain("número confirmado");
+    expect(CONFIRM_REPLY).toContain("*SAIR*");
+    expect(optOutNotFoundText("(84) 3113-2584")).toContain("*(84) 3113-2584*");
+  });
+});
+
+describe("decideAutoreply (10 min entre respostas, teto de 6 por dia)", () => {
+  const now = new Date("2026-10-03T12:00:00Z");
+  const ago = (min: number) => new Date(now.getTime() - min * 60_000);
+
+  it("sem resposta recente: responde", () => {
+    expect(decideAutoreply([], now, false)).toEqual({ allow: true });
+  });
+
+  it("dentro de 10 min não responde e informa há quantos minutos; passou de 10 min responde", () => {
+    expect(decideAutoreply([ago(3)], now, false)).toEqual({ allow: false, reason: "RECENT", minutesAgo: 3 });
+    expect(decideAutoreply([ago(9.9)], now, false)).toMatchObject({ allow: false, reason: "RECENT" });
+    expect(decideAutoreply([ago(10)], now, false)).toEqual({ allow: true });
+    expect(decideAutoreply([ago(11)], now, false)).toEqual({ allow: true });
+  });
+
+  it("a 7ª no dia não responde, mesmo espaçadas; respostas com mais de 24 h não contam", () => {
+    const six = [ago(30), ago(60), ago(120), ago(240), ago(480), ago(960)];
+    expect(decideAutoreply(six.slice(0, 5), now, false)).toEqual({ allow: true });
+    expect(decideAutoreply(six, now, false)).toEqual({ allow: false, reason: "DAILY_CAP" });
+    expect(decideAutoreply([...six.slice(0, 5), ago(25 * 60)], now, false)).toEqual({ allow: true });
+  });
+
+  it("SAIR/SIM (prioridade) ignoram o intervalo e o teto normal, mas têm um teto alto contra loop", () => {
+    expect(decideAutoreply([ago(1)], now, true)).toEqual({ allow: true });
+    expect(decideAutoreply(Array.from({ length: 6 }, (_, i) => ago(i + 1)), now, true)).toEqual({ allow: true });
+    expect(decideAutoreply(Array.from({ length: 30 }, (_, i) => ago(i + 1)), now, true)).toEqual({ allow: false, reason: "DAILY_CAP" });
+  });
+});
+
+describe("describeSkipReason", () => {
+  it("diz o motivo em português", () => {
+    expect(describeSkipReason("COMPANY_BOT")).toBe("não respondeu: o número é o WhatsApp de uma empresa cadastrada");
+    expect(describeSkipReason("RECENT", 3)).toBe("não respondeu: já respondeu há 3 min");
+    expect(describeSkipReason("DAILY_CAP")).toContain("6 vezes hoje");
+    expect(describeSkipReason("OWN_NUMBER")).toContain("próprio WhatsApp de cobrança");
+    expect(describeSkipReason(null)).toBeNull();
   });
 });
 

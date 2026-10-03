@@ -3,7 +3,7 @@ import { isUniqueViolation } from "@/lib/db/prisma-errors";
 import { logger } from "@/lib/logger";
 import { mapEvolutionState } from "@/core/whatsapp/connection-event";
 import { digitsOnly, maskPhone, phoneDigitVariants, ROUND_WINDOW_MS, roundCapFor, withNewNumberNotice } from "@/core/platform-whatsapp/rules";
-import { getEvolutionClient, type EvolutionClient } from "@/modules/whatsapp/evolution-client";
+import { EvolutionApiError, getEvolutionClient, type EvolutionClient } from "@/modules/whatsapp/evolution-client";
 import { markActiveDisconnected } from "./connections";
 import { isPlatformSender } from "./sender-guard";
 
@@ -21,6 +21,8 @@ import { isPlatformSender } from "./sender-guard";
  *   consigo mesma;
  * - `FAILED`: erro de rede/Evolution com a sessão aberta, OU teto de envios da última hora atingido
  *   (aquecimento: 10/h nos 3 primeiros dias, depois 30/h). Reenviar depois é seguro: nada saiu;
+ *   Quando a Evolution RECUSA o número (HTTP 400, ou `exists: false` no corpo), `reason: "INVALID_NUMBER"`: o painel
+ *   da empresa usa isso para pedir que o dono confira o WhatsApp de cobrança.
  * - `SENT`: `connectionId`, `senderPhoneE164` (só dígitos) e `providerMessageId` para a régua gravar no
  *   `BillingNotice`.
  *
@@ -36,6 +38,8 @@ export type PlatformWhatsappSendResult = {
   connectionId?: string;
   senderPhoneE164?: string;
   providerMessageId?: string;
+  /** Só com `FAILED`: a Evolution recusou o NÚMERO do destinatário (não é falha do nosso canal). */
+  reason?: "INVALID_NUMBER";
 };
 
 export type PlatformWhatsappSendDeps = { evolution?: EvolutionClient; now?: Date };
@@ -103,7 +107,38 @@ export async function sendPlatformWhatsapp(
     } catch {
       // Evolution fora do ar: tratado como falha de envio (tenta de novo depois).
     }
+    // Sessão aberta e a Evolution respondeu 400 / "exists: false": o número do destinatário não tem WhatsApp (ou está errado).
+    if (isRecipientRejection(error)) return { outcome: "FAILED", connectionId: active.id, reason: "INVALID_NUMBER" };
     return { outcome: "FAILED", connectionId: active.id };
+  }
+}
+
+/** 400 da Evolution no envio, ou corpo com `"exists":false`: quem recusou foi o número, não o canal. */
+export function isRecipientRejection(error: unknown): boolean {
+  if (!(error instanceof EvolutionApiError)) return false;
+  if (error.status === 400) return true;
+  return /"exists"\s*:\s*false/.test(error.responseBody ?? "");
+}
+
+/**
+ * Confere, pelo número da plataforma, se um telefone tem WhatsApp (usado ao salvar o WhatsApp de cobrança).
+ * `NOT_FOUND` só quando a Evolution respondeu e NENHUMA das formas do número (com/sem o 9º dígito) existe.
+ * Qualquer dúvida (sem número ativo, canal caído, Evolution fora, prazo estourado, resposta estranha) é `UNKNOWN`:
+ * quem chama salva normalmente. Nunca lança, nunca loga o número inteiro.
+ */
+export async function checkPlatformWhatsappNumber(toE164: string, deps?: PlatformWhatsappSendDeps): Promise<"EXISTS" | "NOT_FOUND" | "UNKNOWN"> {
+  try {
+    const active = await getPrisma().platformWhatsappConnection.findFirst({ where: { role: "ACTIVE" } });
+    if (!active || active.status !== "CONNECTED") return "UNKNOWN";
+    const variants = phoneDigitVariants(toE164);
+    if (variants.length === 0) return "UNKNOWN";
+    const evolution = deps?.evolution ?? (await getEvolutionClient());
+    const answers = await evolution.checkWhatsappNumbers(active.instanceName, variants);
+    if (answers.length === 0) return "UNKNOWN";
+    return answers.some((a) => a.exists) ? "EXISTS" : "NOT_FOUND";
+  } catch (error) {
+    logger.warn("platform_whatsapp.number_check_failed", { to: maskPhone(toE164), errorName: error instanceof Error ? error.name : "unknown" });
+    return "UNKNOWN";
   }
 }
 

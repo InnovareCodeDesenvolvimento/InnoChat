@@ -25,6 +25,7 @@ import {
   WARMUP_MS,
 } from "@/core/platform-whatsapp/rules";
 import { getEvolutionClient, type EvolutionClient } from "@/modules/whatsapp/evolution-client";
+import { getPlatformWhatsappDiagnostics, patchDiagnostics, type PlatformWhatsappDiagnostics } from "./diagnostics";
 import { invalidatePlatformSenderCache } from "./sender-guard";
 
 /**
@@ -65,6 +66,8 @@ export type PlatformWhatsappState = {
     /** Nos 3 primeiros dias o teto de envios por rodada é menor (anti-bloqueio). */
     inWarmup: boolean;
     roundCap: number;
+    /** O que chegou e o que foi respondido (card do Admin). */
+    diagnostics: PlatformWhatsappDiagnostics;
   } | null;
   pending: { id: string; label: string; status: "QRCODE" | "CONNECTED"; createdAt: string } | null;
   history: Array<{
@@ -122,9 +125,11 @@ export async function getPlatformWhatsappState(deps?: PlatformWhatsappDeps): Pro
     }),
   ]);
 
+  const diagnostics = active ? await getPlatformWhatsappDiagnostics(active.id) : null;
+
   return {
     enabled: settings?.platformWhatsappEnabled ?? false,
-    active: active
+    active: active && diagnostics
       ? {
           id: active.id,
           label: active.label,
@@ -134,6 +139,7 @@ export async function getPlatformWhatsappState(deps?: PlatformWhatsappDeps): Pro
           disconnectedAt: active.disconnectedAt?.toISOString() ?? null,
           inWarmup: active.activatedAt ? now.getTime() - active.activatedAt.getTime() < WARMUP_MS : false,
           roundCap: roundCapFor(active.activatedAt, now),
+          diagnostics,
         }
       : null,
     pending: pending
@@ -565,6 +571,8 @@ export type PlatformWhatsappMaintenanceSummary = {
   cleanupsPending: number;
   stateChecked: boolean;
   stateChanged: boolean;
+  /** Resultado da conferência do webhook na Evolution (`null` = não conferiu). */
+  webhook: WebhookCheck | null;
   /** Respostas/autorrespostas de assinantes apagadas pela retenção. */
   purgedEvents: number;
 };
@@ -588,6 +596,85 @@ export async function purgeExpiredReplyEvents(now: Date): Promise<number> {
   return purged;
 }
 
+export type WebhookCheck = "OK" | "REPAIRED" | "REPAIR_FAILED" | "CHECK_FAILED" | "UNSUPPORTED";
+
+const WEBHOOK_PATH_MARK = "/api/webhooks/platform-whatsapp/";
+
+/** Token do final do endereço (`.../api/webhooks/platform-whatsapp/<token>`), ou `null` se o endereço não é o nosso. */
+function tokenFromWebhookUrl(url: string | null): string | null {
+  if (!url) return null;
+  try {
+    const { pathname } = new URL(url);
+    const at = pathname.indexOf(WEBHOOK_PATH_MARK);
+    if (at < 0) return null;
+    const token = pathname.slice(at + WEBHOOK_PATH_MARK.length).split("/")[0] ?? "";
+    return token || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Confere o webhook da instância ACTIVE na Evolution e o reaplica se estiver desligado, sem MESSAGES_UPSERT ou apontando
+ * para outro token (algo trocou). Só o HASH do token fica no banco: se o endereço atual ainda carrega o nosso token, reaplica
+ * o mesmo endereço; se não, GIRA o token (novo hash no banco + novo endereço na Evolution; falhando, volta o hash antigo).
+ * Nunca lança.
+ */
+export async function ensureActiveWebhook(
+  active: { id: string; instanceName: string; webhookTokenHash: string },
+  evolution: EvolutionClient,
+  now: Date,
+): Promise<WebhookCheck> {
+  if (!evolution.findWebhook) return "UNSUPPORTED";
+  const prisma = getPrisma();
+  const record = (state: WebhookCheck, extra: { webhookRepairedAt?: string } = {}) =>
+    patchDiagnostics(active.id, { webhookCheckedAt: now.toISOString(), webhookState: state, ...extra });
+  let repairing = false;
+  try {
+    const info = await withTimeout(evolution.findWebhook(active.instanceName), STATE_CHECK_TIMEOUT_MS);
+    const urlToken = tokenFromWebhookUrl(info?.url ?? null);
+    const tokenMatches = urlToken !== null && hashWebhookToken(urlToken) === active.webhookTokenHash;
+    const events = (info?.events ?? []).map((e) => e.toUpperCase().replace(/[.]/g, "_"));
+    const hasMessages = events.length === 0 || events.includes("MESSAGES_UPSERT");
+    if (info && info.enabled && tokenMatches && hasMessages) {
+      await record("OK");
+      return "OK";
+    }
+
+    repairing = true;
+    const why = !info ? "missing" : !info.enabled ? "disabled" : !tokenMatches ? "other_url" : "events";
+    let url: string;
+    let rotatedTo: string | null = null;
+    if (info && tokenMatches && info.url) {
+      url = info.url;
+    } else {
+      const base = await tryGetPublicBaseUrl();
+      if (!base) throw new Error("PUBLIC_URL_NOT_CONFIGURED");
+      const token = generateWebhookToken();
+      rotatedTo = hashWebhookToken(token);
+      url = `${base.replace(/[/]+$/, "")}${WEBHOOK_PATH_MARK}${token}`;
+      const res = await prisma.platformWhatsappConnection.updateMany({ where: { id: active.id, role: "ACTIVE", webhookTokenHash: active.webhookTokenHash }, data: { webhookTokenHash: rotatedTo } });
+      if (res.count === 0) return "OK"; // outra rodada/troca mexeu na linha agora: a próxima confere de novo
+    }
+    try {
+      await evolution.setWebhook(active.instanceName, url);
+    } catch (error) {
+      if (rotatedTo) {
+        await prisma.platformWhatsappConnection.updateMany({ where: { id: active.id, webhookTokenHash: rotatedTo }, data: { webhookTokenHash: active.webhookTokenHash } });
+      }
+      throw error;
+    }
+    logger.warn("platform_whatsapp.webhook_repaired", { connectionId: active.id, why, rotated: rotatedTo !== null });
+    await record("REPAIRED", { webhookRepairedAt: now.toISOString() });
+    return "REPAIRED";
+  } catch (error) {
+    logger.warn("platform_whatsapp.webhook_check_failed", { connectionId: active.id, repairing, errorMessage: errMsg(error) });
+    const state: WebhookCheck = repairing ? "REPAIR_FAILED" : "CHECK_FAILED";
+    await record(state);
+    return state;
+  }
+}
+
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
@@ -605,7 +692,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
  */
 export async function runPlatformWhatsappMaintenance(deps?: PlatformWhatsappDeps): Promise<PlatformWhatsappMaintenanceSummary> {
   const now = deps?.now ?? new Date();
-  const summary: PlatformWhatsappMaintenanceSummary = { abandonedQr: 0, cleanupsDone: 0, cleanupsPending: 0, stateChecked: false, stateChanged: false, purgedEvents: 0 };
+  const summary: PlatformWhatsappMaintenanceSummary = { abandonedQr: 0, cleanupsDone: 0, cleanupsPending: 0, stateChecked: false, stateChanged: false, webhook: null, purgedEvents: 0 };
   const prisma = getPrisma();
   const startedAtMs = Date.now();
   const budgetMs = deps?.budgetMs ?? MAINTENANCE_BUDGET_MS;
@@ -655,6 +742,8 @@ export async function runPlatformWhatsappMaintenance(deps?: PlatformWhatsappDeps
           });
           summary.stateChanged = true;
         }
+        // Só vale conferir o endereço de recebimento com a sessão aberta: sem ela a Evolution nem entrega mensagem.
+        if (!isOver()) summary.webhook = await ensureActiveWebhook(active, evolution, now);
       }
     }
   } catch (error) {

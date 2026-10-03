@@ -261,6 +261,19 @@ export function PlatformWhatsappCard({ initialState }: { initialState: PlatformW
               {active.inWarmup ? ` Número novo: no máximo ${active.roundCap} avisos por hora nos 3 primeiros dias.` : ""}
               {active.status === "DISCONNECTED" && active.disconnectedAt ? ` Caiu em ${formatDateTime(active.disconnectedAt)}.` : ""}
             </p>
+            <div className="flex flex-col gap-1 text-xs text-text-secondary" data-testid="platform-whatsapp-diagnostics">
+              <p>
+                Última mensagem recebida:{" "}
+                {active.diagnostics.lastInboundAt
+                  ? `${formatDateTime(active.diagnostics.lastInboundAt)}${active.diagnostics.lastInboundFrom ? ` (${active.diagnostics.lastInboundFrom})` : ""}`
+                  : "nenhuma ainda"}
+              </p>
+              <p>Última resposta automática: {active.diagnostics.lastAutoreplyAt ? formatDateTime(active.diagnostics.lastAutoreplyAt) : "nenhuma ainda"}</p>
+              {active.diagnostics.notRepliedReason ? (
+                <p className="font-medium text-warning">A última mensagem recebida ficou sem resposta ({active.diagnostics.notRepliedReason.replace(/^não respondeu: /, "")}).</p>
+              ) : null}
+              {active.diagnostics.webhookNote ? <p className="font-medium text-warning">{active.diagnostics.webhookNote}.</p> : null}
+            </div>
             <div className="flex flex-wrap gap-2">
               {active.status === "DISCONNECTED" ? (
                 <Button type="button" size="sm" onClick={() => setQrTarget({ connectionId: active.id, kind: "reconnect" })} disabled={busy}>

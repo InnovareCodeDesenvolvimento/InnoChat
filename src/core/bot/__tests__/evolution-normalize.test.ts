@@ -192,3 +192,30 @@ describe("normalizeEvolutionMessage — respostas de botões, lista e enquete", 
     ).toBe("3");
   });
 });
+
+describe("telefone por trás do @lid (Evolution v2.3 / Baileys 7)", () => {
+  const withKey = (key: Record<string, unknown>, data: Record<string, unknown> = {}) => ({
+    event: "messages.upsert",
+    data: { key: { remoteJid: "98765432101234@lid", fromMe: false, id: "M1", ...key }, message: { conversation: "oi" }, ...data },
+  });
+  const identityOf = (payload: unknown) => {
+    const n = normalizeEvolutionMessage(payload);
+    if (n.kind !== "message") throw new Error("não é mensagem");
+    return resolveSenderIdentity(n);
+  };
+
+  it.each([
+    ["key.remoteJidAlt", withKey({ remoteJidAlt: "5584999998888@s.whatsapp.net" })],
+    ["key.senderPn", withKey({ senderPn: "5584999998888@s.whatsapp.net" })],
+    ["key.participantPn", withKey({ participantPn: "5584999998888@s.whatsapp.net" })],
+    ["data.senderPn", withKey({}, { senderPn: "5584999998888@s.whatsapp.net" })],
+    ["data.remoteJidAlt", withKey({}, { remoteJidAlt: "5584999998888@s.whatsapp.net" })],
+    ["telefone só com dígitos", withKey({ senderPn: "5584999998888" })],
+  ])("acha o telefone em %s", (_label, payload) => {
+    expect(identityOf(payload)).toEqual({ waJid: expect.stringContaining("5584999998888"), lid: "98765432101234@lid" });
+  });
+
+  it("não aceita outro @lid nem lixo como telefone: continua sem waJid", () => {
+    expect(identityOf(withKey({ remoteJidAlt: "11111111111111@lid", senderPn: "status", participantPn: "abc@s.whatsapp.net" }))).toEqual({ waJid: null, lid: "98765432101234@lid" });
+  });
+});

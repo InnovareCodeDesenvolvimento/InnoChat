@@ -781,6 +781,17 @@ const HELP_ENTRIES = {
     ],
     warning: "Redefinir desconecta a pessoa de todos os aparelhos. Administradores são obrigados a cadastrar de novo no próximo acesso.",
   },
+  "admin.contatoCobranca": {
+    title: "Contato de cobrança da empresa",
+    purpose: "Deixa você corrigir o e-mail e o WhatsApp que recebem os avisos de cobrança quando o dono digitou errado e não achou onde trocar.",
+    steps: [
+      "Confira no registro de envios se o aviso falhou (por exemplo, \"O número não tem WhatsApp\").",
+      "Digite o número certo, com DDD, e clique em Salvar contato.",
+      "Se a conferência disser que o número não tem WhatsApp e você tiver certeza, use \"Salvar mesmo assim\".",
+    ],
+    examples: ["A empresa cadastrou (84) 99999-3082, mas o certo é (84) 99999-3028: troque aqui e salve. O aviso de erro some do painel do dono."],
+    warning: "Avisos que já falharam não são reenviados. A próxima etapa da cobrança sai no número novo. A troca fica no histórico com o número mascarado.",
+  },
   "admin.planoAnual": {
     title: "Preço do plano anual",
     purpose: "É o valor cobrado de uma vez só por 12 meses de uso. O desconto aparece sozinho: 12 mensalidades menos o preço anual. Deixe em branco para o plano não ter opção anual.",
@@ -1031,12 +1042,26 @@ const HELP_ENTRIES = {
       "Se quiser, informe o e-mail do financeiro. Sem ele, os avisos vão para o e-mail do dono.",
       "Informe o WhatsApp com DDD que deve receber os avisos de cobrança.",
       "Para não receber pelo WhatsApp, desligue \"Receber cobrança pelo WhatsApp\". Os e-mails continuam.",
+      "Ao salvar um número novo, conferimos se ele tem WhatsApp. Se não tiver, avisamos e você decide se salva mesmo assim.",
     ],
     examples: [
       "A clínica tem uma contadora que paga as contas: coloque o e-mail dela. O dono continua recebendo os avisos mais urgentes.",
       "Você não quer mensagens no WhatsApp: desligue a chave e salve. Só chegam e-mails.",
+      "Digitou (84) 99999-3082 e era (84) 99999-3028: troque o número e salve. O aviso de erro some na hora.",
     ],
-    warning: "Só o dono da empresa altera. Quem é da equipe vê os dados, mas não edita.",
+    tip: "Você chega aqui pela Assinatura ou por Configurações, em Contato de cobrança.",
+    warning: "Só o dono da empresa altera. Quem é da equipe vê os dados, mas não edita. Ao trocar o número, os avisos que já falharam não são reenviados: a próxima etapa da cobrança já sai no número novo.",
+  },
+  "assinatura.whatsapp-falhou": {
+    title: "Aviso de WhatsApp que não chegou",
+    purpose: "Aparece quando tentamos mandar um aviso de cobrança para o seu WhatsApp e o envio falhou. Quase sempre o número está errado ou não tem WhatsApp.",
+    steps: [
+      "Clique em \"Corrigir número\" e confira o WhatsApp de cobrança.",
+      "Digite o número certo, com DDD, e salve.",
+    ],
+    examples: ["O aviso mostra (84) 99999-3082, mas o seu é (84) 99999-3028: troque e salve. O aviso some sozinho."],
+    tip: "Ele também some quando um envio dá certo. Enquanto isso, os avisos continuam chegando por e-mail.",
+    warning: "Os avisos que já falharam não são reenviados depois da troca. A próxima etapa da cobrança usa o número novo.",
   },
   "assinatura.historico": {
     title: "Histórico de pagamentos",

@@ -19,6 +19,7 @@ import { logger } from "@/lib/logger";
 
 const EVOLUTION_TIMEOUT_MS = 15_000;
 const EVOLUTION_MAX_ATTEMPTS = 3;
+const NUMBER_CHECK_TIMEOUT_MS = 4_000;
 const EVOLUTION_RETRY_DELAY_MS = 300;
 
 export class EvolutionApiError extends Error {
@@ -74,11 +75,20 @@ export type EvolutionPollInput = {
 /** Resultado de envio interativo: além do id, devolve status e corpo da Evolution (para o teste do admin provar o que ela respondeu). */
 export type EvolutionInteractiveSendResult = { messageId: string | null; status: number; body: unknown };
 
+export type EvolutionNumberCheck = { number: string; exists: boolean };
+
+export type EvolutionWebhookInfo = { enabled: boolean; url: string | null; events: string[] };
+
 export interface EvolutionClient {
   /** `POST /instance/create` — cria a instância na Evolution. Não configura webhook (passo separado, ver `setWebhook`). */
   createInstance(instanceName: string): Promise<void>;
   /** `POST /webhook/set/{instance}` — sempre explícito, depois do create (docs/arquitetura.md §4). */
   setWebhook(instanceName: string, webhookUrl: string): Promise<void>;
+  /**
+   * `GET /webhook/find/{instance}` — o webhook configurado hoje (`null` = nenhum). Opcional de propósito: só a manutenção do
+   * WhatsApp de cobrança usa, para reaplicar o webhook se alguém/algo o trocou; quem não implementa é simplesmente pulado.
+   */
+  findWebhook?(instanceName: string): Promise<EvolutionWebhookInfo | null>;
   /** `GET /instance/connect/{instance}` — QR (data URL) e pairing code, quando disponíveis. */
   connect(instanceName: string): Promise<EvolutionConnectResult>;
   /** `GET /instance/connectionState/{instance}` — estado atual da sessão Baileys. */
@@ -96,6 +106,12 @@ export interface EvolutionClient {
    * mensagem no provedor quando a resposta traz (`key.id`), senão `null`.
    */
   sendText(instanceName: string, number: string, text: string): Promise<{ messageId: string | null }>;
+  /**
+   * `POST /chat/whatsappNumbers/{instance}` com `{ numbers }`: diz, para cada número (só dígitos com DDI), se ele tem
+   * WhatsApp. UMA tentativa e prazo curto (`timeoutMs`, padrão 4 s): quem chama trata a falha como "não deu para
+   * conferir" e segue sem bloquear o usuário. `exists` só é `true` quando a Evolution diz `exists: true`.
+   */
+  checkWhatsappNumbers(instanceName: string, numbers: string[], options?: { timeoutMs?: number }): Promise<EvolutionNumberCheck[]>;
   /**
    * `POST /message/sendButtons/{instance}` (Evolution 2.3.x: `interactiveMessage`/`nativeFlowMessage`
    * `quick_reply`). Sem retry. ⚠️ O WhatsApp pode NÃO renderizar em contas não oficiais (Baileys);
@@ -121,11 +137,11 @@ function toDataUrl(base64OrDataUrl: string): string {
  * `fetch` com timeout e retry — SÓ em falha de rede/timeout e 5xx (nunca em 4xx: erro do nosso
  * lado, repetir não ajuda). Mesma política do resto do sistema (§6.1, `mercadopago.ts`).
  */
-async function fetchWithRetry(url: string, init: RequestInit, maxAttempts: number = EVOLUTION_MAX_ATTEMPTS): Promise<Response> {
+async function fetchWithRetry(url: string, init: RequestInit, maxAttempts: number = EVOLUTION_MAX_ATTEMPTS, timeoutMs: number = EVOLUTION_TIMEOUT_MS): Promise<Response> {
   let lastError: unknown;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), EVOLUTION_TIMEOUT_MS);
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const response = await fetch(url, { ...init, signal: controller.signal });
       if (response.status >= 500 && attempt < maxAttempts) {
@@ -156,6 +172,7 @@ async function evolutionRequestFull(
   path: string,
   init?: RequestInit,
   maxAttempts?: number,
+  timeoutMs?: number,
 ): Promise<{ status: number; body: unknown }> {
   const url = `${baseUrl}${path}`;
   const response = await fetchWithRetry(
@@ -169,6 +186,7 @@ async function evolutionRequestFull(
       },
     },
     maxAttempts,
+    timeoutMs,
   );
 
   if (!response.ok) {
@@ -201,8 +219,9 @@ async function evolutionRequest(
   path: string,
   init?: RequestInit,
   maxAttempts?: number,
+  timeoutMs?: number,
 ): Promise<unknown> {
-  return (await evolutionRequestFull(baseUrl, apiKey, path, init, maxAttempts)).body;
+  return (await evolutionRequestFull(baseUrl, apiKey, path, init, maxAttempts, timeoutMs)).body;
 }
 
 interface FetchInstancesEntry {
@@ -256,6 +275,26 @@ export function createEvolutionClient(baseUrl: string, apiKey: string): Evolutio
         });
       } catch (error) {
         throw wrapNetworkError(error, `configurar webhook de ${instanceName}`);
+      }
+    },
+
+    // SUPOSIÇÃO (Evolution v2, documentação pública): `GET /webhook/find/{instance}` devolve `{ enabled, url, events, ... }`
+    // (ou `null`/`{}` sem webhook). 404 também vale como "sem webhook".
+    async findWebhook(instanceName) {
+      try {
+        const response = (await evolutionRequest(base, apiKey, `/webhook/find/${encodeURIComponent(instanceName)}`, { method: "GET" }, 1, 8_000)) as
+          | { enabled?: unknown; url?: unknown; events?: unknown; webhook?: { enabled?: unknown; url?: unknown; events?: unknown } }
+          | null;
+        const row = response && typeof response === "object" ? (response.webhook && typeof response.webhook === "object" ? response.webhook : response) : null;
+        if (!row || (typeof row.url !== "string" && row.enabled === undefined)) return null;
+        return {
+          enabled: row.enabled === true,
+          url: typeof row.url === "string" && row.url ? row.url : null,
+          events: Array.isArray(row.events) ? row.events.filter((e): e is string => typeof e === "string") : [],
+        };
+      } catch (error) {
+        if ((error as { status?: number }).status === 404) return null;
+        throw wrapNetworkError(error, `consultar webhook de ${instanceName}`);
       }
     },
 
@@ -332,6 +371,28 @@ export function createEvolutionClient(baseUrl: string, apiKey: string): Evolutio
         return { messageId: response?.key?.id ?? null };
       } catch (error) {
         throw wrapNetworkError(error, `enviar mensagem por ${instanceName}`);
+      }
+    },
+
+    // SUPOSIÇÃO (Evolution v2, documentação pública): resposta é uma lista `[{ exists, jid, number }]`.
+    async checkWhatsappNumbers(instanceName, numbers, options) {
+      try {
+        const response = await evolutionRequest(
+          base,
+          apiKey,
+          `/chat/whatsappNumbers/${encodeURIComponent(instanceName)}`,
+          { method: "POST", body: JSON.stringify({ numbers }) },
+          1,
+          options?.timeoutMs ?? NUMBER_CHECK_TIMEOUT_MS,
+        );
+        if (!Array.isArray(response)) throw new EvolutionApiError("Resposta inesperada da Evolution ao conferir números.");
+        return response.map((item) => {
+          const row = (item ?? {}) as { exists?: unknown; number?: unknown; jid?: unknown };
+          const raw = typeof row.number === "string" ? row.number : typeof row.jid === "string" ? row.jid.split("@")[0]! : "";
+          return { number: raw.replace(/\D/g, ""), exists: row.exists === true };
+        });
+      } catch (error) {
+        throw wrapNetworkError(error, `conferir números por ${instanceName}`);
       }
     },
 

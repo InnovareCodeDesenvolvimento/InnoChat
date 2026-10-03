@@ -22,6 +22,7 @@ const sent: Array<{ instance: string; number: string; text: string }> = [];
 const loggedOut: string[] = [];
 const deleted: string[] = [];
 let failLogout = false;
+let webhookEnabled = true;
 
 function makeFakeEvolution(): EvolutionClient {
   const session = (name: string) => {
@@ -35,6 +36,11 @@ function makeFakeEvolution(): EvolutionClient {
     }),
     setWebhook: vi.fn(async (name: string, url: string) => {
       webhooks.set(name, url);
+    }),
+    findWebhook: vi.fn(async (name: string) => {
+      session(name);
+      const url = webhooks.get(name);
+      return url ? { enabled: webhookEnabled, url, events: ["MESSAGES_UPSERT", "CONNECTION_UPDATE"] } : null;
     }),
     connect: vi.fn(async (name: string) => ({ qrCodeDataUrl: `data:image/png;base64,QR-${name}`, pairingCode: null })),
     connectionState: vi.fn(async (name: string) => session(name).state),
@@ -54,6 +60,7 @@ function makeFakeEvolution(): EvolutionClient {
       sent.push({ instance: name, number, text });
       return { messageId: `msg-${sent.length}` };
     }),
+    checkWhatsappNumbers: vi.fn(async (_name: string, numbers: string[]) => numbers.map((number) => ({ number, exists: true }))),
     sendButtons: vi.fn(async () => ({ messageId: null, status: 201, body: null })),
     sendList: vi.fn(async () => ({ messageId: null, status: 201, body: null })),
     sendPoll: vi.fn(async () => ({ messageId: null, status: 201, body: null })),
@@ -143,6 +150,7 @@ async function resetPlatformState() {
   loggedOut.length = 0;
   deleted.length = 0;
   failLogout = false;
+  webhookEnabled = true;
   invalidatePlatformSenderCache();
   __resetRateLimitsForTests();
 }
@@ -495,6 +503,28 @@ describe("envio, queda e aquecimento", () => {
     expect((await activeRows())[0]!.status).toBe("CONNECTED");
   });
 
+  it("400 da Evolution com a sessão aberta: FAILED com reason INVALID_NUMBER (o número é que foi recusado)", async () => {
+    await connectNumber("Cobrança", PHONE_A);
+    const { tenant } = await makeTenant();
+    vi.mocked(fakeEvolution.sendText).mockRejectedValueOnce(new EvolutionApiError("Evolution API respondeu 400", 400, undefined, '{"response":{"message":[{"exists":false}]}}'));
+    const r = await sendPlatformWhatsapp({ toE164: SUBSCRIBER, text: "oi", tenantId: tenant.id, noticeId: "n1" });
+    expect(r).toMatchObject({ outcome: "FAILED", reason: "INVALID_NUMBER" });
+    expect((await activeRows())[0]!.status).toBe("CONNECTED");
+  });
+
+  it("checkPlatformWhatsappNumber: EXISTS, NOT_FOUND e UNKNOWN (sem número ativo, Evolution fora)", async () => {
+    const { checkPlatformWhatsappNumber } = await import("@/modules/platform-whatsapp/sender");
+    expect(await checkPlatformWhatsappNumber("5584999993082")).toBe("UNKNOWN"); // sem conexão ativa
+    await connectNumber("Cobrança", PHONE_A);
+    expect(await checkPlatformWhatsappNumber("5584999993082")).toBe("EXISTS");
+    vi.mocked(fakeEvolution.checkWhatsappNumbers).mockResolvedValueOnce([{ number: "5584999993082", exists: false }, { number: "558499993082", exists: false }]);
+    expect(await checkPlatformWhatsappNumber("5584999993082")).toBe("NOT_FOUND");
+    vi.mocked(fakeEvolution.checkWhatsappNumbers).mockResolvedValueOnce([{ number: "5584999993082", exists: false }, { number: "558499993082", exists: true }]);
+    expect(await checkPlatformWhatsappNumber("5584999993082")).toBe("EXISTS"); // existe sem o 9º dígito
+    vi.mocked(fakeEvolution.checkWhatsappNumbers).mockRejectedValueOnce(new EvolutionApiError("timeout"));
+    expect(await checkPlatformWhatsappNumber("5584999993082")).toBe("UNKNOWN");
+  });
+
   it("mensagem de teste NÃO grava BillingNotice e recusa número da própria plataforma", async () => {
     await connectNumber("Cobrança", PHONE_A);
     const before = await prisma.billingNotice.count();
@@ -728,5 +758,188 @@ describe("revisão do Órion: confirmação de posse, hash no autoreply, retenç
     expect(summary.stateChecked).toBe(false);
     expect(vi.mocked(fakeEvolution.connectionState).mock.calls.length).toBe(stateCalls);
     expect(vi.mocked(fakeEvolution.logout).mock.calls.length).toBe(logoutCalls);
+  });
+});
+
+describe("resposta automática sempre viva (2026-10-03): LID, 10 min, teto diário, motivo no diagnóstico e webhook", () => {
+  const LID = "98765432101234@lid";
+  const inbound = (jid: string, text: string, extraKey: Record<string, unknown> = {}) => ({
+    event: "messages.upsert",
+    data: { key: { remoteJid: jid, fromMe: false, id: `m-${randomUUID()}`, ...extraKey }, pushName: "Assinante", message: { conversation: text }, messageTimestamp: Math.floor(Date.now() / 1000) },
+  });
+  const minutesLater = (min: number) => ({ now: new Date(Date.now() + min * 60_000) });
+  async function diag() {
+    const state = await connections.getPlatformWhatsappState();
+    return state.active!.diagnostics;
+  }
+
+  it("remetente só com LID (sem telefone) recebe a resposta, enviada ao próprio @lid", async () => {
+    const a = await connectNumber("Cobrança", PHONE_A);
+    const token = tokenOf(a.instanceName);
+    await handlePlatformWhatsappWebhook(token, inbound(LID, "oi, quem é?"));
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({ instance: a.instanceName, number: LID });
+    expect(sent[0]!.text).toContain("avisos de cobrança");
+    const d = await diag();
+    expect(d.lastInboundAt).not.toBeNull();
+    expect(d.lastAutoreplyAt).not.toBeNull();
+    expect(d.notRepliedReason).toBeNull();
+    expect(d.lastInboundFrom).toBe("contato sem número");
+    // a chave de deduplicação não guarda o LID em claro
+    const rows = await prisma.providerEvent.findMany({ where: { provider: "platform-whatsapp-autoreply" } });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.providerEventId).not.toContain("98765432101234");
+  });
+
+  it("@lid COM o telefone nos campos alternativos (senderPn/remoteJidAlt): responde ao telefone, como antes", async () => {
+    const a = await connectNumber("Cobrança", PHONE_A);
+    const token = tokenOf(a.instanceName);
+    await handlePlatformWhatsappWebhook(token, inbound(LID, "oi", { senderPn: `${SUBSCRIBER}@s.whatsapp.net` }));
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.number).toBe(SUBSCRIBER);
+    const d = await diag();
+    expect(d.lastInboundFrom).toContain("****");
+    expect(d.lastInboundFrom).not.toContain(SUBSCRIBER);
+  });
+
+  it("2ª mensagem depois de 10 min recebe; dentro de 10 min não, e o motivo aparece no diagnóstico", async () => {
+    const a = await connectNumber("Cobrança", PHONE_A);
+    const token = tokenOf(a.instanceName);
+    const jid = `${SUBSCRIBER}@s.whatsapp.net`;
+    await handlePlatformWhatsappWebhook(token, inbound(jid, "oi"));
+    expect(sent).toHaveLength(1);
+
+    await handlePlatformWhatsappWebhook(token, inbound(jid, "oi de novo"), minutesLater(3));
+    expect(sent).toHaveLength(1);
+    const blocked = await diag();
+    expect(blocked.notRepliedReason).toMatch(/^não respondeu: já respondeu há [2-3] min$/);
+
+    await handlePlatformWhatsappWebhook(token, inbound(jid, "e agora?"), minutesLater(11));
+    expect(sent).toHaveLength(2);
+    expect((await diag()).notRepliedReason).toBeNull();
+  });
+
+  it("a 7ª mensagem do dia não recebe (teto de 6 por contato) e o motivo diz isso", async () => {
+    const a = await connectNumber("Cobrança", PHONE_A);
+    const token = tokenOf(a.instanceName);
+    const jid = `${SUBSCRIBER}@s.whatsapp.net`;
+    for (let i = 0; i < 6; i += 1) await handlePlatformWhatsappWebhook(token, inbound(jid, `oi ${i}`), minutesLater(11 * (i + 1)));
+    expect(sent).toHaveLength(6);
+    await handlePlatformWhatsappWebhook(token, inbound(jid, "oi 7"), minutesLater(11 * 7));
+    expect(sent).toHaveLength(6);
+    expect((await diag()).notRepliedReason).toContain("6 vezes hoje");
+  });
+
+  it("SAIR sempre responde, mesmo dentro dos 10 min; sem cadastro, a resposta não promete que parou", async () => {
+    const a = await connectNumber("Cobrança", PHONE_A);
+    const token = tokenOf(a.instanceName);
+    const { tenant } = await makeTenant({ billingWhatsappE164: SUBSCRIBER });
+    const jid = `${SUBSCRIBER}@s.whatsapp.net`;
+    await handlePlatformWhatsappWebhook(token, inbound(jid, "oi"));
+    await handlePlatformWhatsappWebhook(token, inbound(jid, "SAIR"), minutesLater(1));
+    expect(sent).toHaveLength(2);
+    expect(sent[1]!.text).toContain("não vai mais receber");
+    expect((await prisma.tenant.findUniqueOrThrow({ where: { id: tenant.id } })).billingWhatsappOptOutAt).not.toBeNull();
+
+    // LID sem telefone: não dá para achar a empresa
+    await handlePlatformWhatsappWebhook(token, inbound(LID, "sair"));
+    expect(sent).toHaveLength(3);
+    expect(sent[2]!.number).toBe(LID);
+    expect(sent[2]!.text).toContain("não achei este número");
+    expect(sent[2]!.text).not.toContain("não vai mais receber");
+  });
+
+  it("número que é o bot de uma empresa não recebe, e o motivo fica registrado", async () => {
+    const a = await connectNumber("Cobrança", PHONE_A);
+    const token = tokenOf(a.instanceName);
+    const botPhone = "5584991110056";
+    const { tenant: botTenant } = await makeTenant();
+    await prisma.whatsappInstance.create({ data: { tenantId: botTenant.id, instanceName: `it-pwa-bot-${randomUUID().slice(0, 6)}`, label: "Bot", webhookToken: randomUUID(), phoneE164: `+${botPhone}` } });
+    await handlePlatformWhatsappWebhook(token, inbound(`${botPhone}@s.whatsapp.net`, "Olá! Sou o assistente virtual."));
+    expect(sent).toHaveLength(0);
+    expect((await diag()).notRepliedReason).toBe("não respondeu: o número é o WhatsApp de uma empresa cadastrada");
+  });
+
+  it("mensagem do próprio número da plataforma: sem resposta, motivo registrado", async () => {
+    const a = await connectNumber("Cobrança", PHONE_A);
+    await handlePlatformWhatsappWebhook(tokenOf(a.instanceName), inbound(`${PHONE_A}@s.whatsapp.net`, "oi"));
+    expect(sent).toHaveLength(0);
+    expect((await diag()).notRepliedReason).toContain("próprio WhatsApp de cobrança");
+  });
+
+  it("falha no envio não trava o contato: a reserva some, o motivo aparece e a próxima mensagem responde", async () => {
+    const a = await connectNumber("Cobrança", PHONE_A);
+    const token = tokenOf(a.instanceName);
+    const jid = `${SUBSCRIBER}@s.whatsapp.net`;
+    instances.get(a.instanceName)!.state = "close";
+    await handlePlatformWhatsappWebhook(token, inbound(jid, "oi"));
+    expect(sent).toHaveLength(0);
+    expect(await prisma.providerEvent.count({ where: { provider: "platform-whatsapp-autoreply" } })).toBe(0);
+    expect((await diag()).notRepliedReason).toContain("o envio falhou");
+    instances.get(a.instanceName)!.state = "open";
+    await handlePlatformWhatsappWebhook(token, inbound(jid, "oi?"));
+    expect(sent).toHaveLength(1);
+  });
+
+  it("evento qualquer do webhook (até o eco) marca o último evento recebido", async () => {
+    const a = await connectNumber("Cobrança", PHONE_A);
+    expect((await diag()).lastEventAt).toBeNull();
+    await handlePlatformWhatsappWebhook(tokenOf(a.instanceName), inbound(`${SUBSCRIBER}@s.whatsapp.net`, "eco", { fromMe: true }));
+    expect((await diag()).lastEventAt).not.toBeNull();
+    expect(sent).toHaveLength(0);
+  });
+
+  describe("manutenção confere e reaplica o webhook da conexão ACTIVE", () => {
+    it("webhook íntegro: nada é reaplicado", async () => {
+      await connectNumber("Cobrança", PHONE_A);
+      const calls = vi.mocked(fakeEvolution.setWebhook).mock.calls.length;
+      const summary = await connections.runPlatformWhatsappMaintenance({ evolution: fakeEvolution });
+      expect(summary.webhook).toBe("OK");
+      expect(vi.mocked(fakeEvolution.setWebhook).mock.calls.length).toBe(calls);
+      expect((await diag()).webhookNote).toBeNull();
+    });
+
+    it("webhook desligado na Evolution: reaplica o MESMO endereço (token e hash intactos)", async () => {
+      const a = await connectNumber("Cobrança", PHONE_A);
+      const before = webhooks.get(a.instanceName)!;
+      const rowBefore = await prisma.platformWhatsappConnection.findUniqueOrThrow({ where: { id: a.connectionId } });
+      webhookEnabled = false;
+      const summary = await connections.runPlatformWhatsappMaintenance({ evolution: fakeEvolution });
+      expect(summary.webhook).toBe("REPAIRED");
+      expect(webhooks.get(a.instanceName)).toBe(before);
+      expect((await prisma.platformWhatsappConnection.findUniqueOrThrow({ where: { id: a.connectionId } })).webhookTokenHash).toBe(rowBefore.webhookTokenHash);
+      expect((await diag()).webhookNote).toContain("corrigido sozinho");
+    });
+
+    it("webhook apontando para outro lugar: gira o token, a Evolution recebe o novo e o antigo deixa de valer", async () => {
+      const a = await connectNumber("Cobrança", PHONE_A);
+      const oldToken = tokenOf(a.instanceName);
+      webhooks.set(a.instanceName, "https://n8n.example.com/webhook/innochat/evolution/outro-token");
+      const summary = await connections.runPlatformWhatsappMaintenance({ evolution: fakeEvolution });
+      expect(summary.webhook).toBe("REPAIRED");
+      const newToken = tokenOf(a.instanceName);
+      expect(newToken).not.toBe(oldToken);
+      expect(webhooks.get(a.instanceName)).toContain("/api/webhooks/platform-whatsapp/");
+      expect((await handlePlatformWhatsappWebhook(newToken, { event: "qrcode.updated" })).status).toBe(200);
+      expect((await handlePlatformWhatsappWebhook(oldToken, { event: "qrcode.updated" })).status).toBe(401);
+      // e a resposta automática volta a funcionar pelo endereço novo
+      await handlePlatformWhatsappWebhook(newToken, inbound(`${SUBSCRIBER}@s.whatsapp.net`, "oi"));
+      expect(sent).toHaveLength(1);
+    });
+
+    it("sem webhook nenhum na Evolution: cria um novo; se o setWebhook falha, o hash antigo volta", async () => {
+      const a = await connectNumber("Cobrança", PHONE_A);
+      const rowBefore = await prisma.platformWhatsappConnection.findUniqueOrThrow({ where: { id: a.connectionId } });
+      webhooks.delete(a.instanceName);
+      vi.mocked(fakeEvolution.setWebhook).mockRejectedValueOnce(new EvolutionApiError("Evolution fora do ar", 500));
+      const failed = await connections.runPlatformWhatsappMaintenance({ evolution: fakeEvolution });
+      expect(failed.webhook).toBe("REPAIR_FAILED");
+      expect((await prisma.platformWhatsappConnection.findUniqueOrThrow({ where: { id: a.connectionId } })).webhookTokenHash).toBe(rowBefore.webhookTokenHash);
+      expect((await diag()).webhookNote).toContain("não deu para corrigir");
+
+      const ok = await connections.runPlatformWhatsappMaintenance({ evolution: fakeEvolution });
+      expect(ok.webhook).toBe("REPAIRED");
+      expect(webhooks.get(a.instanceName)).toContain("/api/webhooks/platform-whatsapp/");
+    });
   });
 });

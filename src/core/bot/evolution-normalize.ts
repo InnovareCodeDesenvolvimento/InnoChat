@@ -80,6 +80,22 @@ function unwrapMessage(message: Record<string, unknown>): Record<string, unknown
   return current;
 }
 
+/**
+ * Primeiro valor que seja um telefone (`<dígitos>@s.whatsapp.net` ou só dígitos). Nunca aceita `@lid`: o ponto é justamente
+ * achar o número por trás do LID. A Evolution v2.3 (Baileys 7) pode mandar em `key.remoteJidAlt`, `key.senderPn`,
+ * `key.participantPn` ou nos mesmos nomes dentro de `data`.
+ */
+function pickPhoneJid(candidates: unknown[]): string | null {
+  for (const candidate of candidates) {
+    if (typeof candidate !== "string") continue;
+    const value = candidate.trim();
+    if (!value || value.endsWith("@lid")) continue;
+    const user = value.split("@")[0] ?? "";
+    if (/^[0-9]{8,20}$/.test(user) && (!value.includes("@") || value.endsWith("@s.whatsapp.net"))) return value;
+  }
+  return null;
+}
+
 function nonEmptyString(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
@@ -201,8 +217,8 @@ export function normalizeEvolutionMessage(payload: unknown): NormalizedEvolution
   if (remoteJid.endsWith("@g.us")) return { kind: "unsupported", reason: "GROUP" };
 
   const altJidRaw =
-    (typeof key.remoteJidAlt === "string" && key.remoteJidAlt) ||
-    (typeof data.senderPn === "string" && data.senderPn) ||
+    pickPhoneJid([key.remoteJidAlt, key.senderPn, key.participantPn, data.remoteJidAlt, data.senderPn, data.participantPn]) ||
+    // (senderPn e afins já entram no pickPhoneJid acima)
     null;
 
   return {

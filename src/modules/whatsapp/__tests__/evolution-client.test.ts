@@ -166,6 +166,32 @@ describe("createEvolutionClient", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("checkWhatsappNumbers chama POST /chat/whatsappNumbers/{instance} com {numbers} e devolve exists por número", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse([{ exists: true, jid: "5584999993082@s.whatsapp.net", number: "5584999993082" }, { exists: false, jid: "558499993082@s.whatsapp.net", number: "558499993082" }]));
+    const client = createEvolutionClient(BASE_URL, API_KEY);
+
+    const result = await client.checkWhatsappNumbers("innochat-plat", ["5584999993082", "558499993082"]);
+
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe(`${BASE_URL}/chat/whatsappNumbers/innochat-plat`);
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body)).toEqual({ numbers: ["5584999993082", "558499993082"] });
+    expect(result).toEqual([
+      { number: "5584999993082", exists: true },
+      { number: "558499993082", exists: false },
+    ]);
+  });
+
+  it("checkWhatsappNumbers: resposta que não é lista e erro 5xx viram EvolutionApiError, sem retentar", async () => {
+    const client = createEvolutionClient(BASE_URL, API_KEY);
+    fetchMock.mockResolvedValueOnce(jsonResponse({ ok: true }));
+    await expect(client.checkWhatsappNumbers("i", ["5584999993082"])).rejects.toBeInstanceOf(EvolutionApiError);
+    fetchMock.mockReset();
+    fetchMock.mockResolvedValue(new Response("boom", { status: 503 }));
+    await expect(client.checkWhatsappNumbers("i", ["5584999993082"])).rejects.toBeInstanceOf(EvolutionApiError);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("sendButtons chama POST /message/sendButtons/{instance} com botões reply e devolve status/corpo", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ key: { id: "3EB0BTN" }, status: "PENDING" }, 201));
     const client = createEvolutionClient(BASE_URL, API_KEY);

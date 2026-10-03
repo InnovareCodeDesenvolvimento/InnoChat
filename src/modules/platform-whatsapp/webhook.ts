@@ -6,22 +6,28 @@ import { logger } from "@/lib/logger";
 import { normalizeEvolutionMessage, resolveSenderIdentity } from "@/core/bot/evolution-normalize";
 import { parseConnectionEvent } from "@/core/whatsapp/connection-event";
 import {
-  AUTOREPLY_INTERVAL_MS,
+  AUTOREPLY_PRIORITY_HARD_CAP,
+  AUTOREPLY_WINDOW_MS,
   autoreplyText,
   CONFIRM_REPLY,
+  decideAutoreply,
   digitsOnly,
+  hashLidForDedup,
   hashPhoneForDedup,
   hashWebhookToken,
   isConfirmText,
   isOptOutText,
   maskPhone,
   OPT_OUT_CONFIRMATION,
+  optOutNotFoundText,
   PLATFORM_AUTOREPLY_PROVIDER,
   PLATFORM_REPLY_PROVIDER,
   phoneDigitVariants,
+  type SkipReason,
 } from "@/core/platform-whatsapp/rules";
 import { getEvolutionClient, type EvolutionClient } from "@/modules/whatsapp/evolution-client";
 import { applyOpenConnection, markActiveDisconnected, type PlatformWhatsappDeps } from "./connections";
+import { patchDiagnostics } from "./diagnostics";
 import { isPlatformSender } from "./sender-guard";
 
 /**
@@ -52,6 +58,8 @@ export async function handlePlatformWhatsappWebhook(token: string, body: unknown
   if (connection.role === "RETIRED") return { status: 410, body: { error: { code: "GONE", message: "Esta conexão foi encerrada." } } };
 
   const eventName = isRecord(body) && typeof body.event === "string" ? body.event.toUpperCase().replace(/\./g, "_") : "";
+  // Prova de vida do webhook (inclusive o eco das nossas mensagens): separa "o evento não chega" de "chega e não responde".
+  await patchDiagnostics(connection.id, { lastEventAt: (deps?.now ?? new Date()).toISOString() });
   try {
     if (eventName === "CONNECTION_UPDATE") {
       await handleConnectionUpdate(connection, body, deps);
@@ -94,31 +102,44 @@ async function handleConnectionUpdate(connection: ConnectionRow, body: unknown, 
 async function handleInboundMessage(connectionId: string, payload: Record<string, unknown>, deps?: PlatformWhatsappDeps): Promise<void> {
   const normalized = normalizeEvolutionMessage(payload);
   if (normalized.kind !== "message" || normalized.fromMe) return;
+  // Status/canal não são conversa com ninguém: sem resposta e sem ruído no diagnóstico.
+  if (/@(broadcast|newsletter)$/.test(normalized.jid)) return;
 
+  const now = deps?.now ?? new Date();
   const identity = resolveSenderIdentity(normalized);
   const senderDigits = identity.waJid ? digitsOnly(identity.waJid.split("@")[0] ?? "") : "";
-  if (!senderDigits) return;
+  // Remetente só com LID (a Evolution não trouxe o telefone): responde ao próprio @lid.
+  // Empresa e opt-out dependem do telefone, então ficam de fora nesse caso.
+  const lidJid = !senderDigits && identity.lid ? identity.lid : null;
+  const replyTo = senderDigits || lidJid || "";
+  const contactKey = senderDigits ? hashPhoneForDedup(senderDigits) : lidJid ? hashLidForDedup(lidJid) : "";
+  const fromMasked = senderDigits ? maskPhone(senderDigits) : lidJid ? "contato sem número" : null;
 
+  await patchDiagnostics(connectionId, { lastInboundAt: now.toISOString(), lastInboundFrom: fromMasked });
+  const skip = async (reason: SkipReason, minutes?: number): Promise<void> => {
+    logger.info("platform_whatsapp.autoreply_skipped", { connectionId, reason });
+    await patchDiagnostics(connectionId, { lastInboundOutcome: "SKIPPED", skipReason: reason, skipMinutes: minutes ?? null });
+  };
+
+  if (!replyTo) return skip("NO_SENDER");
   // Trava 1: a plataforma nunca responde a si mesma (nem a um chip que já foi da plataforma).
-  if (await isPlatformSender(senderDigits)) return;
+  if (senderDigits && (await isPlatformSender(senderDigits))) return skip("OWN_NUMBER");
 
   const prisma = getPrisma();
-  const now = deps?.now ?? new Date();
-  const variants = phoneDigitVariants(senderDigits);
+  const variants = senderDigits ? phoneDigitVariants(senderDigits) : [];
   const text = normalized.content.type === "text" ? normalized.content.text : normalized.content.label;
   const optOut = normalized.content.type === "text" && isOptOutText(text);
   const confirm = !optOut && normalized.content.type === "text" && isConfirmText(text);
 
-  const tenant = await prisma.tenant.findFirst({
-    where: { billingWhatsappE164: { in: variants } },
-    orderBy: { createdAt: "asc" },
-    select: { id: true, name: true },
-  });
+  const tenant =
+    variants.length > 0
+      ? await prisma.tenant.findFirst({ where: { billingWhatsappE164: { in: variants } }, orderBy: { createdAt: "asc" }, select: { id: true, name: true } })
+      : null;
   // Trava 3: nunca responde automaticamente a um número que seja o bot de alguma empresa.
-  const botNumber = await prisma.whatsappInstance.findFirst({
-    where: { deletedAt: null, phoneE164: { in: variants.flatMap((v) => [v, `+${v}`]) } },
-    select: { id: true },
-  });
+  const botNumber =
+    variants.length > 0
+      ? await prisma.whatsappInstance.findFirst({ where: { deletedAt: null, phoneE164: { in: variants.flatMap((v) => [v, `+${v}`]) } }, select: { id: true } })
+      : null;
 
   // Dedup + registro para o sino (a própria linha É o item PLATFORM_WHATSAPP_REPLY).
   try {
@@ -130,7 +151,7 @@ async function handleInboundMessage(connectionId: string, payload: Record<string
           connectionId,
           tenantId: tenant?.id ?? null,
           tenantName: tenant?.name ?? null,
-          from: maskPhone(senderDigits),
+          from: fromMasked,
           preview: Array.from(text).slice(0, PREVIEW_MAX).join(""),
           optOut,
         },
@@ -157,41 +178,50 @@ async function handleInboundMessage(connectionId: string, payload: Record<string
       where: { billingWhatsappE164: { in: variants }, billingWhatsappConfirmedAt: null },
       data: { billingWhatsappConfirmedAt: now },
     });
-    // Só a PRIMEIRA confirmação responde; "SIM" repetido cai na trava de 24 h da resposta automática.
+    // Só a PRIMEIRA confirmação responde com prioridade; "SIM" repetido cai na trava por contato.
     confirmed = res.count > 0;
     logger.info("platform_whatsapp.contact_confirmed", { tenantId: tenant.id, tenantsUpdated: res.count });
   }
 
-  if (botNumber) return;
-  if (!optOut && !confirmed && (await autoreplySentRecently(senderDigits, now))) return;
+  if (botNumber) return skip("COMPANY_BOT");
+  const decision = decideAutoreply(await recentAutoreplyTimes(contactKey, now), now, optOut || confirmed);
+  if (!decision.allow) return skip(decision.reason, decision.reason === "RECENT" ? decision.minutesAgo : undefined);
 
   let evolution: EvolutionClient;
   try {
     evolution = deps?.evolution ?? (await getEvolutionClient());
   } catch {
-    return;
+    return skip("NO_EVOLUTION");
   }
   const connection = await prisma.platformWhatsappConnection.findUnique({ where: { id: connectionId }, select: { instanceName: true, role: true } });
-  if (!connection || connection.role === "RETIRED") return;
+  if (!connection || connection.role === "RETIRED") return skip("CONNECTION_RETIRED");
+
+  let reservationId: string | null = null;
   try {
-    await prisma.providerEvent.create({
-      data: { provider: AUTOREPLY_PROVIDER, providerEventId: `${hashPhoneForDedup(senderDigits)}:${now.getTime()}-${randomBytes(2).toString("hex")}`, payload: {}, processedAt: now },
+    const reservation = await prisma.providerEvent.create({
+      data: { provider: AUTOREPLY_PROVIDER, providerEventId: `${contactKey}:${now.getTime()}-${randomBytes(2).toString("hex")}`, payload: {}, processedAt: now },
+      select: { id: true },
     });
-    await evolution.sendText(
-      connection.instanceName,
-      senderDigits,
-      optOut && tenant ? OPT_OUT_CONFIRMATION : confirmed ? CONFIRM_REPLY : autoreplyText((await getPublicSalesWhatsapp())?.display ?? null),
-    );
+    reservationId = reservation.id;
+    const support = (await getPublicSalesWhatsapp().catch(() => null))?.display ?? null;
+    const replyText = optOut ? (tenant ? OPT_OUT_CONFIRMATION : optOutNotFoundText(support)) : confirmed ? CONFIRM_REPLY : autoreplyText(support);
+    await evolution.sendText(connection.instanceName, replyTo, replyText);
+    await patchDiagnostics(connectionId, { lastInboundOutcome: "REPLIED", skipReason: null, skipMinutes: null, lastAutoreplyAt: now.toISOString() });
   } catch (error) {
-    logger.warn("platform_whatsapp.autoreply_failed", { connectionId, errorMessage: error instanceof Error ? error.message : String(error) });
+    logger.warn("platform_whatsapp.autoreply_failed", { connectionId, viaLid: lidJid !== null, errorMessage: error instanceof Error ? error.message : String(error) });
+    // A reserva de um envio que não saiu não pode travar o contato por 10 min.
+    if (reservationId) await prisma.providerEvent.delete({ where: { id: reservationId } }).catch(() => undefined);
+    await patchDiagnostics(connectionId, { lastInboundOutcome: "FAILED", skipReason: "SEND_FAILED", skipMinutes: null });
   }
 }
 
-/** Trava 2: a mensagem automática sai no máximo 1 vez por contato a cada 24 h. */
-async function autoreplySentRecently(senderDigits: string, now: Date): Promise<boolean> {
-  const recent = await getPrisma().providerEvent.findFirst({
-    where: { provider: AUTOREPLY_PROVIDER, providerEventId: { startsWith: `${hashPhoneForDedup(senderDigits)}:` }, createdAt: { gte: new Date(now.getTime() - AUTOREPLY_INTERVAL_MS) } },
-    select: { id: true },
+/** Instantes das respostas automáticas da janela de 24 h ao contato, da mais recente para a mais antiga. */
+async function recentAutoreplyTimes(contactKey: string, now: Date): Promise<Date[]> {
+  const rows = await getPrisma().providerEvent.findMany({
+    where: { provider: AUTOREPLY_PROVIDER, providerEventId: { startsWith: `${contactKey}:` }, createdAt: { gte: new Date(now.getTime() - AUTOREPLY_WINDOW_MS) } },
+    orderBy: { createdAt: "desc" },
+    take: AUTOREPLY_PRIORITY_HARD_CAP + 1,
+    select: { createdAt: true },
   });
-  return recent !== null;
+  return rows.map((r) => r.createdAt);
 }
