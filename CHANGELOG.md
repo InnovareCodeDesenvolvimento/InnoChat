@@ -7,6 +7,19 @@ Versão semântica (`MAJOR.MINOR.PATCH`), lida do `version` do `package.json` e 
 
 Toda publicação em produção sobe a versão e ganha uma entrada aqui.
 
+## v1.8.0 — 2026-10-03
+
+### Novidade: planos com 4 ciclos
+- Cada plano pode ser pago a cada **1, 3, 6 ou 12 meses** (mensal, trimestral, semestral e anual). Em Admin → Planos você define o preço de cada ciclo; ciclo em branco não aparece para o cliente. O botão "Sugerir preços" preenche 5% no trimestral, 10% no semestral e 2 meses grátis no anual, e você ajusta.
+- Não dá para apagar o preço de um ciclo que tenha clientes ativos nele, e um preço abaixo da metade do normal pede confirmação antes de salvar.
+- **Cupons por ciclo:** em Admin → Cupons, caixinhas para escolher em quais ciclos o cupom vale. A duração passa a ser contada em faturas (num plano trimestral, 3 faturas cobrem 9 meses). Os cupons que já existiam foram convertidos sem perder nada.
+- **Cadastro e Assinatura:** seletor "Pagar a cada 1, 3, 6 ou 12 meses" com o valor do período, quanto sai por mês e a economia. O cadastro pelo Google também ganhou a escolha de ciclo e o cupom.
+- Trocar de ciclo vale a partir da próxima fatura, sem cobrança proporcional. Se o plano novo não tiver o ciclo do cliente, o sistema pede para escolher outro antes da troca.
+- Faturas, avisos de cobrança, Financeiro (receita mensal), landing e Termos ajustados para os 4 ciclos.
+
+### Correções
+- O fim do período pago é calculado direito no fim do mês: 31/08 mais 6 meses termina em 28/02.
+
 ## v1.7.5 — 2026-10-03
 
 ### Lista de espera
