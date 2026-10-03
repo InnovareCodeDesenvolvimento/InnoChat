@@ -323,8 +323,10 @@ describe("API-03 próximos horários", () => {
     expect([...ids].sort()).toEqual(ids);
     expect(new Set(ids).size).toBe(6);
     for (const o of r.options) expect(o.label).toMatch(/ · \d\d:\d\d$/);
-    const hasRelative = r.options.some((o) => o.label.startsWith("Hoje ·") || o.label.startsWith("Amanhã ·"));
-    expect(hasRelative).toBe(true);
+    // Com 24h de antecedência, depois do fim do expediente "Amanhã" já não existe: o rótulo cai
+    // para a data curta ("Sex 02/10 · 09:00"). Aceita as duas formas para não depender da hora.
+    const hasLabelPrefix = r.options.every((o) => /^(Hoje|Amanhã|[A-Za-zÀ-ú]{3,} \d\d\/\d\d) · /.test(o.label));
+    expect(hasLabelPrefix).toBe(true);
     expect(r.options[0].date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 });

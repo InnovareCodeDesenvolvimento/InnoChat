@@ -22,3 +22,4 @@
 - [QA ajuda ⓘ + favicon 2026-09-30](qa_ajuda_favicon_2026_09_30.md) — APROVADO; medição do selo, flakes, lint cru varre worktrees, integração sem expor credencial
 - [QA Onda 1 2026-10-02](qa_onda1_2026_10_02.md) — Map em memória duplicado action x rota Auth.js, overflow Admin Erros 390px, pollution PlatformSettings, armadilhas E2E
 - [QA landing 2026-10-01](qa_landing_2026_10_01.md) — cópia isolada do HEAD p/ gates; prazo 24h falso na demo; armadilhas E2E_BASE_URL, publicBaseUrl 3700, limpeza .ps1
+- [QA final pacote 8 (2026-10-02)](qa_final_pacote8_2026_10_02.md) — 3 specs novas; flakes de toast duplicado/S:0/banner; sim WL só passa 8h-21h; login 20/IP divide a suíte

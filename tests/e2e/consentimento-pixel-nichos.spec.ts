@@ -40,7 +40,12 @@ async function waitForBanner(page: Page, path: string) {
     .poll(
       async () => {
         await page.goto(path);
-        return page.getByTestId("consent-banner").isVisible();
+        // O banner nasce no cliente (depois da hidratação): esperar um pouco em vez de olhar no instante do load.
+        return page
+          .getByTestId("consent-banner")
+          .waitFor({ state: "visible", timeout: 4_000 })
+          .then(() => true)
+          .catch(() => false);
       },
       { timeout: 60_000, intervals: [2_000] },
     )

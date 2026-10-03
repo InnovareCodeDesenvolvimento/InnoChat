@@ -100,6 +100,12 @@ async function horizontalOverflow(): Promise<{ overflow: number; offenders: stri
 async function open(pathname: string) {
   await page.goto(`/${SLUG}${pathname}`);
   await expect(page.getByRole("heading", { level: 1 }).first()).toBeVisible();
+  await settleStreaming(page);
+}
+
+/** Espera a cópia oculta do streaming (`<div hidden id="S:0">`) sumir: enquanto existe, getByTestId/getByText contam 2 nós. */
+async function settleStreaming(p: Page) {
+  await p.waitForFunction(() => !document.querySelector("div[hidden][id^=\"S:\"]"), undefined, { timeout: 10_000 });
 }
 
 test.describe.configure({ mode: "serial" });
@@ -289,7 +295,7 @@ test.describe("Painel da empresa: avisos de cobrança", () => {
     await card.getByLabel("E-mail do financeiro (opcional)").fill("Financeiro@Studio.com.br");
     await card.getByRole("switch", { name: "Receber cobrança pelo WhatsApp" }).click();
     await card.getByRole("button", { name: "Salvar contato" }).click();
-    await expect(page.getByText("Contato de cobrança salvo.")).toBeVisible();
+    await expect(page.getByText("Contato de cobrança salvo.").first()).toBeVisible();
     const tenant = await prisma.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { billingEmail: true, billingWhatsappOptOutAt: true } });
     expect(tenant.billingEmail).toBe("financeiro@studio.com.br");
     expect(tenant.billingWhatsappOptOutAt).not.toBeNull();
@@ -304,6 +310,7 @@ test.describe("Painel da empresa: avisos de cobrança", () => {
     const staffPage = await context.newPage();
     await loginAndWaitForPanel(staffPage, STAFF_EMAIL, PASSWORD, SLUG);
     await staffPage.goto(`/${SLUG}/assinatura`);
+    await settleStreaming(staffPage);
     const card = staffPage.getByTestId("billing-contact-card");
     await expect(card.getByText("Só o dono da empresa pode alterar o contato de cobrança.")).toBeVisible();
     await expect(card.getByRole("textbox")).toHaveCount(0);

@@ -225,7 +225,7 @@ test.describe.serial("Assinatura: trocar o ciclo e aplicar cupom", () => {
 
     await card.getByText("Anual", { exact: true }).click();
     await card.getByRole("button", { name: "Salvar cobrança" }).click();
-    await expect(page.getByText("Cobrança anual escolhida.")).toBeVisible();
+    await expect(page.getByText("Cobrança anual escolhida.").first()).toBeVisible();
     await expect(card.getByText("Hoje a cobrança é anual.")).toBeVisible();
     await expect(card.getByTestId("proxima-fatura")).toContainText(/R\$\s?1\.000,00/);
     await expect(card.getByTestId("proxima-fatura")).toContainText("cobre 12 meses");
@@ -272,7 +272,7 @@ test.describe.serial("Assinatura: trocar o ciclo e aplicar cupom", () => {
     const card = page.getByTestId("assinatura-ciclo");
     await card.getByText("Mensal", { exact: true }).click();
     await card.getByRole("button", { name: "Salvar cobrança" }).click();
-    await expect(page.getByText("Seu cupom não vale nesse tipo de cobrança. Ele fica guardado.")).toBeVisible();
+    await expect(page.getByText("Seu cupom não vale nesse tipo de cobrança. Ele fica guardado.").first()).toBeVisible();
     await expect(page.getByTestId("assinatura-cupom").getByText(/fica guardado, sem gastar cobranças/)).toBeVisible();
     await expect(page.getByTestId("proxima-fatura")).toContainText(/R\$\s?100,00/);
     await expect(page.getByTestId("proxima-fatura")).not.toContainText("com o desconto do cupom");
