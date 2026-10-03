@@ -14,11 +14,8 @@ import { prisma } from "./fixtures/db";
 test.use({ storageState: OWNER_STORAGE_STATE });
 
 test.describe("Admin da plataforma: configurações e integrações", () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto("/admin/configuracoes");
-  });
-
   test("checklist do topo reflete o que já está salvo (Evolution/n8n/SMTP/Mercado Pago)", async ({ page }) => {
+    await page.goto("/admin/configuracoes/geral");
     // A tela carrega o estado ATUAL do banco — só afirmamos a forma (badges presentes), sem
     // assumir um estado prévio específico (outros specs/sessões podem ter salvo credenciais).
     // `.first()`: "n8n" e "Mercado Pago" também aparecem como título de outros cartões da tela
@@ -31,6 +28,7 @@ test.describe("Admin da plataforma: configurações e integrações", () => {
   });
 
   test("Testar conexão da Evolution com credenciais erradas: erro legível, sem vazar a chave no DOM", async ({ page }) => {
+    await page.goto("/admin/configuracoes/whatsapp");
     const wrongKey = "chave-errada-e2e-nao-deve-aparecer-em-lugar-nenhum";
     const routes: FakeRoute[] = [
       {
@@ -65,6 +63,7 @@ test.describe("Admin da plataforma: configurações e integrações", () => {
   });
 
   test("Testar conexão da Evolution com credenciais certas: sucesso, e o resultado do teste não ecoa a chave", async ({ page }) => {
+    await page.goto("/admin/configuracoes/whatsapp");
     const correctKey = "chave-correta-fake-e2e";
     const routes: FakeRoute[] = [
       {
@@ -89,6 +88,7 @@ test.describe("Admin da plataforma: configurações e integrações", () => {
   });
 
   test("Sincronizar n8n contra um fake local: credenciais criadas, workflows atualizados, nunca ativa nada", async ({ page }) => {
+    await page.goto("/admin/configuracoes/whatsapp");
     const evolutionKey = "evolution-key-sync-e2e";
     const n8nKey = "n8n-key-sync-e2e";
 
@@ -167,10 +167,11 @@ test.describe("Admin da plataforma: configurações e integrações", () => {
       await page.getByRole("button", { name: "Salvar" }).first().click();
       await expect(page.getByText("Evolution API salva.").first()).toBeVisible();
 
+      await page.goto("/admin/configuracoes/automacao");
       await page.getByLabel("URL do n8n").fill(n8nFake.url);
       await page.getByLabel("Chave da API do n8n").fill(n8nKey);
       await page.getByLabel("URL base de webhook do n8n", { exact: true }).fill(`${n8nFake.url}/webhook`);
-      await page.getByRole("button", { name: "Salvar" }).nth(1).click();
+      await page.getByRole("button", { name: "Salvar" }).first().click();
       await expect(page.getByText("n8n salvo.").first()).toBeVisible();
 
       await page.getByRole("button", { name: "Sincronizar n8n" }).click();
@@ -211,6 +212,7 @@ test.describe("Admin da plataforma: configurações e integrações", () => {
   });
 
   test("Ativar/Desativar o bot exige confirmação, e sem sincronizar antes dá erro legível", async ({ page }) => {
+    await page.goto("/admin/configuracoes/automacao");
     // Garante estado "não sincronizado" para este teste especificamente (idempotente mesmo se
     // outro teste desta sessão deixou ids de um fake anterior).
     await prisma.platformSettings.update({
@@ -229,6 +231,7 @@ test.describe("Admin da plataforma: configurações e integrações", () => {
   });
 
   test("Cancelar no diálogo de confirmação não chama a action", async ({ page }) => {
+    await page.goto("/admin/configuracoes/automacao");
     await page.getByRole("button", { name: "Desativar bot", exact: true }).click();
     const dialog = page.getByRole("dialog").filter({ hasText: "Desativar o bot" });
     await expect(dialog).toBeVisible();

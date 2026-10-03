@@ -131,11 +131,11 @@ test.beforeAll(async ({ browser }) => {
   const context = await browser.newContext({ storageState: OWNER_STORAGE_STATE, baseURL: process.env.E2E_BASE_URL ?? "http://localhost:3000" });
   const page = await context.newPage();
   try {
-    await page.goto("/admin/configuracoes");
+    await page.goto("/admin/configuracoes/automacao");
     await page.getByLabel("URL do n8n").fill(fake.url);
     await page.getByLabel("Chave da API do n8n").fill(N8N_KEY);
     await page.getByLabel("URL base de webhook do n8n", { exact: true }).fill(`${fake.url}/webhook`);
-    await page.getByRole("button", { name: "Salvar" }).nth(1).click();
+    await page.getByRole("button", { name: "Salvar" }).first().click();
     await expect(page.getByText("n8n salvo.").first()).toBeVisible();
   } finally {
     await context.close();
@@ -164,7 +164,7 @@ test.beforeEach(async () => {
 });
 
 async function openCard(page: Page) {
-  await page.goto("/admin/configuracoes");
+  await page.goto("/admin/configuracoes/automacao");
   const card = page.getByTestId("bot-flow-card");
   await expect(card.getByText("Disponível no sistema")).toBeVisible();
   return card;
@@ -390,7 +390,7 @@ test.describe("Fluxo do bot (admin da plataforma)", () => {
     const context = await browser.newContext({ storageState: TENANT_B_OWNER_STORAGE_STATE, baseURL: process.env.E2E_BASE_URL ?? "http://localhost:3000" });
     const page = await context.newPage();
     try {
-      await page.goto("/admin/configuracoes");
+      await page.goto("/admin/configuracoes/automacao");
       await expect(page.getByTestId("bot-flow-card")).toHaveCount(0);
       // A área do admin responde 404 (não revela que existe): sem o card e sem o formulário do n8n.
       await expect(page.getByText("This page could not be found.")).toBeVisible();

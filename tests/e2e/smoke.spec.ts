@@ -97,7 +97,7 @@ test.describe("Smoke — todas as rotas (painel, admin, públicas)", () => {
     await visitAndCheck(page, `/${SEED_TENANT_SLUG}/profissionais/${professionalId}`);
   });
 
-  const adminRoutes = ["/admin", "/admin/empresas", "/admin/planos", "/admin/configuracoes", "/admin/cobranca", "/admin/saude"];
+  const adminRoutes = ["/admin", "/admin/empresas", "/admin/planos", "/admin/configuracoes/geral", "/admin/configuracoes/whatsapp", "/admin/configuracoes/automacao", "/admin/configuracoes/pagamentos", "/admin/configuracoes/email", "/admin/configuracoes/login", "/admin/configuracoes/marketing", "/admin/cobranca", "/admin/saude"];
 
   for (const route of adminRoutes) {
     test(`admin: ${route}`, async ({ page }) => {

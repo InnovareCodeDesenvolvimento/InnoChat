@@ -73,7 +73,7 @@ WHERE f."id" = i."id" AND i."isTrialConversion" = false;
 
 **Quando:** após editar URLs ou regenerar segredo interno da API
 
-**Como:** vá em **Admin → Configurações da plataforma**, clique em **"Sincronizar n8n"**. Isso:
+**Como:** vá em **Admin → Configurações da plataforma → aba Automação (n8n)** (`/admin/configuracoes/automacao`), clique em **"Sincronizar n8n"**. Isso:
 - Reescreve os placeholders (`painelUrl`, `evolutionUrl`, `n8nApiUrl`) nos nós `Config` dos workflows
 - Reaplica as credenciais (redireciona para a interface do n8n)
 
@@ -190,7 +190,7 @@ O motor da cobrança é autônomo: planejador + despachante rodam a cada hora, o
 O número do WhatsApp de avisos é gerenciado sem deploy. Ele pode estar desligado (cobrança só por e-mail), ativo ou trocado por outro.
 
 **Primeira conexão:**
-1. Vá em **Admin → Configurações da plataforma** → card **"WhatsApp da plataforma"**.
+1. Vá em **Admin → Configurações da plataforma → aba WhatsApp** (`/admin/configuracoes/whatsapp`) → card **"WhatsApp de cobrança"**.
 2. Clique em **"Conectar novo número"** (ou "Trocar número" se já houver um).
 3. Um QR code apareça na tela. Escaneie com o WhatsApp do novo chip.
 4. Quando conectar, o card mostra o número mascarado (últimos 4 dígitos: `+55 84 9****-1234`) e o status muda para **"Conectado"**.
@@ -274,7 +274,7 @@ Um aviso pode ser reenviado se ficou **`FALHADO`** ou **`PRESO`** (passou da hor
 
 ### Teste do servidor de e-mail
 
-Em **Admin → Configurações da plataforma** → SMTP, há um botão **"Enviar e-mail de teste"**.
+Em **Admin → Configurações da plataforma → aba E-mail** (`/admin/configuracoes/email`), há um botão **"Enviar e-mail de teste"**.
 
 1. Digite um e-mail (seu, para receber).
 2. Clique no botão.
@@ -337,7 +337,7 @@ Em **Admin → Configurações da plataforma** → SMTP, há um botão **"Enviar
    - Assinatura em `TRIALING` ou `ACTIVE`? Se `SUSPENDED`, o bot foi bloqueado propositalmente.
    - Plano permite WhatsApp? Clique na empresa e veja o máximo de números.
 
-3. Verifique o n8n (**Admin → Configurações da plataforma**):
+3. Verifique o n8n (**Admin → Configurações da plataforma → aba Automação (n8n)**):
    - `n8nWebhookBaseUrl` está preenchido? Se não, o bot não recebe mensagens.
    - **Bot não responde e o n8n não mostra nenhuma execução?** Teste a URL com e sem o `webhookId`
      (o n8n prefixa com o `webhookId` do nó Webhook a rota que tem parâmetro no path):
@@ -433,8 +433,8 @@ Procedimento para trocar credenciais sem derrubar a plataforma.
 
 Feito no painel (sem afetar produção):
 
-1. Vá em **Admin → Configurações da plataforma**.
-2. Clique em **"Regenerar segredo interno"**.
+1. Vá em **Admin → Configurações da plataforma → aba Automação (n8n)** (`/admin/configuracoes/automacao`).
+2. No card do segredo da API interna, clique em **"Gerar novo segredo"**.
 3. Um novo segredo é gerado e exibido **uma única vez** em texto puro.
 4. ⚠️ **Copie esse segredo imediatamente** — ele nunca mais será exibido. Guarde em seu gerenciador de senhas.
 5. Cole o novo segredo nos nós HTTP do n8n (credencial "InnoChat Painel (Bearer)").
@@ -442,7 +442,7 @@ Feito no painel (sem afetar produção):
 
 ### Passo 2: Atualizar outras credenciais (Evolution, Mercado Pago, SMTP)
 
-1. Vá em **Admin → Configurações da plataforma**.
+1. Vá em **Admin → Configurações da plataforma** e abra a aba do serviço: WhatsApp (Evolution), Pagamentos (Mercado Pago) ou E-mail (SMTP).
 2. Localize o campo (ex.: `evolutionApiKey`).
 3. **Selecione tudo** e substitua pelo novo valor — **nunca** acrescente.
 4. Clique em **"Salvar"**.

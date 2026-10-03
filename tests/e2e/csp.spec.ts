@@ -41,10 +41,12 @@ test.describe("CSP (next.config.ts): nenhuma violação nas telas principais", (
     expect(violations).toEqual([]);
   });
 
-  test("Admin → Configurações: sem violação de CSP", async ({ page }) => {
+  test("Admin → Configurações (todas as abas): sem violação de CSP", async ({ page }) => {
     const { violations } = collectCspViolations(page);
-    await page.goto("/admin/configuracoes");
-    await page.waitForTimeout(500);
+    for (const aba of ["geral", "whatsapp", "automacao", "pagamentos", "email", "login", "marketing"]) {
+      await page.goto(`/admin/configuracoes/${aba}`);
+      await page.waitForTimeout(300);
+    }
     expect(violations).toEqual([]);
   });
 

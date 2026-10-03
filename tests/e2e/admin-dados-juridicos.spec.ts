@@ -22,7 +22,7 @@ test.describe("Admin → Configurações → Dados jurídicos", () => {
   });
 
   test("salvar CNPJ em Configurações reflete em /termos", async ({ page }) => {
-    await page.goto("/admin/configuracoes");
+    await page.goto("/admin/configuracoes/geral");
     const legalCard = page.getByRole("heading", { name: "Dados da empresa (Termos e Privacidade)" }).locator("xpath=ancestor::div[contains(@class,'rounded-hero')][1]");
     await legalCard.getByLabel("CNPJ", { exact: true }).fill(TEST_CNPJ);
     await legalCard.getByRole("button", { name: "Salvar", exact: true }).click();

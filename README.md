@@ -229,7 +229,7 @@ dos nós do n8n (`n8n/README.md`).
 ### Ponta a ponta real
 
 Requer um número de WhatsApp conectado à plataforma:
-1. Ligar o bot (`/admin/configuracoes` → "Ativar bot")
+1. Ligar o bot (`/admin/configuracoes/automacao` → "Ativar bot")
 2. Enviar "oi" pelo número conectado
 3. Seguir fluxo completo (agendar, cancelar, remarcar)
 4. Confirmar que Pix foi gerado e e-mail chegou
@@ -264,7 +264,7 @@ Requer um número de WhatsApp conectado à plataforma:
 
 **"Pagina em branco no localhost"** → Confira se o `AUTH_SECRET` foi gerado e salvo em `.env`.
 
-**"Bot não responde"** → Confira: assinatura do tenant está `ACTIVE` ou `TRIALING`? Workflow `innochat-bot` está ativo no n8n? URLs da Evolution e n8n foram configuradas em `/admin/configuracoes`?
+**"Bot não responde"** → Confira: assinatura do tenant está `ACTIVE` ou `TRIALING`? Workflow `innochat-bot` está ativo no n8n? URLs da Evolution e n8n foram configuradas em `/admin/configuracoes/whatsapp` (Evolution) e `/admin/configuracoes/automacao` (n8n)?
 
 **"Testes E2E falhando"** → Rode sem headless para ver a tela: `npx playwright test --headed`.
 

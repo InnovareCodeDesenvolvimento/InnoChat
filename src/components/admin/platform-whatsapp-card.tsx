@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Link2Off, MessageCircle, QrCode, RefreshCw, Send, Smartphone } from "lucide-react";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -118,10 +119,15 @@ export function PlatformWhatsappCard({ initialState }: { initialState: PlatformW
   const [testPhone, setTestPhone] = useState("");
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
 
+  const router = useRouter();
   const refresh = useCallback(async () => {
     const result = await getPlatformWhatsappAction();
-    if (result.ok) setState(result.data);
-  }, []);
+    if (result.ok) {
+      setState(result.data);
+      // O ponto de atenção da aba (no layout) depende deste estado.
+      router.refresh();
+    }
+  }, [router]);
 
   const qr = usePlatformQr(
     qrTarget,

@@ -696,7 +696,7 @@ Página de entrada simples (o que é + planos), **Cadastro**, **Login**, **Verif
 | **Empresas** | Lista com status da assinatura; ver, suspender ou reativar manualmente, sobrescrever limites, estender trial |
 | **Planos** | CRUD de planos (limites, preço, ativo) |
 | **Cobrança** | Faturas abertas e vencidas, recebimentos do mês, eventos do MP com erro |
-| **Configurações da plataforma** | Evolution, n8n (URL + gerar segredo + reaplicar webhooks), Mercado Pago, e-mail, versão dos termos. Tudo mascarado |
+| **Configurações da plataforma** | Em abas, cada uma com rota própria (`/admin/configuracoes/<aba>`): Geral, WhatsApp (Evolution e número de cobrança), Automação (n8n, fluxo e segredo interno), Pagamentos (Mercado Pago), E-mail (SMTP), Login (Google) e Marketing (Pixel do Meta). Tudo mascarado |
 | **Saúde** | Instâncias e status, `InboundEvent` com erro, `UNRESOLVABLE_SENDER` e `busy` esgotado nas últimas 24 h, horário do último `billing/tick` |
 
 ---

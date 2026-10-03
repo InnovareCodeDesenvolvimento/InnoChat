@@ -56,7 +56,7 @@ test.describe("Auditoria", () => {
     await expect(dlg).toBeHidden();
 
     // 2) Credencial pelo Admin da plataforma.
-    await page.goto("/admin/configuracoes");
+    await page.goto("/admin/configuracoes/whatsapp");
     await main(page).getByLabel("Chave da Evolution").fill(SECRET);
     await page.getByRole("button", { name: "Salvar" }).first().click();
     await expect(page.getByText(/Chave atual: ••••/).first()).toBeVisible();

@@ -43,7 +43,7 @@ test.describe.serial("Admin: WhatsApp de cobrança", () => {
   });
 
   test("conecta o primeiro número lendo o QR, mostra o número e envia o teste", async ({ page }) => {
-    await page.goto("/admin/configuracoes");
+    await page.goto("/admin/configuracoes/whatsapp");
     const card = page.locator("#whatsapp-cobranca");
     await expect(card.getByRole("heading", { name: "WhatsApp de cobrança" })).toBeVisible();
     await expect(card.getByText("Nenhum número conectado")).toBeVisible();
@@ -74,7 +74,7 @@ test.describe.serial("Admin: WhatsApp de cobrança", () => {
   });
 
   test("troca de número: o atual segue ativo durante o QR; ao conectar, vira histórico", async ({ page }) => {
-    await page.goto("/admin/configuracoes");
+    await page.goto("/admin/configuracoes/whatsapp");
     const card = page.locator("#whatsapp-cobranca");
     await card.getByRole("button", { name: "Trocar de número" }).click();
     await page.getByLabel("Nome do número").fill("Cobrança (chip novo)");
@@ -99,7 +99,7 @@ test.describe.serial("Admin: WhatsApp de cobrança", () => {
   });
 
   test("cancelar a troca mantém o número atual", async ({ page }) => {
-    await page.goto("/admin/configuracoes");
+    await page.goto("/admin/configuracoes/whatsapp");
     const card = page.locator("#whatsapp-cobranca");
     await card.getByRole("button", { name: "Trocar de número" }).click();
     await page.getByRole("button", { name: "Gerar QR" }).click();
@@ -110,7 +110,7 @@ test.describe.serial("Admin: WhatsApp de cobrança", () => {
   });
 
   test("desconectar exige digitar DESCONECTAR", async ({ page }) => {
-    await page.goto("/admin/configuracoes");
+    await page.goto("/admin/configuracoes/whatsapp");
     const card = page.locator("#whatsapp-cobranca");
     await card.getByRole("button", { name: "Desconectar" }).click();
     const confirm = page.getByRole("button", { name: "Desconectar" }).last();

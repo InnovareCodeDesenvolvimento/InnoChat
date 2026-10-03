@@ -12,11 +12,8 @@ import { OWNER_STORAGE_STATE } from "./fixtures/storage-state";
 test.use({ storageState: OWNER_STORAGE_STATE });
 
 test.describe("Admin da plataforma: segredos nunca voltam em texto puro", () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto("/admin/configuracoes");
-  });
-
   test("chave da Evolution salva: campo limpa, hint mostra só o rótulo mascarado, e reabrir a tela nunca reexibe o valor digitado", async ({ page }) => {
+    await page.goto("/admin/configuracoes/whatsapp");
     const plaintextKey = "chave-super-secreta-evolution-e2e-12345";
     await page.getByLabel("Chave da Evolution").fill(plaintextKey);
     await page.getByRole("button", { name: "Salvar" }).first().click();
@@ -34,6 +31,7 @@ test.describe("Admin da plataforma: segredos nunca voltam em texto puro", () => 
   });
 
   test("segredo interno da API é mostrado em texto puro só UMA vez, no dialog de geração", async ({ page }) => {
+    await page.goto("/admin/configuracoes/automacao");
     await page.getByRole("button", { name: /Gerar( novo)? segredo/ }).click();
     const dialog = page.getByRole("dialog").filter({ hasText: "Segredo gerado" });
     await expect(dialog).toBeVisible();

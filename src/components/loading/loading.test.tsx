@@ -33,7 +33,6 @@ const SECOES_COM_LOADING = [
   "src/app/(platform)/admin/empresas",
   "src/app/(platform)/admin/cobranca",
   "src/app/(platform)/admin/planos",
-  "src/app/(platform)/admin/configuracoes",
   "src/app/(platform)/admin/saude",
 ];
 
@@ -44,6 +43,15 @@ describe("loading.tsx por seção", () => {
     const src = fonte(arquivo);
     expect(src).toContain("PageLoading");
     expect(src).toContain("navIconFor(");
+  });
+});
+
+describe("loading.tsx das abas de /admin/configuracoes", () => {
+  // O título e a barra de abas vêm do layout; cada aba tem o próprio loading.tsx (só o esqueleto do conteúdo).
+  it.each(["geral", "whatsapp", "automacao", "pagamentos", "email", "login", "marketing"])("%s tem loading.tsx", (aba) => {
+    const arquivo = `src/app/(platform)/admin/configuracoes/${aba}/loading.tsx`;
+    expect(existsSync(resolve(raiz, arquivo))).toBe(true);
+    expect(fonte(arquivo)).toContain("ConfigTabLoading");
   });
 });
 

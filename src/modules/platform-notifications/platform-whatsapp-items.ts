@@ -50,7 +50,7 @@ export async function loadPlatformWhatsappItems(now: Date, from: Date): Promise<
       severity: "warning",
       title: "WhatsApp de cobrança sem número",
       body: `Os avisos de cobrança estão indo só por e-mail e pelo painel. Conecte um número em Configurações.${skipped > 0 ? ` ${skipped} aviso(s) de WhatsApp foram pulados nas últimas 24 horas.` : ""}`,
-      href: "/admin/configuracoes",
+      href: "/admin/configuracoes/whatsapp#whatsapp-cobranca",
       createdAt: since.toISOString(),
     });
   }
@@ -62,7 +62,7 @@ export async function loadPlatformWhatsappItems(now: Date, from: Date): Promise<
       severity: "danger",
       title: "WhatsApp de cobrança caiu",
       body: `O número ${formatPhoneDisplay(active.phoneE164) ?? active.label} saiu do ar. Leia o QR de novo em Configurações. Enquanto isso, os avisos críticos esperam até 12 horas.`,
-      href: "/admin/configuracoes",
+      href: "/admin/configuracoes/whatsapp#whatsapp-cobranca",
       createdAt: active.disconnectedAt.toISOString(),
     });
   }

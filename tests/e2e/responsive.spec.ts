@@ -46,7 +46,7 @@ test.describe("Responsivo (360/768/1024/1440) — sem rolagem horizontal", () =>
     "/configuracoes/equipe",
     "/assinatura",
   ];
-  const adminRoutes = ["/admin", "/admin/empresas", "/admin/planos", "/admin/configuracoes", "/admin/cobranca", "/admin/saude"];
+  const adminRoutes = ["/admin", "/admin/empresas", "/admin/planos", "/admin/configuracoes/geral", "/admin/configuracoes/whatsapp", "/admin/configuracoes/automacao", "/admin/configuracoes/pagamentos", "/admin/configuracoes/email", "/admin/configuracoes/login", "/admin/configuracoes/marketing", "/admin/cobranca", "/admin/saude"];
   const publicRoutes = ["/", "/login", "/cadastro", "/recuperar-senha", "/termos", "/privacidade"];
 
   for (const width of WIDTHS) {
