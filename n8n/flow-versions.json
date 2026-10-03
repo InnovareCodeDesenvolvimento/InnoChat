@@ -1,0 +1,24 @@
+{
+  "versions": [
+    {
+      "version": "2.1.0",
+      "date": "2026-10-02",
+      "hash": "4f8634327581eb3d23a6dba0091d3c8c8d832c526fd6b375f148fb643dcf8be9",
+      "changes": [
+        "Quando o dia está cheio, o bot convida o cliente a entrar na lista de espera.",
+        "Quem está em alguma lista de espera vê a opção \"Minha lista de espera\" no menu.",
+        "O cliente responde SIM ou NÃO quando o bot oferece um horário que abriu (encaixe)."
+      ]
+    },
+    {
+      "version": "2.0.0",
+      "date": "2026-09-30",
+      "hash": "592b5aa82280f0f5cf32a22209480e89ca61495aff152f616f213919dac72672",
+      "changes": [
+        "Fluxo v2 do bot: menu numerado para agendar, remarcar e cancelar, sem IA.",
+        "Confirmação em uma mensagem e \"Posso ajudar em algo mais?\" em outra."
+      ],
+      "note": "Hash reconstruído do n8n/innochat-bot.json do commit 8326dfc (último conteúdo rotulado 2.0.0). Os commits 398b65f, afff735 e b452d0b também levavam o rótulo 2.0.0, com conteúdo um pouco diferente."
+    }
+  ]
+}

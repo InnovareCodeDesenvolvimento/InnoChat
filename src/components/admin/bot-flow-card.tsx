@@ -146,6 +146,12 @@ function FlowTile({ label, value, sub }: { label: string; value: string; sub?: s
   );
 }
 
+/** "2026-10-02" vira "02/10/2026" (data pura do histórico, sem fuso). */
+function formatDateLabel(date: string): string {
+  const [y, m, d] = date.split("-");
+  return y && m && d ? `${d}/${m}/${y}` : date;
+}
+
 const N8N_CONFIG_CODES = new Set(["N8N_NOT_CONFIGURED", "N8N_UNREACHABLE", "N8N_API_ERROR"]);
 const N8N_SYNC_CODES = new Set(["N8N_NOT_SYNCED", "N8N_WORKFLOW_NOT_FOUND"]);
 
@@ -381,7 +387,7 @@ export function BotFlowCard({ actions = REAL_ACTIONS }: { actions?: BotFlowActio
 
   return (
     <Card className="rounded-hero" id="bot-flow" data-testid="bot-flow-card">
-      <CardHeader className="flex flex-wrap items-start justify-between gap-3">
+      <CardHeader className="flex flex-wrap items-start justify-between gap-3" help="admin.fluxoBot">
         <div className="flex min-w-[16rem] flex-1 items-start gap-3">
           <span
             aria-hidden="true"
@@ -417,9 +423,9 @@ export function BotFlowCard({ actions = REAL_ACTIONS }: { actions?: BotFlowActio
         {s ? (
           <>
             <div className="grid gap-3 sm:grid-cols-3">
-              <FlowTile label="Versão do sistema" value={s.buildVersion} sub={`Assinatura ${s.buildHash.slice(0, 8)}`} />
+              <FlowTile label="Disponível no sistema" value={s.buildVersion} sub={`Assinatura ${s.buildHash.slice(0, 8)}`} />
               <FlowTile
-                label="Versão publicada no n8n"
+                label="Publicada no ar"
                 value={s.publishedVersion ?? "Nunca publicada"}
                 sub={s.publishedHash ? `Assinatura ${s.publishedHash.slice(0, 8)}` : null}
               />
@@ -487,8 +493,33 @@ export function BotFlowCard({ actions = REAL_ACTIONS }: { actions?: BotFlowActio
 
             {s.n8nReachable && !s.drift && !s.firstPublish && s.updateAvailable ? (
               <Alert variant="info" title="Nova versão disponível">
-                O sistema traz a versão {s.buildVersion}; o n8n está na {s.publishedVersion ?? "original"}.
+                Disponível: {s.buildVersion} · Publicada: {s.publishedVersion ?? "original"}.
+                {s.onlyVersionLabelDiffers ? (
+                  <span className="mt-1 block">
+                    O bot no ar já tem o conteúdo da versão {s.buildVersion}. Só o número da versão ficou para trás, e publicar acerta o número sem mudar o que o bot faz.
+                  </span>
+                ) : null}
               </Alert>
+            ) : null}
+
+            {s.n8nReachable && !s.drift && !s.firstPublish && s.updateAvailable && s.changes.length > 0 ? (
+              <div className="rounded-hero border border-border bg-bg p-4" data-testid="bot-flow-changes">
+                <p className="text-sm font-semibold text-text">O que mudou</p>
+                <ul className="mt-2 flex flex-col gap-3">
+                  {s.changes.map((entry) => (
+                    <li key={entry.version}>
+                      <p className="text-xs font-medium text-text-secondary">
+                        Versão {entry.version} · {formatDateLabel(entry.date)}
+                      </p>
+                      <ul className="mt-1 list-disc pl-5 text-sm text-text">
+                        {entry.changes.map((line) => (
+                          <li key={line}>{line}</li>
+                        ))}
+                      </ul>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             ) : null}
 
             {s.canRollback ? (

@@ -4,7 +4,8 @@ import { logger } from "@/lib/logger";
 import { getPublicBaseUrl } from "@/lib/public-url";
 import botFlowFile from "../../../n8n/innochat-bot.json";
 import { createN8nClient, N8nApiError, type N8nClient, type N8nNode, type N8nWorkflow } from "./n8n-client";
-import { canonicalFlowHash, readFlowVersion, redactFlowSecrets, sanitizeFlowForDownload } from "./n8n-flow-hash";
+import { changesBetween, type FlowChangeNote } from "./flow-versions";
+import { canonicalContentHash, canonicalFlowHash, readFlowVersion, redactFlowSecrets, sanitizeFlowForDownload } from "./n8n-flow-hash";
 import { mergeFlow, type CredentialIds, type MergedFlow } from "./n8n-flow-merge";
 import { loadPlatformSettingsRow, readGenericSecret } from "./secrets";
 
@@ -33,6 +34,13 @@ export type BotFlowStatus = {
   drift: boolean;
   firstPublish: boolean;
   updateAvailable: boolean;
+  /**
+   * `true` quando o fluxo vivo no n8n tem o MESMO conteúdo do sistema e só o número da versão
+   * difere (ex.: publicado como 2.0.0 antes de existir o 2.1.0). Publicar só acerta o número.
+   */
+  onlyVersionLabelDiffers: boolean;
+  /** "O que mudou" das versões entre a publicada (exclusive) e a do sistema (inclusive), da mais nova para a mais antiga. */
+  changes: FlowChangeNote[];
   canRollback: boolean;
   previousVersion: string | null;
   n8nReachable: boolean;
@@ -193,14 +201,17 @@ export function createFlowPublisher(deps: { store: PublishStore; context: Publis
   async function getStatus(): Promise<BotFlowStatus> {
     const state = await store.load();
     let liveHash: string | null = null;
+    let liveContentHash: string | null = null;
     let error: string | null = null;
     try {
       const live = await fetchLive();
       liveHash = canonicalFlowHash(live.nodes, live.connections);
+      liveContentHash = canonicalContentHash(live.nodes, live.connections);
     } catch (e) {
       error = e instanceof DomainError || e instanceof Error ? e.message : String(e);
     }
     const firstPublish = state.hash === null;
+    const drift = !firstPublish && liveHash !== null && liveHash !== state.hash;
     return {
       buildVersion: build.version,
       buildHash: build.hash,
@@ -208,9 +219,11 @@ export function createFlowPublisher(deps: { store: PublishStore; context: Publis
       publishedHash: state.hash,
       publishedAt: state.publishedAt ? state.publishedAt.toISOString() : null,
       liveHash,
-      drift: !firstPublish && liveHash !== null && liveHash !== state.hash,
+      drift,
       firstPublish,
       updateAvailable: build.hash !== state.hash,
+      onlyVersionLabelDiffers: !firstPublish && !drift && liveContentHash !== null && liveContentHash === canonicalContentHash(build.nodes, build.connections) && liveHash !== build.hash,
+      changes: changesBetween(state.version, build.version),
       canRollback: state.previous !== null,
       previousVersion: state.previous?.version ?? null,
       n8nReachable: liveHash !== null,
@@ -411,6 +424,8 @@ export async function getBotFlowStatus(): Promise<BotFlowStatus> {
       drift: false,
       firstPublish: state.hash === null,
       updateAvailable: build.hash !== state.hash,
+      onlyVersionLabelDiffers: false,
+      changes: changesBetween(state.version, build.version),
       canRollback: state.previous !== null,
       previousVersion: state.previous?.version ?? null,
       n8nReachable: false,

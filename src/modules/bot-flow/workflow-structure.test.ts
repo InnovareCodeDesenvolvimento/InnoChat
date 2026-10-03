@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { FLOW_VERSIONS } from "../platform/flow-versions";
 
 /**
  * Estrutura do workflow do bot v2 (`n8n/innochat-bot.json`), plano §3.7 e §4/W-1.
@@ -129,13 +130,13 @@ describe("n8n/innochat-bot.json (workflow v2)", () => {
     expect(flow.nodes.filter((n) => n.credentials !== undefined).map((n) => n.name)).toEqual([]);
   });
 
-  it("Config com placeholders, flowVersion 2.0.0 e os campos que a sincronização escreve", () => {
+  it("Config com placeholders, flowVersion igual à versão mais recente do histórico e os campos que a sincronização escreve", () => {
     const cfg = byName.get("Config")!;
     const values = Object.fromEntries((cfg.parameters.assignments?.assignments ?? []).map((a) => [a.name, a.value]));
     expect(values.painelUrl).toBe("https://PAINEL_A_DEFINIR/api/internal/v1");
     expect(values.evolutionUrl).toBe("https://EVOLUTION_A_DEFINIR");
     expect(values.n8nApiUrl).toBe("https://N8N_A_DEFINIR/api/v1");
-    expect(values.flowVersion).toBe("2.0.0");
+    expect(values.flowVersion).toBe(FLOW_VERSIONS[0]!.version);
     for (const k of ["token", "event", "payload"]) expect(values[k]).toBeDefined();
   });
 

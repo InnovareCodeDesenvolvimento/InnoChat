@@ -4,6 +4,10 @@
 //   node scripts/n8n-build-flow.mjs           reescreve o JSON (bundle do motor + cola comum)
 //   node scripts/n8n-build-flow.mjs --check   não escreve; sai com código 1 se o JSON estiver desatualizado (CI)
 //
+// Versão do fluxo: fonte única em n8n/flow-versions.json (mais nova primeiro). Este script grava a mais
+// recente em Config.flowVersion e TRAVA se o conteúdo do fluxo mudou sem subir a versão (hash do conteúdo,
+// sem o flowVersion, calculado pelo mesmo código que o Publicar fluxo usa: src/modules/platform/n8n-flow-hash.ts).
+//
 // Marcadores nos Code nodes:
 //   /* @engine:begin */ ... /* @engine:end */   bundle IIFE do motor (global `InnoEngine`): Interpretar, Montar mensagem
 //   /* @glue:begin */   ... /* @glue:end */     cola comum dos ramos (helpers pequenos, sem motor)
@@ -123,8 +127,38 @@ export function inject(code, tag, body) {
   return code.slice(0, i + begin.length) + "\n" + body.trimEnd() + "\n" + code.slice(j);
 }
 
+/** Carrega o MESMO código de hash/versões que o painel usa (TS compilado na hora, sem duplicar a regra). */
+async function loadVersioning() {
+  const result = await build({
+    stdin: {
+      contents: 'export * from "./n8n-flow-hash"; export * from "./flow-versions";',
+      resolveDir: join(root, "src", "modules", "platform"),
+      loader: "ts",
+    },
+    bundle: true,
+    format: "esm",
+    platform: "node",
+    write: false,
+    logLevel: "silent",
+  });
+  const code = Buffer.from(result.outputFiles[0].text).toString("base64");
+  return import(`data:text/javascript;base64,${code}`);
+}
+
+/** Grava `Config.flowVersion`. Devolve true se mudou algo. */
+function setFlowVersion(flow, version) {
+  const config = flow.nodes.find((n) => n.name === "Config");
+  const assignment = config?.parameters?.assignments?.assignments?.find((a) => a.name === "flowVersion");
+  if (!assignment) throw new Error('build:flow: nó "Config" sem o campo flowVersion');
+  if (assignment.value === version) return false;
+  assignment.value = version;
+  return true;
+}
+
 async function main() {
   const flow = JSON.parse(readFileSync(FLOW_PATH, "utf8"));
+  const versioning = await loadVersioning();
+  const latest = versioning.latestFlowVersion();
   const engine = await bundleEngine();
   const stale = [];
   let touched = 0;
@@ -142,17 +176,25 @@ async function main() {
     }
     if (/@(engine|glue):begin/.test(code)) touched++;
   }
+  const versionChanged = setFlowVersion(flow, latest.version);
+  if (versionChanged) stale.push(`Config (flowVersion → ${latest.version})`);
+  // A trava: o conteúdo (sem flowVersion) tem que ser o da versão mais recente do histórico.
+  const problem = versioning.checkFlowVersioning(versioning.canonicalContentHash(flow.nodes, flow.connections), latest.version);
+  if (problem) {
+    console.error(`build:flow: ${problem}`);
+    process.exit(1);
+  }
   if (check) {
     if (stale.length > 0) {
       console.error(`n8n/innochat-bot.json desatualizado (${stale.length} nó(s)): ${stale.join(", ")}`);
       console.error("Rode: npm run build:flow");
       process.exit(1);
     }
-    console.log(`ok: motor e cola embutidos em ${touched} Code nodes estão atualizados`);
+    console.log(`ok: motor e cola embutidos em ${touched} Code nodes estão atualizados; fluxo na versão ${latest.version}`);
     return;
   }
   writeFileSync(FLOW_PATH, JSON.stringify(flow, null, 2) + "\n");
-  console.log(`n8n/innochat-bot.json: ${stale.length} nó(s) atualizado(s) de ${touched} com marcadores (motor ${engine.length} bytes)`);
+  console.log(`n8n/innochat-bot.json: versão ${latest.version}; ${stale.length} nó(s) atualizado(s) de ${touched} com marcadores (motor ${engine.length} bytes)`);
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {

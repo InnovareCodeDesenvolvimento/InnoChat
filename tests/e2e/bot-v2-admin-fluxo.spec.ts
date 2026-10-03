@@ -4,7 +4,7 @@ import { Prisma } from "@prisma/client";
 import { OWNER_STORAGE_STATE, TENANT_B_OWNER_STORAGE_STATE } from "./fixtures/storage-state";
 import { startFakeServer, type FakeRoute } from "./fixtures/fake-http-server";
 import { prisma } from "./fixtures/db";
-import { canonicalFlowHash } from "../../src/modules/platform/n8n-flow-hash";
+import { canonicalFlowHash, readFlowVersion } from "../../src/modules/platform/n8n-flow-hash";
 
 /**
  * Admin → Configurações → "Fluxo do bot" (bot v2, D-1/L-4): publicar o `innochat-bot.json` que vem
@@ -35,6 +35,7 @@ type Workflow = { id: string; name: string; active: boolean; nodes: Node[]; conn
 const buildFile = JSON.parse(fs.readFileSync("./n8n/innochat-bot.json", "utf-8")) as { nodes: Node[]; connections: Record<string, unknown> };
 const legacyFile = JSON.parse(fs.readFileSync("./n8n/legacy/innochat-bot.v1.json", "utf-8")) as { nodes: Node[]; connections: Record<string, unknown> };
 const BUILD_HASH = canonicalFlowHash(buildFile.nodes as never, buildFile.connections);
+const BUILD_VERSION = readFlowVersion(buildFile.nodes as never);
 const LEGACY_HASH = canonicalFlowHash(legacyFile.nodes as never, legacyFile.connections);
 
 const live: Workflow = { id: WORKFLOW_ID, name: "innochat-bot", active: false, nodes: [], connections: {}, settings: {} };
@@ -165,7 +166,7 @@ test.beforeEach(async () => {
 async function openCard(page: Page) {
   await page.goto("/admin/configuracoes");
   const card = page.getByTestId("bot-flow-card");
-  await expect(card.getByText("Versão do sistema")).toBeVisible();
+  await expect(card.getByText("Disponível no sistema")).toBeVisible();
   return card;
 }
 
@@ -183,7 +184,7 @@ async function firstPublish(page: Page) {
   await card.getByRole("button", { name: "Publicar fluxo" }).click();
   const { confirm } = await typeConfirm(page, "PUBLICAR", "Publicar fluxo");
   await confirm.click();
-  await expect(card.getByText("Fluxo publicado: versão 2.0.0 no ar no n8n.")).toBeVisible();
+  await expect(card.getByText(`Fluxo publicado: versão ${BUILD_VERSION} no ar no n8n.`)).toBeVisible();
   return card;
 }
 
@@ -192,7 +193,7 @@ test.describe("Fluxo do bot (admin da plataforma)", () => {
     const card = await openCard(page);
     await expect(card.getByText("Nunca publicado").first()).toBeVisible();
     await expect(card.getByText("Ainda não foi publicado por aqui")).toBeVisible();
-    await expect(card.getByText("2.0.0", { exact: true })).toBeVisible(); // versão do sistema = Config.flowVersion do build
+    await expect(card.getByText(BUILD_VERSION, { exact: true })).toBeVisible(); // versão do sistema = Config.flowVersion do build
     await expect(card.getByRole("button", { name: "Voltar à versão anterior" })).toHaveCount(0);
     expect(puts).toBe(0);
   });
@@ -209,7 +210,7 @@ test.describe("Fluxo do bot (admin da plataforma)", () => {
     await dialog.getByLabel("Digite PUBLICAR para confirmar").fill("PUBLICAR");
     await confirm.click();
 
-    await expect(card.getByText("Fluxo publicado: versão 2.0.0 no ar no n8n.")).toBeVisible();
+    await expect(card.getByText(`Fluxo publicado: versão ${BUILD_VERSION} no ar no n8n.`)).toBeVisible();
     await expect(card.getByText("Já está atualizado").first()).toBeVisible();
 
     // O que ficou GRAVADO no n8n falso:
@@ -227,7 +228,7 @@ test.describe("Fluxo do bot (admin da plataforma)", () => {
     expect(painelUrl).toMatch(/\/api\/internal\/v1$/);
 
     const row = await prisma.platformSettings.findUniqueOrThrow({ where: { id: 1 }, select: { n8nBotFlowVersion: true, n8nBotFlowHash: true } });
-    expect(row).toEqual({ n8nBotFlowVersion: "2.0.0", n8nBotFlowHash: BUILD_HASH });
+    expect(row).toEqual({ n8nBotFlowVersion: BUILD_VERSION, n8nBotFlowHash: BUILD_HASH });
     // A cópia do v1 fica guardada para o "voltar".
     await expect(card.getByText(/Versão anterior guardada/)).toBeVisible();
   });
@@ -238,6 +239,38 @@ test.describe("Fluxo do bot (admin da plataforma)", () => {
     await card.getByRole("button", { name: "Consultar de novo" }).click();
     await expect(card.getByText("Já está atualizado").first()).toBeVisible();
     expect(puts).toBe(1);
+  });
+
+  test("publicado como 2.0.0 com o conteúdo novo: mostra o que mudou, sem alarme, e publicar acerta a versão", async ({ page }) => {
+    await firstPublish(page);
+    // O que o dono fez em produção: o conteúdo novo foi publicado ainda rotulado com a versão antiga.
+    const config = live.nodes.find((n) => n.name === "Config")!;
+    const flowVersion = (config.parameters as { assignments: { assignments: { name: string; value: string }[] } }).assignments.assignments.find((a) => a.name === "flowVersion")!;
+    flowVersion.value = "2.0.0";
+    await prisma.platformSettings.update({ where: { id: 1 }, data: { n8nBotFlowVersion: "2.0.0", n8nBotFlowHash: liveHash() } });
+
+    const card = await openCard(page);
+    await expect(card.getByText("Nova versão disponível").first()).toBeVisible();
+    await expect(card.getByText(`Disponível: ${BUILD_VERSION} · Publicada: 2.0.0.`)).toBeVisible();
+    await expect(card.getByText(/Só o número da versão ficou para trás/)).toBeVisible();
+    await expect(card.getByTestId("bot-flow-changes").getByText("O que mudou")).toBeVisible();
+    await expect(card.getByTestId("bot-flow-changes").getByText(/lista de espera/).first()).toBeVisible();
+    await expect(card.getByText("Alguém editou o fluxo direto no n8n")).toHaveCount(0);
+
+    // Medido no navegador (1440 e 390): nada estoura a largura, nem do card nem da página.
+    for (const size of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+      await page.setViewportSize(size);
+      await card.scrollIntoViewIfNeeded();
+      const m = await card.evaluate((el) => ({ cardScroll: el.scrollWidth, cardClient: el.clientWidth, pageScroll: document.documentElement.scrollWidth, inner: window.innerWidth }));
+      expect(m.cardScroll, `card em ${size.width}px`).toBeLessThanOrEqual(m.cardClient);
+      expect(m.pageScroll, `página em ${size.width}px`).toBeLessThanOrEqual(m.inner);
+      await card.screenshot({ path: `test-results/fluxo-versao-${size.width}.png` });
+    }
+
+    await card.getByRole("button", { name: "Publicar fluxo" }).click();
+    await expect(card.getByText(`Fluxo publicado: versão ${BUILD_VERSION} no ar no n8n.`)).toBeVisible();
+    await expect(card.getByText("Já está atualizado").first()).toBeVisible();
+    expect(liveHash()).toBe(BUILD_HASH);
   });
 
   test("voltar à versão anterior: exige VOLTAR, restaura o v1 no n8n (mesmo hash) e só volta 1 versão", async ({ page }) => {
@@ -288,7 +321,7 @@ test.describe("Fluxo do bot (admin da plataforma)", () => {
     const { confirm } = await typeConfirm(page, "SOBRESCREVER", "Sobrescrever");
     expect(puts).toBe(before); // nada foi gravado antes de confirmar
     await confirm.click();
-    await expect(card.getByText("Fluxo publicado: versão 2.0.0 no ar no n8n.")).toBeVisible();
+    await expect(card.getByText(`Fluxo publicado: versão ${BUILD_VERSION} no ar no n8n.`)).toBeVisible();
     expect(liveHash()).toBe(BUILD_HASH);
     expect(JSON.stringify(live.nodes)).not.toContain("EDITADO A MAO NO N8N");
     expect(liveWebhook().webhookId).toBe(LIVE_WEBHOOK_ID);

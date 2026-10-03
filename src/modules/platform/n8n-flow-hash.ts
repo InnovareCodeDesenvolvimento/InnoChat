@@ -14,6 +14,7 @@ import type { N8nNode } from "./n8n-client";
 
 export const CONFIG_NODE_NAME = "Config";
 export const CONFIG_URL_KEYS = ["painelUrl", "evolutionUrl", "n8nApiUrl"] as const;
+export const FLOW_VERSION_KEY = "flowVersion";
 
 type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 
@@ -36,15 +37,34 @@ function sortKeys(value: unknown): Json {
   return value as Json;
 }
 
-function blankConfigUrls(parameters: Record<string, unknown>): Record<string, unknown> {
+function blankConfigUrls(parameters: Record<string, unknown>, ignoreVersion: boolean): Record<string, unknown> {
   const copy = structuredClone(parameters) as { assignments?: { assignments?: Array<{ name?: string; value?: unknown }> } };
   for (const assignment of copy.assignments?.assignments ?? []) {
-    if (assignment.name && (CONFIG_URL_KEYS as readonly string[]).includes(assignment.name)) assignment.value = "";
+    if (!assignment.name) continue;
+    if ((CONFIG_URL_KEYS as readonly string[]).includes(assignment.name)) assignment.value = "";
+    if (ignoreVersion && assignment.name === FLOW_VERSION_KEY) assignment.value = "";
   }
   return copy;
 }
 
+/**
+ * Hash do fluxo COM o número da versão (é o que o Publicar fluxo grava e compara: detecta edição
+ * manual e prova que o PUT gravou o enviado).
+ */
 export function canonicalFlowHash(nodes: N8nNode[], connections: Record<string, unknown>): string {
+  return hashFlow(nodes, connections, false);
+}
+
+/**
+ * Hash do CONTEÚDO do fluxo: igual ao `canonicalFlowHash`, mas sem o `Config.flowVersion`. É o que
+ * `n8n/flow-versions.json` guarda por versão, para a trava "mudou o fluxo, suba a versão" não
+ * depender do próprio número que ela cobra.
+ */
+export function canonicalContentHash(nodes: N8nNode[], connections: Record<string, unknown>): string {
+  return hashFlow(nodes, connections, true);
+}
+
+function hashFlow(nodes: N8nNode[], connections: Record<string, unknown>, ignoreVersion: boolean): string {
   const canonical = {
     nodes: [...nodes]
       .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
@@ -52,7 +72,7 @@ export function canonicalFlowHash(nodes: N8nNode[], connections: Record<string, 
         name: n.name,
         type: n.type,
         typeVersion: n.typeVersion ?? null,
-        parameters: n.name === CONFIG_NODE_NAME ? blankConfigUrls(n.parameters ?? {}) : (n.parameters ?? {}),
+        parameters: n.name === CONFIG_NODE_NAME ? blankConfigUrls(n.parameters ?? {}, ignoreVersion) : (n.parameters ?? {}),
       })),
     connections: connections ?? {},
   };

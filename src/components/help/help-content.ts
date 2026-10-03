@@ -412,6 +412,21 @@ const HELP_ENTRIES = {
     tip: "Um chip só para os avisos isola o risco: se for bloqueado, o WhatsApp do seu atendimento não é afetado. Número novo envia menos por hora nos 3 primeiros dias.",
     warning: "Não use o WhatsApp comercial do site nem o número do bot de uma empresa: o sistema recusa.",
   },
+  "admin.fluxoBot": {
+    title: "Fluxo do bot",
+    purpose: "Mostra qual versão do bot está no ar e qual versão veio com o sistema. Quando as duas são diferentes, você vê o que mudou e publica a nova com um clique.",
+    steps: [
+      "Compare \"Disponível no sistema\" com \"Publicada no ar\". Se o número for o mesmo, não há nada a fazer.",
+      "Se houver versão nova, leia \"O que mudou\" e clique em \"Publicar fluxo\".",
+      "Se algo der errado depois, use \"Voltar à versão anterior\". Só dá para voltar uma versão.",
+    ],
+    examples: [
+      "Disponível: 2.1.0 e publicada: 2.0.0. Em \"O que mudou\" aparece \"Quando o dia está cheio, o bot convida o cliente a entrar na lista de espera\". Ao publicar, todas as empresas passam a ter isso.",
+      "Se aparecer \"só o número da versão está atrás\", o bot já faz o que a versão nova diz. Publicar apenas acerta o número.",
+    ],
+    tip: "Toda mudança no bot ganha um número novo. O primeiro número indica mudança grande, o do meio uma funcionalidade nova e o último uma correção.",
+    warning: "Se alguém editou o fluxo à mão por fora do sistema, a tela avisa. Publicar nesse caso descarta essas edições.",
+  },
   "admin.pixelMeta": {
     title: "Pixel do Meta",
     purpose: "Conta quantas pessoas chegam pelos seus anúncios do Facebook e do Instagram, começam o cadastro, criam a conta e pagam a primeira mensalidade. Com isso o Meta aprende quem comprar e o anúncio fica mais barato.",

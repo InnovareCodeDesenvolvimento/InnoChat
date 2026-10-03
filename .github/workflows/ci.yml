@@ -48,6 +48,11 @@ jobs:
       - name: Testes unitários
         run: npm test
 
+      # Fluxo do bot: motor/cola embutidos em dia e versão em n8n/flow-versions.json em dia. Se o fluxo mudou
+      # e a versão não subiu, falha aqui com a mensagem do que fazer (n8n/README.md, "Versão do fluxo").
+      - name: Versão do fluxo do bot (trava)
+        run: npm run build:flow -- --check
+
       - name: Build de produção (sem env de runtime, igual ao Dockerfile)
         run: npm run build
 

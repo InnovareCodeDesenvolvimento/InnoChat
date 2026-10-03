@@ -2,7 +2,7 @@
 
 | Arquivo | Workflow | ID no n8n do dono | Estado |
 |---|---|---|---|
-| `innochat-bot.json` | `innochat-bot` **v2** (`Config.flowVersion = 2.0.0`): chatbot de agendamento (menu numerado, sem IA), com o motor de `src/core/bot/engine/` embutido. É o que o **Publicar fluxo** do Admin sobe | `levHnMSXf1dOR3gS` | **inativo** |
+| `innochat-bot.json` | `innochat-bot` **v2** (versão em `Config.flowVersion`, hoje a mais recente de `flow-versions.json`): chatbot de agendamento (menu numerado, sem IA), com o motor de `src/core/bot/engine/` embutido. É o que o **Publicar fluxo** do Admin sobe | `levHnMSXf1dOR3gS` | **inativo** |
 | `legacy/innochat-bot.v1.json` | O `innochat-bot` **v1**, cópia fiel do que estava no repositório antes da v2. Só consulta e diff (o rollback em produção é o snapshot do Publicar fluxo) | — | — |
 | `innochat-erros.json` | `innochat-erros`: error workflow do bot, libera a trava da sessão | `GZSwTNgvVt4LYnwW` | **inativo** |
 | `innochat-cron.json` | `innochat-cron`: de hora em hora chama `POST /billing/tick` ("Fase 7" em `docs/contratos.md`); diariamente às 03:15 chama `POST /maintenance/tick` (LGPD, "Segurança"). Ambos idempotentes | `dPMhT4MqGglCpFSw` | **inativo** |
@@ -10,6 +10,29 @@
 Contrato: `docs/arquitetura.md` §6.6/§6.7, `docs/api-interna.openapi.json` e as seções "API interna do bot — Fase 4" e "Fase 4b" em `docs/contratos.md`.
 Estes arquivos são o export (`get_workflow_details`) e servem de histórico e diff do fluxo.
 Depois de toda alteração no n8n, exporte de novo para cá. **Atenção com o `innochat-bot.json`:** os trechos `/* @engine:begin */…/* @engine:end */` e `/* @glue:begin */…/* @glue:end */` dos Code nodes são gerados por `npm run build:flow` (motor + cola). Ao exportar do n8n, mantenha os marcadores; depois rode `npm run build:flow` e confira com `npm run build:flow -- --check`.
+
+## Versão do fluxo (regra: toda mudança sobe a versão)
+
+A fonte única é `n8n/flow-versions.json`: lista, **da mais nova para a mais antiga**, de `{ version, date, hash, changes }`.
+
+- `changes`: frases curtas, escritas para o dono (aparecem em Admin → Configurações → Fluxo do bot, em "O que mudou"). Sem jargão e sem travessão (`docs/guia-de-voz.md`).
+- `hash`: assinatura do **conteúdo** do fluxo, sem o `Config.flowVersion` (`canonicalContentHash`, em `src/modules/platform/n8n-flow-hash.ts`, o mesmo código do Publicar fluxo; ignora também `id`, `position`, `credentials`, `webhookId`, `notes` e as três URLs da instalação).
+- `npm run build:flow` grava a versão mais recente em `Config.flowVersion`. **Não edite `flowVersion` à mão no JSON.**
+
+**Como subir a versão** (sempre que o fluxo mudar: Code node, motor, cola, Switch, conexões, qualquer parâmetro):
+
+1. Mude o fluxo (edite `src/core/bot/engine/**`, a cola em `scripts/n8n-build-flow.mjs` ou o JSON).
+2. Rode `npm run build:flow`. Ele falha com `o fluxo mudou: suba a versão em n8n/flow-versions.json` e mostra o hash novo.
+3. Acrescente **no topo** de `flow-versions.json` uma entrada com a versão nova, a data, esse hash e o `changes`.
+4. Rode `npm run build:flow` de novo (agora grava a versão no `Config`) e `npm run build:flow -- --check`.
+
+**Qual número:** MINOR (2.1.0 para 2.2.0) para funcionalidade nova; PATCH (2.1.0 para 2.1.1) para correção; MAJOR só se mudar o contrato com o painel ou o catálogo de textos. O **major decide o catálogo de textos** (`src/modules/bot-texts/service.ts`: major 2 = catálogo v2), então sem motivo forte ele continua 2.
+
+**Trava:** `npm run build:flow -- --check` e o teste `src/modules/platform/__tests__/flow-versions.test.ts` falham se o conteúdo mudou e a versão não subiu (ou se `Config.flowVersion` não é a mais recente). Os dois rodam na CI (`npm test` e o passo "Versão do fluxo do bot").
+
+**Histórico:** 2.0.0 (30/09/2026, fluxo v2 original; hash reconstruído do commit `8326dfc`, o último conteúdo rotulado 2.0.0, porque os commits `398b65f`, `afff735` e `b452d0b` também saíram como 2.0.0) e 2.1.0 (02/10/2026, lista de espera).
+
+**Publicado com rótulo velho:** se o conteúdo novo já foi publicado ainda com a versão antiga (aconteceu com a lista de espera, publicada como 2.0.0), o Admin mostra "Nova versão disponível", lista o que mudou e avisa que só o número ficou para trás. Publicar acerta o número, sem mudar o comportamento.
 
 ## Importar
 

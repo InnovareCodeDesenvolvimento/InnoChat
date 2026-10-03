@@ -1931,7 +1931,7 @@
             {
               "id": "flowVersion",
               "name": "flowVersion",
-              "value": "2.0.0",
+              "value": "2.1.0",
               "type": "string"
             },
             {

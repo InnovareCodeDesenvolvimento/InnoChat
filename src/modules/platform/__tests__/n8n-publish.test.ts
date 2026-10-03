@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { DomainError } from "@/lib/errors";
 import type { N8nClient, N8nNode, N8nWorkflow } from "../n8n-client";
+import { FLOW_VERSIONS } from "../flow-versions";
 import { canonicalFlowHash } from "../n8n-flow-hash";
 import {
   createFlowPublisher,
@@ -312,5 +313,71 @@ describe("status e download", () => {
     expect(json).not.toContain(CRED.painel);
     expect(json).not.toContain("pinData");
     expect(JSON.parse(json).nodes.length).toBeGreaterThan(5);
+  });
+});
+
+describe("versão do fluxo (publicado como 2.0.0 com o conteúdo novo)", () => {
+  /** O que o dono fez em produção: publicou o conteúdo atual ainda rotulado com a versão antiga. */
+  async function publishedWithOldLabel() {
+    const real = loadBundledBuildFlow();
+    const nodes = clone(real.nodes);
+    setConfig(nodes, "flowVersion", "2.0.0");
+    const oldLabel: BuildFlow = { version: "2.0.0", hash: canonicalFlowHash(nodes, real.connections), nodes, connections: clone(real.connections) };
+    const fake = createFakeN8n(makeLive(real));
+    const mem = createMemoryStore();
+    const context: PublishContext = {
+      client: fake.client, botWorkflowId: "wf-bot", errosWorkflowId: ERROS_ID, credentialIds: CRED,
+      painelUrl: PAINEL_URL, evolutionUrl: EVOLUTION_URL, n8nApiUrl: N8N_API_URL,
+    };
+    await createFlowPublisher({ store: mem.store, context, build: oldLabel }).publish("u1", "PUBLICAR");
+    const publisher = createFlowPublisher({ store: mem.store, context, build: real });
+    return { real, fake, mem, publisher };
+  }
+
+  it("a versão do sistema é a mais recente do histórico (n8n/flow-versions.json)", () => {
+    expect(loadBundledBuildFlow().version).toBe(FLOW_VERSIONS[0]!.version);
+  });
+
+  it("status: sem edição manual, mostra o que mudou e avisa que só o número difere", async () => {
+    const { real, publisher } = await publishedWithOldLabel();
+    const status = await publisher.getStatus();
+    expect(status).toMatchObject({
+      buildVersion: real.version,
+      publishedVersion: "2.0.0",
+      drift: false,
+      updateAvailable: true,
+      onlyVersionLabelDiffers: true,
+    });
+    expect(status.changes.map((c) => c.version)).toEqual(["2.1.0"]);
+    expect(status.changes[0]!.changes.length).toBeGreaterThan(0);
+  });
+
+  it("publicar a versão nova funciona sem confirmação, grava a versão e deixa o status em dia", async () => {
+    const { real, publisher, mem } = await publishedWithOldLabel();
+    const result = await publisher.publish("u1");
+    expect(result).toMatchObject({ version: real.version, hash: real.hash, rolledBack: false });
+    expect(mem.state.version).toBe(real.version);
+    expect(mem.state.previous?.version).toBe("2.0.0");
+    const status = await publisher.getStatus();
+    expect(status).toMatchObject({ drift: false, updateAvailable: false, onlyVersionLabelDiffers: false, changes: [] });
+  });
+
+  it("editado à mão com a mesma versão continua acusando drift", async () => {
+    const { fake, publisher } = await publishedWithOldLabel();
+    fake.edit((w) => {
+      const claim = w.nodes.find((n) => n.name === "Claim")!;
+      (claim.parameters as Record<string, unknown>).editadoNoN8n = true;
+    });
+    const status = await publisher.getStatus();
+    expect(status.drift).toBe(true);
+    expect(status.onlyVersionLabelDiffers).toBe(false);
+    expect((await codeOf(publisher.publish("u1"))).code).toBe("FLOW_DRIFT");
+  });
+
+  it("nunca publicado: sem lista de mudanças", async () => {
+    const { publisher } = setup();
+    const status = await publisher.getStatus();
+    expect(status.changes).toEqual([]);
+    expect(status.onlyVersionLabelDiffers).toBe(false);
   });
 });
