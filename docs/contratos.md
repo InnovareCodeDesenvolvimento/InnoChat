@@ -2265,3 +2265,84 @@ Tabela `AuditLog` append-only (trigger barra UPDATE; DELETE vale para o CASCADE 
 **Telas.** `/admin/auditoria` (menu Plataforma) e `/{tenantSlug}/configuracoes/historico` (cartão em Configurações, só para o dono; a equipe vê um aviso). Filtros e paginação por URL (`empresa`, `area`, `pessoa`, `de`, `ate`, `pagina`, `porPagina`).
 
 **Cobertura NÃO feita.** Conexão de número de WhatsApp da empresa, cadastro/edição de cliente (Contact), atendimento pelo painel, reenvio de aviso de cobrança, "Gerar Pix" e conferência no Mercado Pago, login/logout, cadastro e convite aceito. Ações do bot/n8n e dos ticks não entram (o histórico é de pessoas).
+
+## Monitor de erros do painel (2026-10-02, melhoria 1)
+
+Captura erros do servidor (API, backend) e do navegador (navegador, extensões) e agrupa por tipo para o Admin acompanhar e resolver. Código: `src/modules/error-monitor/` (capture, analyze, admin actions).
+
+**Relatório.** Tabela `ErrorGroup`: `id`, `origin` (SERVER | CLIENT), `type`, `path` (rota que falhou), `message`, `count`, `lastOccurredAt`, `status` (OPEN | RESOLVED | IGNORED), `resolvedAt`, `ignoredAt`. Sem tenant-scoped: Admin vê tudo da plataforma.
+
+**API:** `POST /api/client-errors` (sem login obrigatório, porque login pode quebrar). Validação: origem deve ser mesma (`isSameOrigin`), body até 16 KB (mesmo sem `Content-Length`), formato `{ type, message, stack?, context? }`. Resposta: 202 aceito, 400 validação, 413 arquivo grande, 429 rate limit. Rate limit por IP: 30/min CLIENT, 120/min SERVER; 2 gravações simultâneas CLIENT, 5 SERVER. Erros de extensão do navegador (`chrome-extension://`, `moz-extension://`, etc.) são descartados automaticamente na captura.
+
+**Tela Admin → Erros** (`/admin/erros`): lista de grupos com filtros (tipo, origem, status), últimas ocorrências, contador, botões **Resolver** e **Ignorar**. Clique em um grupo mostra a stack completa e instâncias recentes (até 10). Grupos RESOLVED ou IGNORED sem ocorrência há 90 dias são apagados automaticamente pela manutenção (OPEN nunca são apagados). **Alerta:** novo erro em origem SERVER dispara e-mail ao Admin (uma única vez até marcar como RESOLVED ou IGNORED); CLIENT nunca envia e-mail.
+
+**Server Actions** (`src/modules/error-monitor/actions.ts`, `requirePlatformAdmin`):
+- `listErrorGroupsAction({origin?, search?, status?, page?, pageSize?})` → `{ items, page, pageSize, totalItems }`; cada item: `{ id, origin, type, path, message, count, lastOccurredAt, status }`
+- `getErrorGroupDetailAction(id)` → `{ group, instances: [{ occurredAt, stack, context? }] }`
+- `resolveErrorGroupAction(id)` → `{ group }` (muda status para RESOLVED)
+- `ignoreErrorGroupAction(id)` → `{ group }` (muda status para IGNORED)
+
+**Codes:** Erros 400 → `INVALID_PAYLOAD`; 401 → `UNAUTHENTICATED`; 403 → `FORBIDDEN`.
+
+## Admin → Configurações em abas (2026-10-03, v1.7.3)
+
+Centralização de todas as configurações da plataforma em um só menu, organizado em abas por categoria. Antes espalhadas em "Configurações da plataforma", "Dados da empresa", etc.; agora tudo em `/admin/configuracoes/<aba>` com uma barra de abas fixa.
+
+**Rotas** (`src/app/(platform)/admin/configuracoes/`):
+- `/admin/configuracoes` → redireciona para `/admin/configuracoes/geral`
+- `/admin/configuracoes/geral` — URLs da plataforma, validação do servidor e versão dos termos
+- `/admin/configuracoes/whatsapp` — Evolution API (URL e chave) e WhatsApp de cobrança (conexão e diagnóstico). O WhatsApp comercial do site fica em Geral, no card de dados da empresa
+- `/admin/configuracoes/automacao` — n8n (URLs, credenciais, sincronização)
+- `/admin/configuracoes/pagamentos` — Mercado Pago (ambiente, públicas/privadas, testes)
+- `/admin/configuracoes/email` — SMTP, remetente, teste
+- `/admin/configuracoes/login` — Google OAuth (Client ID, secret)
+- `/admin/configuracoes/marketing` — Meta Pixel, CAPI, consentimento de cookies
+
+**Componentes compartilhados:** tabs, alert de ponto de atenção (quando algo precisa de ajuste), formulários com validação, aviso de mudanças não salvas ao trocar de aba.
+
+**Server Actions:** mesmas que antes (`updatePlatformSettingsAction`, `saveMercadoPagoCredentialsAction`, etc.), agora agrupadas por aba. A resposta inclui o estado de atenção de cada aba (`attention: { whatsapp: true, automacao: false, ... }`).
+
+## Backup cifrado (2026-10-02, melhoria 2)
+
+Cópias automáticas do banco enviadas para fora do servidor, cifradas com chave própria (não depende de `AUTH_SECRET`). Detalhes em `docs/runbook.md` § Backup e restauração.
+
+**Modelo:** arquivo `backup-innochat-AAAA-MM-DD-HHhMMmSSs.dump.enc` = `INNOBKP` (magic) + versão (1 byte) + impressão digital SHA-256 da chave (4 bytes) + IV (12) + AES-256-GCM (criptografado) + tag (16). Formato validado em ponta a ponta: `src/modules/backup/backup-crypto.ts` (servidor) e `scripts/decrypt-backup.mjs` (restore).
+
+**Chave:** 32 bytes aleatórios, gerada em Admin → Backup, mostrada inteira uma só vez com botão Copiar e Download .txt. A impressão digital (8 chars hex) fica guardada para o dono conferir ("a chave que tenho é a mesma?"). Chave cifrada no banco com `AUTH_SECRET` para o agendador conseguir usar na madrugada; **trocar `AUTH_SECRET` exige gerar chave nova** (o sistema não consegue decifrar a antiga).
+
+**Agendamento:** daily, hora Brasília, prazo de guarda (7 a 365 dias), aviso de atraso (horas sem cópia nova).
+
+**Operações:**
+- **Fazer agora:** testa o caminho inteiro, descarta a cópia se for teste.
+- **Conferir:** baixa a cópia mais recente, decifra, valida integridade (`pg_restore --list`), avisa por e-mail se falhar. Uma vez por semana automático com o automático ligado.
+- **Restaurar:** via `scripts/restore-db.sh <arquivo.dump.enc> <destino> --confirmar --chave <arquivo.txt>`, sem botão (desfazer é risco grande).
+
+**Endpoints S3/Drive:** só `https://`, sem credencial na URL, sem IP privado/loopback/169.254.x.x/CGNAT; DNS resolvido na hora.
+
+## Versão do fluxo do bot (2026-10-02, v1.7.1)
+
+Histórico de versões do workflow do bot no n8n, registrado em `n8n/flow-versions.json` com mudanças em cada versão. Versão atual: **2.1.0** (2026-10-02, lista de espera adicionada).
+
+**Arquivo:** `n8n/flow-versions.json`:
+```json
+{
+  "versions": [
+    {
+      "version": "2.1.0",
+      "date": "2026-10-02",
+      "hash": "SHA-256 do n8n/innochat-bot.json",
+      "changes": ["Convite para lista de espera quando dia está cheio", "Menu 'Minha lista de espera'", "Resposta SIM/NÃO ao encaixe"]
+    },
+    {
+      "version": "2.0.0",
+      "date": "2026-09-30",
+      "hash": "...",
+      "changes": ["Menu numerado", "Confirmação em mensagem própria"]
+    }
+  ]
+}
+```
+
+**Trava:** `src/modules/platform/flow-versions.ts`. Ao publicar um fluxo novo, o Admin precisa subir a versão em `n8n/flow-versions.json` ANTES de fazer commit. A CI confere se o hash do arquivo é o esperado para aquela versão; caso contrário, avisa que o fluxo mudou sem versionar. Previne publicações desconexas entre código e n8n.
+
+**Painel:** Admin → Configurações → aba Automação (card "Fluxo do bot") mostra versão disponível (arquivo) e publicada (banco), botão para publicar, e o diff das mudanças entre elas.

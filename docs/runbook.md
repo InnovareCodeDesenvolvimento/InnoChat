@@ -181,6 +181,39 @@ A cobrança depende de uma rotina que roda de hora em hora no n8n. Se ela para, 
 
 ---
 
+## Monitor de erros do painel (Admin → Erros)
+
+O painel registra automaticamente erros do servidor (APIs, backend) e do navegador (visitantes) e agrupa os iguais para o Admin acompanhar. Erros de extensões do navegador são descartados automaticamente.
+
+### Acessar e resolver erros
+
+1. Vá em **Admin → Erros** (`/admin/erros`).
+2. Você verá uma lista de grupos de erros com:
+   - **Origem:** SERVER (API/backend) ou CLIENT (navegador)
+   - **Tipo:** `TypeError`, `ChunkLoadError`, `NetworkError`, etc.
+   - **Mensagem:** resumo do erro
+   - **Último visto:** data/hora da última ocorrência
+   - **Count:** quantas vezes aconteceu
+   - **Status:** OPEN, RESOLVED ou IGNORED
+
+### Ações sobre erros
+
+- **Resolver:** clique **Resolver** para marcar como resolvido (parou de acontecer ou já foi corrigido). O grupo fica com status RESOLVED.
+- **Ignorar:** clique **Ignorar** para suprimir alertas (erro inofensivo, cliente com versão antiga, etc.). O grupo fica com status IGNORED.
+- **Ver detalhes:** clique na linha para ver até 10 instâncias recentes com stack de erro completo.
+
+### Limpeza automática
+
+- Grupos RESOLVED ou IGNORED **sem ocorrência há 90 dias** são apagados automaticamente pela manutenção diária (03:15 Brasília).
+- Grupos OPEN **nunca são apagados** automaticamente (histórico completo).
+
+### Alertas
+
+- **SERVER:** quando um erro novo em origem SERVER aparece, o Admin recebe **1 e-mail de alerta** (só na primeira vez). Resolver ou ignorar o grupo desliga os futuros alertas daquele erro.
+- **CLIENT:** erros do navegador não disparam e-mail (volume alto e variável).
+
+---
+
 ## Operação da cobrança no dia a dia
 
 O motor da cobrança é autônomo: planejador + despachante rodam a cada hora, os avisos saem por e-mail e WhatsApp conforme o cronograma, e o painel mostra tudo. Neste tópico, a operação manual que o dono pode fazer quando necessário.
@@ -640,6 +673,137 @@ Sempre que atualizar os termos:
 ### Contratos
 
 A tabela `User.termsAcceptedAt` e `User.termsVersion` rastreiam qual versão cada usuário aceitou. Você pode consultar em **Admin → Empresas** quantos usuários ainda usam versão antiga (não existe tela, mas está no banco).
+
+---
+
+## Verificação em 2 etapas (2FA) — reset de emergência
+
+Se um admin perder acesso ao app autenticador e aos códigos de recuperação:
+
+### Admin consegue acessar outro admin
+
+1. O outro admin vai em **Minha conta → Equipe** (ou **Admin → Outros administradores**).
+2. Encontra o admin desbloqueado e clica **Redefinir** (botão de ação para 2FA).
+3. Confirma a ação. A 2FA do admin é desativada; ele recebe e-mail de notificação.
+4. No próximo login, ele cadastra 2FA de novo.
+
+### Nenhum admin consegue acessar (perdeu todos os celulares e códigos)
+
+Apenas o dono, por SQL direto no banco (banco de emergência):
+
+```sql
+UPDATE users 
+SET "totpSecretEnc" = NULL,
+    "totpEnabledAt" = NULL,
+    "totpLastUsedStep" = NULL,
+    "sessionVersion" = "sessionVersion" + 1
+WHERE email = 'admin@exemplo.com';
+
+DELETE FROM two_factor_recovery_codes 
+WHERE "userId" = (SELECT id FROM users WHERE email = 'admin@exemplo.com');
+```
+
+No próximo login, o admin cadastra 2FA do zero pelo seu autenticador.
+
+---
+
+## Lista de espera — operação
+
+Quando o dia está cheio, clientes entram em fila pelo bot. O primeiro da fila recebe a oferta por WhatsApp com prazo de 30 minutos.
+
+### Acessar a lista
+
+1. Vá em **Operação → Lista de espera** (`/{tenantSlug}/lista-de-espera`).
+2. Você verá filtros (dia, profissional, situação) e a fila em ordem de chegada.
+
+### Ações
+
+- **Adicionar à lista:** botão para cadastrar cliente novo ou existente na fila.
+- **Remover:** cliente muda de ideia.
+- **Oferecer encaixe:** escolha o primeiro horário livre compatível (mesmo serviço/profissional, mesmo dia ou intervalo), e o cliente da frente da fila recebe a oferta via WhatsApp com prazo de 30 minutos. Se aceitar (SIM), o agendamento é criado e ele sai da fila. Se recusar (NÃO) ou não responder em 30 minutos, ele volta para WAITING e a próxima pessoa recebe a oferta.
+
+### Janela de silêncio
+
+As ofertas AUTOMÁTICAS (quando um cliente cancela/remarca e libera um horário) só saem entre **08h e 21h** (horário local da empresa). Fora dessa janela, a pessoa continua na fila e recebe a oferta quando a janela abre de novo. **Oferecer encaixe pelo painel ignora essa janela** (é ação manual).
+
+### Mensagens personalizáveis
+
+Os textos de convite e oferta são editáveis em **Mensagens do bot** (painel da empresa, rota `/{slug}/mensagens-bot`):
+- `WAITLIST_INVITE`: convite a entrar na fila
+- `WAITLIST_OFFER`: oferta de encaixe
+- `LABEL_WAITLIST_ACCEPT` / `LABEL_WAITLIST_DECLINE`: botões de resposta
+
+---
+
+## WhatsApp de cobrança — diagnóstico
+
+O número do WhatsApp que envia avisos de pagamento pode ter problemas. O Admin vê o status em tempo real.
+
+### Localizar diagnóstico
+
+1. Vá em **Admin → Configurações → aba WhatsApp** (`/admin/configuracoes/whatsapp`).
+2. Card **"WhatsApp de cobrança"** mostra:
+   - **Status:** Conectado, Desconectado, Aguardando QR, Erro
+   - **Última mensagem recebida:** data/hora (se nada chegar há dias, número pode estar bloqueado)
+   - **Última resposta automática:** data/hora (o sistema envia automaticamente "OK" ou similar)
+   - **Motivo quando não respondeu:** `NO_RECIPIENT` (sem número de destino), `OUT_OF_WINDOW` (fora de 08h-21h), `RATE_LIMITED` (6 respostas por dia, atingido), `CHANNEL_DOWN` (WhatsApp do painel desconectado)
+
+### Problemas comuns
+
+- **Desconectado ou esperando QR:** reconecte o número (botão "Reconectar").
+- **Última mensagem há muito tempo:** número pode estar silenciado pelo WhatsApp (recebeu avisos spam) ou bloqueado. Tente outro número.
+- **Respostas automáticas não saem:** verifique a janela 08h-21h (pode ser fora do horário) e confira `BUDGETS` em `src/modules/billing/responders.ts` (máx. 6/dia por número).
+
+---
+
+## Admin → Configurações em abas
+
+Todas as configurações da plataforma estão centralizadas em `/admin/configuracoes`, divididas em abas por tema.
+
+**Rotas e o que controla cada aba:**
+
+| Aba | Rota | Controla |
+|---|---|---|
+| **Geral** | `/admin/configuracoes/geral` | URLs públicas da plataforma, versão dos Termos |
+| **WhatsApp** | `/admin/configuracoes/whatsapp` | Evolution (credenciais, conexão), número comercial do bot, WhatsApp de cobrança |
+| **Automação** | `/admin/configuracoes/automacao` | n8n (URLs, chave da API, sincronização de credentials) |
+| **Pagamentos** | `/admin/configuracoes/pagamentos` | Mercado Pago (produção + sandbox, publc keys, secrets) |
+| **E-mail** | `/admin/configuracoes/email` | SMTP (host, porta, usuário, senha, remetente), teste |
+| **Login** | `/admin/configuracoes/login` | Google OAuth (Client ID, secret), ativar/desativar login com Google |
+| **Marketing** | `/admin/configuracoes/marketing` | Meta Pixel, CAPI, consentimento LGPD de cookies |
+
+**Atualizando:** cada aba tem um formulário com validação em tempo real. Deixe uma aba com mudanças não salvas e mude para outra: o painel avisa ("Tem mudanças não salvas em Geral"). Salve antes de sair.
+
+**Ponto de atenção:** um ícone 🔔 aparece no nome da aba se algo dela precisa de ajuste (ex.: SMTP sem servidor, Mercado Pago desconectado).
+
+---
+
+## Fluxo do bot — publicar nova versão (n8n)
+
+O fluxo do bot (workflow `innochat-bot` no n8n) tem versão registrada em `n8n/flow-versions.json` para rastrear mudanças. Versão atual: **2.1.0**.
+
+### Ciclo de atualização
+
+1. **Edite no n8n.** Teste no sandbox se tiver.
+2. **Atualize a versão.** No arquivo `n8n/flow-versions.json`:
+   - Incremente a versão (`2.1.0` → `2.2.0`).
+   - Registre a data (AAAA-MM-DD).
+   - Liste as mudanças em português.
+   - Gere o hash SHA-256 do arquivo `n8n/innochat-bot.json`.
+
+3. **Commit e push.** O CI valida o hash; se não bater, a build falha com aviso ("Fluxo mudou sem versionar").
+4. **Publicar no painel.** Vá em **Admin → Configurações → aba Automação** (`/admin/configuracoes/automacao`), card **"Fluxo do bot"**:
+   - **Versão disponível** mostra o arquivo (2.2.0 no exemplo).
+   - **Versão publicada** mostra o que o painel está usando agora (2.1.0).
+   - Botão **Publicar** aplica a nova; você verá um resumo das mudanças.
+
+### Voltar para versão anterior (rollback)
+
+Se a versão nova quebrou o bot:
+
+1. No painel, clique **Voltar** (botão aparece só se houver anterior).
+2. O painel volta para usar a versão anterior; o n8n continua com o fluxo novo (o painel escolhe qual versão chamar por header `X-InnoChat-Flow`).
+3. Conserte o n8n e publique de novo.
 
 ---
 

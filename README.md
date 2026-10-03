@@ -6,7 +6,24 @@ Chatbot de agendamento via WhatsApp para clínicas, salões e negócios de servi
 - **Dona da empresa** gerencia serviços, profissionais, expediente, clientes e pagamentos num painel web.
 - **Plataforma** orquestra tudo: identidade, cobrança, instâncias do WhatsApp via Evolution, workflows de automação no n8n.
 
-Estado: **funcional localmente**, em fase de testes antes do lançamento público.
+Estado: **em produção** (v1.7.4). Funcional localmente e via Easypanel.
+
+---
+
+## Últimas novidades (v1.7.0–v1.7.4)
+
+- **Plano anual com desconto** e **cupons** de promoção.
+- **Lista de espera:** bot oferece fila quando o dia está cheio; primeiro da lista recebe encaixe por WhatsApp.
+- **Relatórios** de faturamento, serviço, profissional e comissões (com download CSV).
+- **Monitor de erros:** erros do servidor e navegador registrados e agrupados; Admin consegue resolver/ignorar.
+- **Backup automático e cifrado** para S3 ou Google Drive, com chave própria e restauração via script.
+- **Verificação em 2 etapas** (TOTP + códigos de recuperação), obrigatória para Admin da plataforma.
+- **Auditoria de 5 anos:** histórico de quem mudou o quê, quando e por quê.
+- **Pixel do Meta + CAPI** e consentimento LGPD de cookies em páginas públicas.
+- **WhatsApp de cobrança:** resposta automática a cada 10 minutos (máx. 6/dia), com diagnóstico no Admin.
+- **Configurações em abas:** todas as config. da plataforma centralizadas em `/admin/configuracoes/<aba>`.
+- **Versão do fluxo do bot:** histórico e trava (fluxo mudado sem subir versão avisa no CI).
+- **Recarga automática** após publicação (cliente que estava com página aberta vê a versão nova).
 
 ---
 
