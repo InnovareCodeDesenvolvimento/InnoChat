@@ -45,6 +45,15 @@ export async function register() {
     } catch (error) {
       logger.error("backup.scheduler.start_failed", { errorMessage: error instanceof Error ? error.message : String(error) });
     }
+
+    // Lista de espera: de 5 em 5 minutos, oferta vencida passa ao próximo da fila e, ao abrir a janela das 8h, sai o que
+    // esperou a noite. Antes dependia da rodada horária da cobrança.
+    try {
+      const { startWaitlistScheduler } = await import("@/modules/waitlist/scheduler");
+      startWaitlistScheduler();
+    } catch (error) {
+      logger.error("waitlist.scheduler.start_failed", { errorMessage: error instanceof Error ? error.message : String(error) });
+    }
   }
 }
 
