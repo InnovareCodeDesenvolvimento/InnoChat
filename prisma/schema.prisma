@@ -909,6 +909,10 @@ model Plan {
   // arredondamento escondido; o desconto exibido ("2 meses grátis") é derivado de priceCents*12.
   // CHECK: > 0. MRR do anual = annualPriceCents / 12.
   annualPriceCents Int?
+  // Preços dos ciclos TRIMESTRAL (3 meses) e SEMESTRAL (6 meses), cobrados de uma vez, em centavos.
+  // NULO = ciclo não oferecido pelo plano (mensal = priceCents; anual = annualPriceCents). CHECK: > 0.
+  quarterlyPriceCents  Int?
+  semiannualPriceCents Int?
 
   maxWhatsappNumbers Int
   // null = ilimitado (plano Clínica, §7.2). maxWhatsappNumbers nunca é ilimitado nos 3 planos
@@ -989,12 +993,14 @@ model Subscription {
   // Gravada em `suspendCompanyManually`; volta a nulo no pagamento e na reativação manual.
   manualSuspendedAt DateTime?
 
-  // Ciclo de cobrança (Onda 0, item 6): MONTHLY | ANNUAL (CHECK). Todas as assinaturas existentes
-  // são MONTHLY. No ANUAL, `currentPeriodEnd` avança 12 meses e a fatura usa `Plan.annualPriceCents`.
+  // Ciclo de cobrança: MONTHLY | QUARTERLY | SEMIANNUAL | ANNUAL (CHECK). Default MONTHLY. O período
+  // avança 1/3/6/12 meses e a fatura usa priceCents / quarterlyPriceCents / semiannualPriceCents /
+  // annualPriceCents do plano.
   billingCycle          String  @default("MONTHLY")
   // Cupom em vigor. Sem cupom: os dois nulos. `couponCyclesRemaining` NULO com cupom = FOREVER; número
   // = faturas ainda descontadas (decrementa a cada fatura gerada com desconto; ao chegar a 0 o código
-  // zera `couponId`). Cupom nunca é apagado (ON DELETE RESTRICT): desative-o.
+  // zera `couponId`). A unidade é FATURA (não mês): num plano trimestral, "3 ciclos" = 3 faturas = 9
+  // meses. Cupom nunca é apagado (ON DELETE RESTRICT): desative-o.
   couponId              String?
   couponCyclesRemaining Int?
 
@@ -1082,7 +1088,7 @@ model Invoice {
   // Cupom e ciclo (Onda 0, item 6). `amountCents` continua sendo o valor LÍQUIDO a cobrar (o que o Pix
   // e todo código existente já usam); `discountCents` é o desconto já abatido, então bruto =
   // amountCents + discountCents. `couponCode` = snapshot do código (o cupom pode mudar/desativar depois).
-  // `cycle` = MONTHLY | ANNUAL do período desta fatura. CHECKs: discountCents >= 0 e cycle fechado.
+  // `cycle` = MONTHLY | QUARTERLY | SEMIANNUAL | ANNUAL do período desta fatura. CHECKs: discountCents >= 0 e cycle fechado.
   discountCents Int     @default(0)
   couponCode    String?
   cycle         String  @default("MONTHLY")
@@ -1565,7 +1571,7 @@ model AuditLog {
 // em MAIÚSCULAS (CHECK code = upper(code)) e @unique => único sem diferenciar caixa; o código
 // normaliza a entrada com trim().toUpperCase(). `kind`: PERCENT (value 1-100) | AMOUNT (value em
 // centavos > 0, abatido de CADA fatura coberta). `duration`: ONCE (só a 1ª fatura) | N_CYCLES
-// (durationCycles >= 1) | FOREVER. `appliesToCycle`: ANY | MONTHLY | ANNUAL. Planos válidos: linhas em
+// (durationCycles >= 1) | FOREVER. `durationCycles` conta FATURAS, não meses. `appliesToCycles`: lista de ciclos válidos (vazia = todos). Planos válidos: linhas em
 // CouponPlan; NENHUMA linha = vale para todos os planos. `maxRedemptions` nulo = ilimitado; o CHECK
 // (redemptionsCount <= maxRedemptions) garante o teto no banco: resgatar =
 // `UPDATE coupons SET redemptionsCount = redemptionsCount + 1 WHERE id = ? AND active AND
@@ -1582,7 +1588,11 @@ model Coupon {
   redemptionsCount Int       @default(0)
   duration         String    @default("ONCE")
   durationCycles   Int?
+  // DEPRECIADA (migration 20261013000000): substituída por `appliesToCycles`. Mantida porque a versão
+  // anterior ainda lê; o código novo não deve ler nem gravar. Default ANY mantém inserts novos válidos.
   appliesToCycle   String    @default("ANY")
+  // Ciclos em que o cupom vale: subconjunto de MONTHLY|QUARTERLY|SEMIANNUAL|ANNUAL (CHECK). Vazio = todos.
+  appliesToCycles  String[]  @default([])
   active           Boolean   @default(true)
   // Sem FK (quem criou).
   createdByUserId  String?
