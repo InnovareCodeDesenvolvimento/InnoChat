@@ -1,5 +1,6 @@
 import { getPublicSalesWhatsapp } from "@/modules/platform/sales-contact";
 import { randomBytes } from "node:crypto";
+import { withBlockingAdvisoryLock } from "@/lib/db/advisory-lock";
 import { getPrisma } from "@/lib/db/prisma";
 import { isUniqueViolation } from "@/lib/db/prisma-errors";
 import { logger } from "@/lib/logger";
@@ -196,13 +197,21 @@ async function handleInboundMessage(connectionId: string, payload: Record<string
   const connection = await prisma.platformWhatsappConnection.findUnique({ where: { id: connectionId }, select: { instanceName: true, role: true } });
   if (!connection || connection.role === "RETIRED") return skip("CONNECTION_RETIRED");
 
+  // Reserva atômica: a checagem do teto e a gravação da reserva rodam sob uma trava por contato. Duas entregas
+  // simultâneas esperam a vez; a segunda enxerga a reserva da primeira e cai em RECENT, então não há resposta dupla.
   let reservationId: string | null = null;
   try {
-    const reservation = await prisma.providerEvent.create({
-      data: { provider: AUTOREPLY_PROVIDER, providerEventId: `${contactKey}:${now.getTime()}-${randomBytes(2).toString("hex")}`, payload: {}, processedAt: now },
-      select: { id: true },
+    const reserved = await withBlockingAdvisoryLock(`platform-autoreply:${contactKey}`, async () => {
+      const again = decideAutoreply(await recentAutoreplyTimes(contactKey, now), now, optOut || confirmed);
+      if (!again.allow) return { ok: false as const, decision: again };
+      const reservation = await prisma.providerEvent.create({
+        data: { provider: AUTOREPLY_PROVIDER, providerEventId: `${contactKey}:${now.getTime()}-${randomBytes(2).toString("hex")}`, payload: {}, processedAt: now },
+        select: { id: true },
+      });
+      return { ok: true as const, id: reservation.id };
     });
-    reservationId = reservation.id;
+    if (!reserved.ok) return skip(reserved.decision.reason, reserved.decision.reason === "RECENT" ? reserved.decision.minutesAgo : undefined);
+    reservationId = reserved.id;
     const support = (await getPublicSalesWhatsapp().catch(() => null))?.display ?? null;
     const replyText = optOut ? (tenant ? OPT_OUT_CONFIRMATION : optOutNotFoundText(support)) : confirmed ? CONFIRM_REPLY : autoreplyText(support);
     await evolution.sendText(connection.instanceName, replyTo, replyText);

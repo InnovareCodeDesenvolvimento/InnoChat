@@ -106,6 +106,8 @@ export function BackupClient({ data, google }: { data: BackupPanelData; google: 
   const [revealed, setRevealed] = useState<GeneratedBackupKey | null>(null);
   const [replacing, setReplacing] = useState(false);
   const [confirmText, setConfirmText] = useState("");
+  const [proofPassword, setProofPassword] = useState("");
+  const [proofCode, setProofCode] = useState("");
   const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null);
   const [message, setMessage] = useState<{ variant: "success" | "danger" | "warning"; text: string } | null>(null);
 
@@ -205,11 +207,13 @@ export function BackupClient({ data, google }: { data: BackupPanelData; google: 
   async function handleGenerateKey() {
     setBusy("key");
     setMessage(null);
-    const result = await generateBackupKeyAction(config.hasEncryptionKey ? { replace: true, confirmation: confirmText } : {});
+    const result = await generateBackupKeyAction(config.hasEncryptionKey ? { replace: true, confirmation: confirmText, password: proofPassword || undefined, code: proofCode || undefined } : {});
     if (result.ok) {
       setRevealed(result.data);
       setReplacing(false);
       setConfirmText("");
+      setProofPassword("");
+      setProofCode("");
       router.refresh();
     } else {
       setMessage({ variant: "danger", text: result.error.message });
@@ -397,6 +401,13 @@ export function BackupClient({ data, google }: { data: BackupPanelData; google: 
                     <Field label={`Para confirmar, digite ${REPLACE_KEY_CONFIRMATION}`}>
                       {(p) => <Input {...p} value={confirmText} onChange={(e) => setConfirmText(e.target.value)} autoComplete="off" />}
                     </Field>
+                    <p className="text-sm text-text">Para garantir que é você, informe sua senha ou um código do app de verificação em 2 etapas.</p>
+                    <Field label="Sua senha">
+                      {(p) => <Input {...p} type="password" value={proofPassword} onChange={(e) => setProofPassword(e.target.value)} autoComplete="current-password" />}
+                    </Field>
+                    <Field label="Ou o código do app (6 dígitos)">
+                      {(p) => <Input {...p} value={proofCode} onChange={(e) => setProofCode(e.target.value)} autoComplete="one-time-code" inputMode="numeric" />}
+                    </Field>
                     <div className="flex flex-wrap gap-2">
                       <Button
                         type="button"
@@ -405,7 +416,7 @@ export function BackupClient({ data, google }: { data: BackupPanelData; google: 
                         onClick={handleGenerateKey}
                         isLoading={busy === "key"}
                         loadingText="Gerando…"
-                        disabled={anyBusy || confirmText.trim() !== REPLACE_KEY_CONFIRMATION}
+                        disabled={anyBusy || confirmText.trim() !== REPLACE_KEY_CONFIRMATION || (!proofPassword && !proofCode)}
                       >
                         Trocar a chave
                       </Button>
@@ -415,6 +426,8 @@ export function BackupClient({ data, google }: { data: BackupPanelData; google: 
                         onClick={() => {
                           setReplacing(false);
                           setConfirmText("");
+                          setProofPassword("");
+                          setProofCode("");
                         }}
                         disabled={anyBusy}
                       >

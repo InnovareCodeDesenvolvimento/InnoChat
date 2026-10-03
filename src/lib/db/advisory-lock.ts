@@ -28,3 +28,18 @@ export async function withAdvisoryLock<T>(name: string, fn: () => Promise<T>): P
     { maxWait: 10_000, timeout: LOCK_MAX_MS },
   );
 }
+
+/**
+ * Versão que ESPERA a vez (`pg_advisory_xact_lock`): duas chamadas com o mesmo `name` rodam `fn` uma depois da outra,
+ * nunca juntas, em qualquer instância. Serve para "ler, decidir e gravar" sem corrida (ex.: teto por contato). `fn` deve
+ * ser curto (algumas consultas): a trava vale até o fim da transação e o tempo total é limitado.
+ */
+export async function withBlockingAdvisoryLock<T>(name: string, fn: () => Promise<T>): Promise<T> {
+  return getPrisma().$transaction(
+    async (tx): Promise<T> => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${name}::text))`;
+      return fn();
+    },
+    { maxWait: 10_000, timeout: 20_000 },
+  );
+}

@@ -61,9 +61,15 @@ export async function recordAudit(input: AuditInput, db?: AuditDb): Promise<void
     const target = db ?? (getPrisma() as unknown as AuditDb);
     await target.auditLog.create({ data });
   } catch (error) {
+    // `logger.error` alimenta o monitor de erros: vira grupo em Admin > Erros, entra no sino do admin e dispara o e-mail
+    // de erro novo (1 a cada 15 min). O `errorMessage` leva só o código da ação e o tipo do erro (nunca o texto cru do
+    // banco, que pode citar dados): é ele que separa um grupo por ação, em vez de tudo cair em "audit.record_failed".
+    const action = clampText(input.action, MAX_ACTION_CHARS) || "unknown";
+    const errorName = error instanceof Error ? error.name : "unknown";
     logger.error("audit.record_failed", {
       action: input.action,
       tenantId: input.tenantId,
+      errorMessage: `ação ${action} ficou sem registro (${errorName})`,
       error: error instanceof Error ? error.message : String(error),
     });
   }

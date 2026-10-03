@@ -14,6 +14,8 @@ export const WAITLIST_OFFER_MINUTES = 30;
 export const WAITLIST_MAX_ACTIVE_PER_CONTACT = 10;
 /** Quantos candidatos da fila tentamos oferecer, no máximo, por horário que abriu. */
 export const WAITLIST_MAX_CANDIDATES_PER_TRIGGER = 8;
+/** Teto de ofertas AUTOMÁTICAS por empresa a cada hora cheia. Acima disso a fila espera a próxima rodada. O "Oferecer encaixe" manual não conta. */
+export const WAITLIST_MAX_AUTO_OFFERS_PER_HOUR = 30;
 
 /** Estados em que a pessoa ainda ocupa um lugar na fila. */
 export const WAITLIST_ACTIVE_STATUSES = ["WAITING", "OFFERED"] as const;

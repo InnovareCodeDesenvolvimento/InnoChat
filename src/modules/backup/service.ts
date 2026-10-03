@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { createReadStream, createWriteStream, promises as fs } from "node:fs";
 import { pipeline } from "node:stream/promises";
 import type { Readable } from "node:stream";
+import https from "node:https";
 import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
@@ -13,7 +14,7 @@ import { sendMail } from "@/lib/email";
 import { tryGetPublicBaseUrl } from "@/lib/public-url";
 import { encryptSecret } from "@/lib/crypto";
 import { readEncryptedSecret } from "@/modules/platform/secrets";
-import { checkS3EndpointResolved, checkS3EndpointShape } from "./s3-endpoint";
+import { checkS3EndpointResolved, checkS3EndpointShape, createGuardedLookup } from "./s3-endpoint";
 import { pageInfoOf, resolvePage, type PageInfo, type PageSize } from "@/modules/billing/paging";
 import {
   DriveFailure,
@@ -386,6 +387,8 @@ async function s3Client(config: BackupConfigRow): Promise<S3Client> {
     endpoint: config.s3Endpoint!,
     credentials: { accessKeyId: config.s3AccessKey!, secretAccessKey },
     forcePathStyle: true,
+    // O lookup validado fecha o DNS rebinding: o IP é conferido na resolução que abre a conexão.
+    requestHandler: { httpsAgent: new https.Agent({ keepAlive: true, lookup: createGuardedLookup() as never }) },
   });
 }
 

@@ -10,8 +10,8 @@ import { isIP } from "node:net";
  *   link-local (inclui 169.254.169.254, o endereço de metadados de nuvem), CGNAT, multicast ou reservado, IPv4 ou IPv6;
  * - o nome é RESOLVIDO na hora (teste e backup): se qualquer endereço resolvido for desses, recusa.
  *
- * Limite conhecido: entre resolver aqui e o SDK conectar há uma segunda resolução (DNS rebinding). Para fechar isso
- * seria preciso fixar o IP na conexão; com `requirePlatformAdmin` + 2FA e esta checagem, o risco restante é baixo.
+ * DNS rebinding: o cliente S3 usa `createGuardedLookup` no agente HTTPS, que revalida o endereço na resolução que
+ * realmente abre o socket (a checagem de antes serve para dar uma mensagem amigável na tela).
  */
 
 export type EndpointCheck = { ok: true; url: URL } | { ok: false; message: string };
@@ -110,4 +110,36 @@ export async function checkS3EndpointResolved(raw: string, resolve: ResolveHost 
   if (addresses.length === 0) return "Não consegui encontrar esse endereço na internet. Confira se está escrito certo.";
   if (addresses.some(isPrivateOrReservedIp)) return MSG_PRIVATE;
   return null;
+}
+
+type LookupCallback = (err: NodeJS.ErrnoException | null, address?: string | Array<{ address: string; family: number }>, family?: number) => void;
+type LookupFn = (host: string, options: { all?: boolean; family?: number; hints?: number }, cb: (err: NodeJS.ErrnoException | null, addresses: Array<{ address: string; family: number }>) => void) => void;
+
+/**
+ * `lookup` para o agente HTTPS do cliente S3. Fecha o DNS rebinding: o endereço que passou na checagem pode não ser o
+ * que o SDK acha ao conectar, então a validação acontece AQUI, na resolução que de fato abre o socket. Se qualquer
+ * endereço devolvido for privado/reservado, a conexão falha. O parâmetro `resolver` existe para os testes.
+ */
+export function createGuardedLookup(resolver?: LookupFn) {
+  const real: LookupFn =
+    resolver ??
+    ((host, options, cb) => {
+      void lookup(host, { all: true, verbatim: true, family: options.family }).then(
+        (r) => cb(null, r),
+        (e: NodeJS.ErrnoException) => cb(e, []),
+      );
+    });
+  return (host: string, options: { all?: boolean; family?: number; hints?: number } | undefined, callback: LookupCallback): void => {
+    const opts = options ?? {};
+    real(host, opts, (err, addresses) => {
+      if (err) return callback(err);
+      if (!addresses || addresses.length === 0 || addresses.some((a) => isPrivateOrReservedIp(a.address))) {
+        const e: NodeJS.ErrnoException = new Error("Endereço do bucket resolve para a rede interna.");
+        e.code = "EBLOCKEDADDR";
+        return callback(e);
+      }
+      if (opts.all) return callback(null, addresses);
+      callback(null, addresses[0]!.address, addresses[0]!.family);
+    });
+  };
 }

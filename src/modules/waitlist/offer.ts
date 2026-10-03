@@ -4,6 +4,7 @@ import { formatDayLabel, formatLeadLabel, formatLongDayLabel, formatTimeLabel } 
 import { renderTemplate } from "@/core/bot/texts";
 import { isInsideSendWindow, reminderFirstName } from "@/core/reminders/window";
 import {
+  WAITLIST_MAX_AUTO_OFFERS_PER_HOUR,
   WAITLIST_MAX_CANDIDATES_PER_TRIGGER,
   WAITLIST_OFFER_MINUTES,
   isoToDesiredDate,
@@ -52,7 +53,7 @@ type EntryRow = {
   windowEndMin: number | null;
 };
 
-type ReserveResult = "SENT" | "NOT_RESERVED" | "SEND_FAILED" | "NO_WHATSAPP" | "NO_PHONE" | "BUSY" | "RATE_LIMITED";
+type ReserveResult = "SENT" | "NOT_RESERVED" | "SEND_FAILED" | "NO_WHATSAPP" | "NO_PHONE" | "BUSY" | "RATE_LIMITED" | "CAP_REACHED";
 
 async function loadTenantRules(tenantId: string) {
   return getPrisma().tenant.findUniqueOrThrow({
@@ -86,8 +87,61 @@ function outcomeToResult(outcome: OutboundResult["outcome"]): ReserveResult {
   }
 }
 
+const AUTO_OFFER_QUOTA_PROVIDER = "waitlist-auto-offer";
+const HOUR_MS = 3_600_000;
+
+/**
+ * Teto de ofertas automáticas por empresa por hora cheia. Cada oferta toma uma "vaga" numerada da hora: uma linha
+ * única em `ProviderEvent` (`tenant:hora:n`) criada com `skipDuplicates`, então duas rodadas simultâneas nunca passam
+ * do teto nem tomam a mesma vaga. Devolve a chave da vaga (para devolver se o envio falhar) ou `null` se a hora lotou.
+ */
+export async function takeAutoOfferQuota(tenantId: string, now: Date): Promise<string | null> {
+  const prisma = getPrisma();
+  const hour = Math.floor(now.getTime() / HOUR_MS);
+  const prefix = `${tenantId}:${hour}:`;
+  let used = await prisma.providerEvent.count({ where: { provider: AUTO_OFFER_QUOTA_PROVIDER, providerEventId: { startsWith: prefix } } });
+  for (let attempt = 0; attempt < WAITLIST_MAX_AUTO_OFFERS_PER_HOUR && used < WAITLIST_MAX_AUTO_OFFERS_PER_HOUR; attempt += 1, used += 1) {
+    const key = `${prefix}${used}`;
+    const created = await prisma.providerEvent.createMany({ data: [{ provider: AUTO_OFFER_QUOTA_PROVIDER, providerEventId: key, payload: {} }], skipDuplicates: true });
+    if (created.count === 1) {
+      // Faxina barata das horas passadas desta empresa.
+      void prisma.providerEvent
+        .deleteMany({ where: { provider: AUTO_OFFER_QUOTA_PROVIDER, providerEventId: { startsWith: `${tenantId}:` }, createdAt: { lt: new Date(now.getTime() - 3 * HOUR_MS) } } })
+        .catch(() => undefined);
+      return key;
+    }
+  }
+  return null;
+}
+
+async function giveBackAutoOfferQuota(key: string | null): Promise<void> {
+  if (!key) return;
+  await getPrisma().providerEvent.deleteMany({ where: { provider: AUTO_OFFER_QUOTA_PROVIDER, providerEventId: key } }).catch(() => undefined);
+}
+
 /** Reserva o horário para a entrada e manda a oferta. Falhou o envio, devolve a entrada à fila. */
 async function reserveAndSend(params: {
+  tenantId: string;
+  tenant: { name: string; timezone: string };
+  entry: EntryRow;
+  slot: { professionalId: string; startsAt: Date };
+  now: Date;
+  evolution?: EvolutionClient;
+  /** Oferta automática (gatilho da agenda, tick) respeita o teto por hora; a manual do painel não. */
+  automatic: boolean;
+}): Promise<ReserveResult> {
+  const { tenantId, entry, slot, now } = params;
+  const quotaKey = params.automatic ? await takeAutoOfferQuota(tenantId, now) : null;
+  if (params.automatic && !quotaKey) {
+    logger.warn("waitlist.auto_offer_cap_reached", { tenantId, cap: WAITLIST_MAX_AUTO_OFFERS_PER_HOUR });
+    return "CAP_REACHED";
+  }
+  const result = await reserveAndSendInner(params);
+  if (result !== "SENT") await giveBackAutoOfferQuota(quotaKey);
+  return result;
+}
+
+async function reserveAndSendInner(params: {
   tenantId: string;
   tenant: { name: string; timezone: string };
   entry: EntryRow;
@@ -242,7 +296,11 @@ export async function offerFreedSlot(
     if (!slot) continue;
 
     summary.tried += 1;
-    const result = await reserveAndSend({ tenantId, tenant, entry, slot, now, evolution: deps.evolution });
+    const result = await reserveAndSend({ tenantId, tenant, entry, slot, now, evolution: deps.evolution, automatic: true });
+    if (result === "CAP_REACHED") {
+      await markQuietDeferral(tenantId); // a fila espera a próxima rodada (o tick retoma quando a hora virar)
+      return summary;
+    }
     if (result === "SENT") {
       summary.offeredEntryId = entry.id;
       return summary;
@@ -354,8 +412,12 @@ export async function offerToWaitingInOpenWindow(now: Date = new Date(), deps?: 
         });
         if (!slot) continue;
         tried += 1;
-        const result = await reserveAndSend({ tenantId, tenant, entry, slot, now: clock, evolution: d.evolution });
+        const result = await reserveAndSend({ tenantId, tenant, entry, slot, now: clock, evolution: d.evolution, automatic: true });
         if (result === "SENT") summary.offered += 1;
+        else if (result === "CAP_REACHED") {
+          await markQuietDeferral(tenantId);
+          break;
+        }
         else if (result === "NO_WHATSAPP" || result === "SEND_FAILED") {
           await markQuietDeferral(tenantId); // sem canal agora: a marca volta e a próxima rodada tenta de novo
           break;
@@ -422,7 +484,7 @@ export async function offerEntryManually(tenantId: string, entryId: string, deps
     throw new DomainError("NO_SLOT", "Não há horário livre que caiba no pedido dessa pessoa. Quando abrir um, ela é avisada sozinha.");
   }
 
-  const result = await reserveAndSend({ tenantId, tenant, entry, slot, now, evolution: d.evolution });
+  const result = await reserveAndSend({ tenantId, tenant, entry, slot, now, evolution: d.evolution, automatic: false });
   switch (result) {
     case "SENT":
       return { slotStart: slot.startsAt, professionalId: slot.professionalId };

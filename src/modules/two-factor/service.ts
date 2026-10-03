@@ -189,7 +189,7 @@ export async function consumeSecondFactor(userId: string, input: string, nowMs =
 }
 
 /** Prova de que quem pede é o dono da conta: senha atual OU um código. Lança se não bater. */
-async function requireProof(userId: string, proof: { password?: string; code?: string }): Promise<void> {
+export async function requireProof(userId: string, proof: { password?: string; code?: string }): Promise<void> {
   enforceSecondFactorRateLimit(userId);
   const password = proof.password ?? "";
   const code = proof.code ?? "";

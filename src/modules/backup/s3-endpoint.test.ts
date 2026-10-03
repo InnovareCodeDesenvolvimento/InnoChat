@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkS3EndpointResolved, checkS3EndpointShape, isPrivateOrReservedIp } from "./s3-endpoint";
+import { checkS3EndpointResolved, checkS3EndpointShape, createGuardedLookup, isPrivateOrReservedIp } from "./s3-endpoint";
 
 describe("isPrivateOrReservedIp", () => {
   it.each([
@@ -62,5 +62,30 @@ describe("checkS3EndpointResolved", () => {
     let called = false;
     expect(await checkS3EndpointResolved("http://s3.example.com", async () => { called = true; return []; })).toMatch(/https/);
     expect(called).toBe(false);
+  });
+});
+
+describe("createGuardedLookup (DNS rebinding)", () => {
+  const run = (resolver: Parameters<typeof createGuardedLookup>[0], all: boolean) =>
+    new Promise<{ err: NodeJS.ErrnoException | null; address: unknown }>((resolve) => {
+      createGuardedLookup(resolver)("bucket.example.com", { all }, (err, address) => resolve({ err, address }));
+    });
+
+  it("recusa na hora de conectar quando o DNS agora devolve IP interno (mesmo que antes fosse público)", async () => {
+    const { err } = await run((_h, _o, cb) => cb(null, [{ address: "169.254.169.254", family: 4 }]), true);
+    expect(err?.code).toBe("EBLOCKEDADDR");
+    const mixed = await run((_h, _o, cb) => cb(null, [{ address: "93.184.216.34", family: 4 }, { address: "10.0.0.7", family: 4 }]), false);
+    expect(mixed.err?.code).toBe("EBLOCKEDADDR");
+  });
+
+  it("deixa passar endereço público, nos dois formatos de resposta do Node", async () => {
+    const resolver = (_h: string, _o: unknown, cb: (e: null, a: Array<{ address: string; family: number }>) => void) => cb(null, [{ address: "93.184.216.34", family: 4 }]);
+    expect((await run(resolver, true)).address).toEqual([{ address: "93.184.216.34", family: 4 }]);
+    expect((await run(resolver, false)).address).toBe("93.184.216.34");
+  });
+
+  it("repassa o erro do DNS e recusa lista vazia", async () => {
+    expect((await run((_h, _o, cb) => cb(Object.assign(new Error("x"), { code: "ENOTFOUND" }), []), true)).err?.code).toBe("ENOTFOUND");
+    expect((await run((_h, _o, cb) => cb(null, []), true)).err?.code).toBe("EBLOCKEDADDR");
   });
 });

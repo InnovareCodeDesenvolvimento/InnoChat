@@ -7,6 +7,7 @@ import { DomainError } from "@/lib/errors";
 import { pagingInputShape, type PageInfo } from "@/modules/billing/paging";
 import { platformAdminActor, recordAudit } from "@/modules/audit/record";
 import { diffChanges, type AuditChanges } from "@/modules/audit/sanitize";
+import { requireProof } from "@/modules/two-factor/service";
 import { REPLACE_KEY_CONFIRMATION } from "./policy";
 import type { GeneratedBackupKey, VerifyResult } from "./service";
 import {
@@ -168,7 +169,11 @@ export async function disconnectGoogleAction(): Promise<Result<{ ok: true }>> {
   });
 }
 
-const generateKeySchema = z.object({ replace: z.boolean().optional(), confirmation: z.string().max(100).optional() });
+const generateKeySchema = z.object({ replace: z.boolean().optional(), confirmation: z.string().max(100).optional(),
+  // Prova de que é o dono da conta (só para trocar a chave): a senha OU um código da verificação em 2 etapas.
+  password: z.string().max(200).optional(),
+  code: z.string().max(50).optional(),
+});
 
 /**
  * Gera a chave de criptografia do backup. A chave inteira volta NESTA resposta e em nenhuma outra: a
@@ -183,6 +188,8 @@ export async function generateBackupKeyAction(input?: unknown): Promise<Result<G
     if (replace && parsed.confirmation?.trim() !== REPLACE_KEY_CONFIRMATION) {
       throw new DomainError("BACKUP_KEY_CONFIRMATION", `Para trocar a chave, digite ${REPLACE_KEY_CONFIRMATION} no campo de confirmação.`);
     }
+    // Sessão sequestrada não troca a chave sozinha: pede a senha ou o código de novo (limite de tentativas incluso).
+    if (replace) await requireProof(admin.id, { password: parsed.password, code: parsed.code });
     const generated = await generateBackupEncryptionKey(admin.id, { replace });
     // Só a impressão digital (que a própria tela mostra); a chave inteira nunca passa por aqui.
     await recordAudit({

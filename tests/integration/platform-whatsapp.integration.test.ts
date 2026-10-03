@@ -653,6 +653,16 @@ describe("webhook próprio", () => {
     expect(replies.every((i) => !i.body.includes(SUBSCRIBER))).toBe(true); // telefone inteiro nunca no sino
   });
 
+  it("entregas simultâneas do mesmo contato geram UMA resposta automática (reserva atômica)", async () => {
+    const a = await connectNumber("Cobrança", PHONE_A);
+    await makeTenant({ billingWhatsappE164: SUBSCRIBER });
+    const token = tokenOf(a.instanceName);
+
+    await Promise.all(Array.from({ length: 6 }, (_, i) => handlePlatformWhatsappWebhook(token, msg(`${SUBSCRIBER}@s.whatsapp.net`, `mensagem ${i}`))));
+
+    expect(sent).toHaveLength(1);
+  });
+
   it("SAIR desliga o WhatsApp da empresa; eco fromMe e número da própria plataforma são ignorados; bot de empresa não recebe resposta automática", async () => {
     const a = await connectNumber("Cobrança", PHONE_A);
     const { tenant } = await makeTenant({ billingWhatsappE164: SUBSCRIBER });
