@@ -15,6 +15,8 @@ import { formatCentsBRL, formatDateBR } from "@/modules/billing/format";
 import { parsePageSize, parsePositiveInt } from "@/components/lib/pagination";
 import { TwoFactorResetList } from "@/components/admin/two-factor-reset-list";
 import { listCompanyTwoFactorAction } from "@/modules/two-factor/actions";
+import { BillingContactCard } from "@/components/billing/billing-contact-card";
+import { getBillingContactAsAdminAction, updateBillingContactAsAdminAction } from "@/modules/billing/contact-actions";
 import { CompanyInvoices } from "./company-invoices";
 import { CompanyTimeline } from "./company-timeline";
 
@@ -29,10 +31,11 @@ export default async function AdminEmpresaCobrancaPage({
   const sp = await searchParams;
   const page = parsePositiveInt(sp.pagina, 1);
   const pageSize = parsePageSize(sp.porPagina);
-  const [billing, timeline, team] = await Promise.all([
+  const [billing, timeline, team, contact] = await Promise.all([
     getCompanyBillingAction(tenantId),
     listCompanyBillingTimelineAction(tenantId, { page, pageSize }),
     listCompanyTwoFactorAction(tenantId),
+    getBillingContactAsAdminAction(tenantId),
   ]);
 
   if (!billing.ok) {
@@ -120,6 +123,23 @@ export default async function AdminEmpresaCobrancaPage({
           kind: inv.kind,
         }))}
       />
+
+      {contact.ok ? (
+        <BillingContactCard
+          tenantSlug={company.slug}
+          initial={{
+            billingEmail: contact.data.billingEmail,
+            billingWhatsappE164: contact.data.billingWhatsappE164,
+            optedOut: contact.data.optedOut,
+            whatsappConfirmed: contact.data.whatsappConfirmed,
+            ownerEmail: contact.data.ownerEmail,
+          }}
+          canEdit
+          save={updateBillingContactAsAdminAction}
+          helpKey="admin.contatoCobranca"
+          description="Para onde vão os avisos de cobrança desta empresa. Corrija aqui se o dono digitou errado."
+        />
+      ) : null}
 
       {team.ok ? (
         <Card className="rounded-hero">

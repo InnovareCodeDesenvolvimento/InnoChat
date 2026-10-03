@@ -23,11 +23,12 @@ export function BillingPhonePrompt({ tenantSlug, save }: { tenantSlug: string; s
   const [dismissed, dismiss] = useSessionDismiss(`innochat:billing-phone-dismissed:${tenantSlug}`);
   const [phone, setPhone] = useState("");
   const [error, setError] = useState<string | null>(null);
+  // A conferência disse "esse número não tem WhatsApp": oferece salvar mesmo assim.
+  const [noWhatsapp, setNoWhatsapp] = useState(false);
 
   if (dismissed) return null;
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  function submit(skipWhatsappCheck: boolean) {
     const e164 = parseBrazilianPhoneToE164(phone);
     if (!e164) {
       setError("Digite o WhatsApp com DDD, por exemplo (84) 99999-0000.");
@@ -35,14 +36,20 @@ export function BillingPhonePrompt({ tenantSlug, save }: { tenantSlug: string; s
     }
     setError(null);
     startTransition(async () => {
-      const result = await save(tenantSlug, { billingWhatsapp: e164 });
+      const result = await save(tenantSlug, { billingWhatsapp: e164, ...(skipWhatsappCheck ? { skipWhatsappCheck: true } : {}) });
       if (!result.ok) {
+        setNoWhatsapp(result.error.code === "NO_WHATSAPP");
         setError(result.error.message);
         return;
       }
       notify({ variant: "success", title: "WhatsApp salvo.", description: "Os avisos de cobrança chegam nele." });
       router.refresh();
     });
+  }
+
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    submit(false);
   }
 
   return (
@@ -63,12 +70,20 @@ export function BillingPhonePrompt({ tenantSlug, save }: { tenantSlug: string; s
               value={phone}
               invalid={!!error}
               aria-describedby={error ? "billing-phone-prompt-error" : undefined}
-              onChange={(e) => setPhone(e.target.value)}
+              onChange={(e) => {
+                setPhone(e.target.value);
+                setNoWhatsapp(false);
+              }}
             />
           </div>
           <Button type="submit" size="sm" icon={Check} isLoading={isPending} loadingText="Salvando…">
             Salvar WhatsApp
           </Button>
+          {noWhatsapp ? (
+            <Button type="button" size="sm" variant="secondary" disabled={isPending} onClick={() => submit(true)}>
+              Salvar mesmo assim
+            </Button>
+          ) : null}
           <span className="flex items-center">
             <HelpButton helpKey="assinatura.aviso-whatsapp" placement="inline" />
             <Button type="button" variant="ghost" size="icon" aria-label="Dispensar o pedido de WhatsApp" onClick={dismiss}>

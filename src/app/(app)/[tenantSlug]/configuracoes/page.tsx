@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { Palette, Building2, Clock, Users2, CalendarOff, History } from "lucide-react";
+import { Palette, Building2, Clock, Users2, CalendarOff, History, MessageCircle } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { navIconFor } from "@/components/shell/nav-items";
 import { getPrisma } from "@/lib/db/prisma";
@@ -61,6 +61,17 @@ const HISTORY_SECTION: ConfigSection = {
   icon: <History aria-hidden="true" />,
   title: "Histórico de alterações",
   description: "Quem da equipe mudou o quê no painel, e quando.",
+  ready: true,
+};
+
+/** Só o dono: o contato de cobrança mora na Assinatura, mas quem procura em Configurações também chega nele. */
+const BILLING_CONTACT_SECTION: ConfigSection = {
+  href: "contato-de-cobranca",
+  to: "assinatura#contato-de-cobranca",
+  help: "assinatura.contato",
+  icon: <MessageCircle aria-hidden="true" />,
+  title: "Contato de cobrança",
+  description: "O e-mail e o WhatsApp que recebem os avisos da mensalidade. Troque o número aqui.",
   ready: true,
 };
 
@@ -129,7 +140,7 @@ export default async function ConfiguracoesPage({
         </Alert>
       )}
 
-      <ConfiguracoesGrid tenantSlug={tenantSlug} sections={membership?.role === "OWNER" ? [...SECTIONS, HISTORY_SECTION] : SECTIONS} />
+      <ConfiguracoesGrid tenantSlug={tenantSlug} sections={membership?.role === "OWNER" ? [...SECTIONS, BILLING_CONTACT_SECTION, HISTORY_SECTION] : SECTIONS} />
     </div>
   );
 }

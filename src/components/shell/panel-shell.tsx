@@ -16,6 +16,7 @@ import { ResendVerificationButton } from "@/components/account/resend-verificati
 import type { SaveBillingContact } from "@/components/billing/billing-contact-types";
 import { SubscriptionBanner } from "./subscription-banner";
 import { BillingPhonePrompt } from "./billing-phone-prompt";
+import { BillingWhatsappProblemBanner } from "./billing-whatsapp-problem-banner";
 import type { BillingBannerState } from "./billing-banner-state";
 
 type SubscriptionStatus = "TRIALING" | "ACTIVE" | "PAST_DUE" | "SUSPENDED" | "CANCELED" | null;
@@ -36,6 +37,8 @@ type PanelShellProps = {
   /** OWNER sem WhatsApp de cobrança cadastrado: mostra o pedido discreto do número. */
   askBillingPhone?: boolean;
   saveBillingContact?: SaveBillingContact;
+  /** OWNER cujo WhatsApp de cobrança falhou nos envios: mostra o aviso com o botão de corrigir. */
+  billingWhatsappProblem?: { phoneDisplay: string } | null;
   onboardingIncomplete?: boolean;
   whatsappNeedsAttention?: boolean;
   /** Papel do usuário: STAFF não vê itens só do dono no menu. */
@@ -103,6 +106,7 @@ export function PanelShell({
   billingNowMs = 0,
   askBillingPhone = false,
   saveBillingContact,
+  billingWhatsappProblem = null,
   onboardingIncomplete = false,
   whatsappNeedsAttention = false,
   isOwner = true,
@@ -168,6 +172,7 @@ export function PanelShell({
 
         <SubscriptionBanner tenantSlug={tenantSlug} timezone={timezone} state={billingBanner} serverNowMs={billingNowMs} />
         {askBillingPhone && saveBillingContact ? <BillingPhonePrompt tenantSlug={tenantSlug} save={saveBillingContact} /> : null}
+        {billingWhatsappProblem ? <BillingWhatsappProblemBanner tenantSlug={tenantSlug} phoneDisplay={billingWhatsappProblem.phoneDisplay} /> : null}
         {!emailVerified ? <EmailVerificationBanner /> : null}
 
         <main className="flex-1 p-4 pb-16 sm:p-6 sm:pb-16">

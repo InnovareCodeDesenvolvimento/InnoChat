@@ -198,6 +198,14 @@ describe("falha e nova tentativa (espera crescente)", () => {
     expect(mails(s.email)).toHaveLength(2); // e-mail não repete
   });
 
+  it("número recusado pela Evolution (reason INVALID_NUMBER) grava WHATSAPP_INVALID_NUMBER para o painel avisar o dono", async () => {
+    const s = await scenario("retry-invalid");
+    await runBillingTick(D1_NOON, gateway, {
+      dispatch: { sleep: async () => undefined, sendWhatsapp: async () => ({ outcome: "FAILED" as const, reason: "INVALID_NUMBER" as const }) },
+    });
+    expect(await row(s.sub.id, "DUE_D1", "WHATSAPP")).toMatchObject({ status: "FAILED", attempts: 1, lastErrorCode: "WHATSAPP_INVALID_NUMBER" });
+  });
+
   it("exceção do sender de WhatsApp é isolada por aviso: vira FAILED/UNEXPECTED_ERROR e o resto da fila sai", async () => {
     const s = await scenario("retry-throw");
     const result = await runBillingTick(D1_NOON, gateway, {

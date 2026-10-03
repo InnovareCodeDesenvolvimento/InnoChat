@@ -46,6 +46,7 @@ export const ACTION_LABELS: Record<string, string> = {
   "company.suspended": "Empresa suspensa",
   "company.reactivated": "Empresa reativada",
   "company.trial_extended": "Teste estendido",
+  "company.billing_contact_changed": "Contato de cobrança corrigido pela plataforma",
   "invoice.marked_paid_manually": "Baixa manual de fatura",
   "platform.settings_changed": "Configurações da plataforma alteradas",
   "platform.public_base_url_changed": "Endereço público do painel alterado",

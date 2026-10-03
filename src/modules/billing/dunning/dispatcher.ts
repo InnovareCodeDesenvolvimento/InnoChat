@@ -1,4 +1,5 @@
 import { addMinutes, subHours, subMinutes } from "date-fns";
+import { WHATSAPP_INVALID_NUMBER_CODE } from "@/core/billing/dunning-labels";
 import { claimDueBillingNotices, type ClaimedBillingNotice } from "@/lib/db/billing-notice-queries";
 import { getPrisma } from "@/lib/db/prisma";
 import { describeDbError } from "@/lib/db/prisma-errors";
@@ -413,7 +414,7 @@ ${CONFIRM_OWNERSHIP_FOOTER}`;
     return skip(summary);
   }
 
-  await markNoticeFailed(notice.id, now, notice.attempts, "WHATSAPP_SEND_FAILED", audit);
+  await markNoticeFailed(notice.id, now, notice.attempts, first.reason === "INVALID_NUMBER" ? WHATSAPP_INVALID_NUMBER_CODE : "WHATSAPP_SEND_FAILED", audit);
   summary.failed += 1;
   return "FAILED";
 }

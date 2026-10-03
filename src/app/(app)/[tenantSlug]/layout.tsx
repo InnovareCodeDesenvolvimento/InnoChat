@@ -7,6 +7,7 @@ import { getPrisma } from "@/lib/db/prisma";
 import { effectiveStatus } from "@/core/billing";
 import { resolveBillingBanner } from "@/components/shell/billing-banner-state";
 import { updateBillingContactAction } from "@/modules/billing/contact-actions";
+import { getBillingWhatsappProblem } from "@/modules/billing/whatsapp-problem";
 import { ToastProvider } from "@/components/ui/toast";
 import { ClientErrorReporter } from "@/components/error-monitor/client-error-reporter";
 import { HelpVisibilityProvider } from "@/components/help/help-visibility";
@@ -101,6 +102,12 @@ export default async function TenantLayout({
     billingBanner?.kind !== "SUSPENDED" &&
     billingBanner?.kind !== "CANCELED";
 
+  // Aviso de WhatsApp de cobrança que não está chegando: só o OWNER (é quem corrige), derivado dos avisos já gravados.
+  const billingWhatsappProblem =
+    membership.role === "OWNER"
+      ? await getBillingWhatsappProblem(tenantId, { billingWhatsappE164: membership.tenant.billingWhatsappE164, optedOut: membership.tenant.billingWhatsappOptOutAt !== null }, now).catch(() => null)
+      : null;
+
   // Onboarding (docs/arquitetura.md §13): incompleto enquanto não houver nenhum serviço OU
   // nenhum profissional com expediente cadastrado — o link "Primeiros passos" some da sidebar
   // assim que os dois existirem (WhatsApp fica de fora da checagem: ainda não tem tela).
@@ -164,6 +171,7 @@ export default async function TenantLayout({
             billingBanner={billingBanner}
             billingNowMs={now.getTime()}
             askBillingPhone={askBillingPhone}
+            billingWhatsappProblem={billingWhatsappProblem}
             saveBillingContact={updateBillingContactAction}
             onboardingIncomplete={onboardingIncomplete}
             whatsappNeedsAttention={whatsappNeedsAttention}

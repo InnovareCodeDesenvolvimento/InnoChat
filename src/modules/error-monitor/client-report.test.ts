@@ -38,6 +38,15 @@ describe("relato do navegador", () => {
     expect((await call(ok, "198.51.100.8")).status).toBe(202);
   });
 
+  it("descarta sem gravar erro de extensão do navegador (responde 202)", async () => {
+    const stack = "TypeError: x\n    at s (chrome-extension://eppiocemhmnlbhjplcgkofciiegomcon/executors/200.js:2:3456)";
+    expect((await call(JSON.stringify({ message: "Cannot read properties of undefined (reading 'M_ID')", type: "TypeError", route: "/login", stack }))).status).toBe(202);
+    expect(record).not.toHaveBeenCalled();
+    const mixed = `${stack}\n    at b (https://innochat.example/_next/static/a.js:1:1)`;
+    await call(JSON.stringify({ message: "x", stack: mixed }));
+    expect(record).toHaveBeenCalledTimes(1);
+  });
+
   it("falha ao gravar não vira erro para o navegador", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     record.mockRejectedValueOnce(new Error("db fora"));

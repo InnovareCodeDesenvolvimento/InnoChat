@@ -20,6 +20,8 @@ export type ConfigSection = {
   title: string;
   description: string;
   ready: boolean;
+  /** Caminho completo depois do slug (ex.: `assinatura#contato-de-cobranca`), quando o destino não fica em /configuracoes/<href>. */
+  to?: string;
   /** Texto de ajuda do destino (só para cards que já funcionam). */
   help?: HelpKey;
 };
@@ -63,7 +65,7 @@ export function ConfiguracoesGrid({ tenantSlug, sections }: { tenantSlug: string
               <p className="mt-1 text-sm text-text-secondary">{section.description}</p>
               {section.ready ? (
                 <Link
-                  href={`/${tenantSlug}/configuracoes/${section.href}`}
+                  href={section.to ? `/${tenantSlug}/${section.to}` : `/${tenantSlug}/configuracoes/${section.href}`}
                   className="mt-3 inline-block text-sm font-medium text-primary hover:underline"
                 >
                   Abrir

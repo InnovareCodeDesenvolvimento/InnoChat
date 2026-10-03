@@ -1,4 +1,5 @@
 import { APP_VERSION } from "@/lib/app-info";
+import { isBrowserExtensionOnlyStack } from "@/core/error-monitor/extension-noise";
 
 /**
  * Envio de erro do navegador ao monitor (`POST /api/client-errors`). Nunca lança e nunca espera: um erro ao relatar
@@ -22,6 +23,8 @@ export function reportClientError(error: unknown, kind: ClientErrorKind): void {
     if (!message || IGNORED_MESSAGES.some((re) => re.test(message))) return;
     const type = e && typeof e.name === "string" ? e.name.slice(0, 100) : "Error";
     const stack = e && typeof e.stack === "string" ? e.stack.slice(0, 8000) : undefined;
+    // Extensão do navegador (stack só com chrome-extension://, moz-extension://...): não é erro nosso.
+    if (isBrowserExtensionOnlyStack(stack)) return;
     const key = `${type}|${message}|${(stack ?? "").slice(0, 200)}`;
     if (sent.has(key)) return;
     sent.add(key);

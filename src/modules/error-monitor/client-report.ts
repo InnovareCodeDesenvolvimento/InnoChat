@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isBrowserExtensionOnlyStack } from "@/core/error-monitor/extension-noise";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { recordError } from "./capture";
 
@@ -87,6 +88,9 @@ export async function handleClientErrorReport(input: {
   } catch {
     return { status: 400, code: "INVALID_PAYLOAD", message: "Relato inválido." };
   }
+
+  // Erro de extensão do navegador: aceita (o navegador não precisa saber) e descarta sem gravar.
+  if (isBrowserExtensionOnlyStack(parsed.stack)) return { status: 202 };
 
   try {
     await recordError({

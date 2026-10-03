@@ -65,10 +65,14 @@ export function skippedReasonLabel(reason: string): string {
   return SKIPPED_REASON_LABELS[reason] ?? reason;
 }
 
+/** Código de falha gravado quando a Evolution recusa o NÚMERO do destinatário (HTTP 400 / exists:false). */
+export const WHATSAPP_INVALID_NUMBER_CODE = "WHATSAPP_INVALID_NUMBER";
+
 export const NOTICE_ERROR_LABELS: Record<string, string> = {
   EMAIL_NOT_SENT: "O servidor de e-mail não aceitou o envio",
   EMAIL_REJECTED: "O servidor de e-mail recusou o destinatário",
   WHATSAPP_SEND_FAILED: "O WhatsApp não conseguiu enviar",
+  WHATSAPP_INVALID_NUMBER: "O número não tem WhatsApp (ou está errado)",
   UNEXPECTED_ERROR: "Erro inesperado no envio",
   STUCK_MAX_ATTEMPTS: "O envio travou e esgotou as tentativas",
 };

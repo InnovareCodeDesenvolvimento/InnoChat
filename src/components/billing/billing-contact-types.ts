@@ -10,6 +10,8 @@ export type BillingContactInput = {
   billingEmail?: string | null;
   billingWhatsapp?: string | null;
   optOut?: boolean;
+  /** "Salvar mesmo assim": pula a conferência de "esse número tem WhatsApp?" (erro `NO_WHATSAPP`). */
+  skipWhatsappCheck?: boolean;
 };
 
 export type SaveBillingContact = (tenantSlug: string, input: BillingContactInput) => Promise<Result<unknown>>;
