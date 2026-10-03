@@ -68,6 +68,11 @@ function What({ item, showTenant }: { item: AuditItem; showTenant: boolean }) {
     <div className="min-w-0">
       <p className="font-medium text-text">{item.actionLabel}</p>
       <p className="mt-0.5 break-words text-sm text-text-secondary [overflow-wrap:anywhere]">{item.summary}</p>
+      {item.clientName ? (
+        <p className="mt-0.5 break-words text-sm text-text-secondary [overflow-wrap:anywhere]" data-testid="audit-client">
+          Cliente: {item.clientName}
+        </p>
+      ) : null}
       {showTenant ? (
         <p className="mt-1 text-xs text-text-secondary">{item.tenant ? `Empresa: ${item.tenant.name}` : "Plataforma (sem empresa)"}</p>
       ) : null}
@@ -261,6 +266,7 @@ export function AuditLogView({
           {detail ? (
             <div className="mt-4 flex max-h-[60vh] flex-col gap-4 overflow-y-auto" data-testid="audit-detail">
               <p className="break-words text-sm text-text [overflow-wrap:anywhere]">{detail.summary}</p>
+              {detail.clientName ? <p className="break-words text-sm text-text-secondary [overflow-wrap:anywhere]">Cliente: {detail.clientName}</p> : null}
               {isAdmin ? (
                 <p className="text-xs text-text-secondary">
                   {detail.tenant ? `Empresa: ${detail.tenant.name} (/${detail.tenant.slug})` : "Plataforma (sem empresa)"}

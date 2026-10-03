@@ -12,6 +12,7 @@ import { isUniqueViolation } from "@/lib/db/prisma-errors";
 import { DomainError } from "@/lib/errors";
 import { hashInternalApiSecret } from "@/modules/platform/service";
 import type { EvolutionClient } from "@/modules/whatsapp/evolution-client";
+import * as appointmentsModule from "@/modules/agenda/appointments";
 import { cancelAppointment, createAppointmentManual, rescheduleAppointment } from "@/modules/agenda/appointments";
 import { claimMessage } from "@/modules/bot-api/claim";
 import type { InternalApiContext } from "@/modules/bot-api/internal-auth";
@@ -327,6 +328,9 @@ describe("resposta do cliente", () => {
     await cancelAppointment(w.tenant.id, appt.id, "system");
     await drainWaitlistHook();
     expect((await entryOf(w, first.id)).status).toBe("OFFERED");
+    // O relógio da oferta pode ser o "meio-dia" fixo de `windowNow()` (suíte rodando fora das 8h-21h); as respostas dos testes
+    // usam o relógio real, então o prazo é ajustado para a hora real e o resultado não depende da hora em que a suíte roda.
+    await prisma.waitlistEntry.update({ where: { id: first.id }, data: { offerExpiresAt: new Date(Date.now() + 30 * 60_000) } });
     return { w, day, first, second };
   }
 
@@ -370,6 +374,25 @@ describe("resposta do cliente", () => {
     expect(row.status).toBe("WAITING");
     expect(row.offeredSlotStart).toBeNull();
     expect(row.appointmentId).toBeNull();
+  });
+
+  it("erro inesperado ao marcar: a pessoa volta à fila e o horário passa ao próximo (não se perde)", async () => {
+    const { w, day, first, second } = await offered("inesperado");
+    sent.length = 0;
+    const spy = vi.spyOn(appointmentsModule, "createAppointmentManual").mockRejectedValueOnce(new Error("banco fora do ar"));
+    try {
+      await expect(acceptWaitlistOffer(w.tenant.id, { entryId: first.id, contactId: w.contacts[0].id })).rejects.toThrow("banco fora do ar");
+    } finally {
+      spy.mockRestore();
+    }
+    await drainWaitlistTriggers();
+    const back = await entryOf(w, first.id);
+    expect(back.status).toBe("WAITING");
+    expect(back.offeredSlotStart).toBeNull();
+    expect((await entryOf(w, second.id)).status).toBe("OFFERED");
+    expect((await entryOf(w, second.id)).offeredSlotStart?.toISOString()).toBe(at(day, "10:00").toISOString());
+    expect(sent).toHaveLength(1);
+    expect(sent[0].number).toBe(numberOf(w, 1));
   });
 
   it("NÃO sai da fila e passa o horário ao próximo", async () => {

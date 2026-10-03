@@ -55,8 +55,10 @@ const APPOINTMENT_VERB: Record<AppointmentAuditAction, string> = {
 };
 
 /**
- * Registra uma ação de agenda feita pelo painel com um resumo legível: "Criou o agendamento de Maria, Corte, 12/10/2026 às 14:00".
- * Lê o agendamento de novo (já com o contato e o serviço) só para montar o texto; se não achar, grava mesmo assim com o id.
+ * Registra uma ação de agenda feita pelo painel com um resumo legível: "Criou o agendamento de Corte, 12/10/2026 às 14:00".
+ * NÃO grava o nome do cliente (LGPD: esta tabela não aceita correção e guarda por anos). O `targetId` é o agendamento; a tela
+ * do histórico resolve o nome pelo contato vivo na hora de mostrar, e some junto se o contato for anonimizado.
+ * Lê o agendamento de novo (já com o serviço) só para montar o texto; se não achar, grava mesmo assim com o id.
  */
 export async function auditAppointmentAction(params: {
   tenantId: string;
@@ -70,11 +72,10 @@ export async function auditAppointmentAction(params: {
   try {
     const row = await forTenant(params.tenantId).appointment.findFirst({
       where: { id: params.appointmentId },
-      select: { startsAt: true, contact: { select: { name: true } }, service: { select: { name: true } } },
+      select: { startsAt: true, service: { select: { name: true } } },
     });
     if (row) {
-      const who = row.contact?.name ? ` de ${row.contact.name}` : "";
-      detail = `${who}, ${row.service?.name ?? "serviço"}, ${formatDateTimeBr(row.startsAt, params.timezone)}`;
+      detail = ` de ${row.service?.name ?? "serviço"}, ${formatDateTimeBr(row.startsAt, params.timezone)}`;
     }
   } catch {
     // Só o texto fica mais pobre; o registro em si não pode falhar por isso.

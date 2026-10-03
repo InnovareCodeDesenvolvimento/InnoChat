@@ -23,6 +23,32 @@ export function isSecretKey(key: string): boolean {
   return SECRET_KEY.test(key);
 }
 
+/** Campos que guardam endereço (evolutionApiUrl, n8nWebhookBaseUrl, s3Endpoint, publicBaseUrl...). */
+const URL_KEY = /(url|endpoint)$/i;
+
+export function isUrlKey(key: string): boolean {
+  return URL_KEY.test(key);
+}
+
+/**
+ * Endereço sem o que pode carregar segredo: usuário e senha (`https://user:pass@host`) e a query string / âncora
+ * (`?token=...`). Fica protocolo, servidor e caminho. Texto que não é URL perde tudo depois de `?` ou `#` e antes de `@`.
+ */
+export function stripUrlSecrets(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  const text = value.trim();
+  if (!text) return value;
+  try {
+    const url = new URL(text);
+    if (url.protocol === "http:" || url.protocol === "https:") return `${url.protocol}//${url.host}${url.pathname === "/" ? "" : url.pathname}`;
+  } catch {
+    // não é uma URL completa: cai na limpeza por texto
+  }
+  const noQuery = text.split("?")[0]!.split("#")[0]!;
+  const at = noQuery.lastIndexOf("@");
+  return at >= 0 ? noQuery.slice(at + 1) : noQuery;
+}
+
 function shorten(value: unknown): unknown {
   if (value === undefined) return null;
   if (value === null || typeof value === "number" || typeof value === "boolean") return value;
@@ -49,7 +75,9 @@ export function sanitizeChanges(changes: AuditChanges | null | undefined): Audit
   for (const [field, change] of Object.entries(changes)) {
     const safe: AuditChange = isSecretKey(field)
       ? { de: REDACTED, para: REDACTED }
-      : { de: shorten(change?.de), para: shorten(change?.para) };
+      : isUrlKey(field)
+        ? { de: shorten(stripUrlSecrets(change?.de)), para: shorten(stripUrlSecrets(change?.para)) }
+        : { de: shorten(change?.de), para: shorten(change?.para) };
     const cost = Buffer.byteLength(JSON.stringify({ [field]: safe }), "utf8");
     if (size + cost > MAX_CHANGES_BYTES) {
       dropped += 1;

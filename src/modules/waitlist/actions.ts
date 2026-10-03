@@ -18,11 +18,14 @@ import { createWaitlistEntry, listWaitlist, removeWaitlistEntry } from "./servic
  * remove e oferece encaixe; painel suspenso é somente leitura (`assertTenantCanWrite`).
  */
 
-/** "Maria (Corte)" para os resumos do histórico; se não achar, um texto neutro. */
+/**
+ * "um cliente (Corte)" para os resumos do histórico. NÃO leva o nome do cliente (LGPD: o registro de auditoria não aceita
+ * correção); o `targetId` é a entrada da fila e a tela do histórico resolve o nome pelo contato vivo.
+ */
 async function waitlistLabel(tenantId: string, entryId: string): Promise<string> {
   try {
-    const row = await forTenant(tenantId).waitlistEntry.findFirst({ where: { id: entryId }, select: { contact: { select: { name: true } }, service: { select: { name: true } } } });
-    if (row) return `${row.contact?.name ?? "um cliente"} (${row.service?.name ?? "serviço"})`;
+    const row = await forTenant(tenantId).waitlistEntry.findFirst({ where: { id: entryId }, select: { service: { select: { name: true } } } });
+    if (row) return `um cliente (${row.service?.name ?? "serviço"})`;
   } catch {
     // só o texto fica mais pobre
   }

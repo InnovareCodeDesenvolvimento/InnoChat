@@ -1,6 +1,7 @@
 import { getPrisma } from "@/lib/db/prisma";
 import type { Prisma } from "@/lib/db/types";
 import { DEFAULT_PAGE_SIZE, pageInfoOf, resolvePage, type PageInfo, type PageSize } from "@/modules/billing/paging";
+import { computeDisplayName } from "@/modules/contacts/contacts";
 import { actionLabel, fieldLabel, findArea, formatAuditValue, ROLE_LABELS } from "./labels";
 
 /**
@@ -42,6 +43,11 @@ export type AuditItem = {
   tenant: { id: string; name: string; slug: string } | null;
   targetType: string | null;
   summary: string;
+  /**
+   * Nome do cliente final, lido do contato VIVO na hora de montar a tela (o registro não guarda nome: a tabela não aceita
+   * correção e o cliente pode pedir para ser esquecido). Contato anonimizado mostra o que a lista de clientes mostra.
+   */
+  clientName: string | null;
   changes: AuditChangeView[];
   /** Só o Admin recebe (a empresa não precisa saber de onde). */
   ipTruncated: string | null;
@@ -68,7 +74,7 @@ export function parseDayEnd(date: string | undefined): Date | undefined {
 
 type Paging = { page?: number; pageSize?: PageSize };
 
-async function buildWhere(base: Prisma.AuditLogWhereInput, filters: AuditFilters, options: { allowTenantQuery: boolean }): Promise<Prisma.AuditLogWhereInput | null> {
+async function buildWhere(base: Prisma.AuditLogWhereInput, filters: AuditFilters, options: { allowTenantQuery: boolean; memberOfTenantId?: string }): Promise<Prisma.AuditLogWhereInput | null> {
   const and: Prisma.AuditLogWhereInput[] = [base];
 
   const area = findArea(filters.area);
@@ -80,13 +86,19 @@ async function buildWhere(base: Prisma.AuditLogWhereInput, filters: AuditFilters
 
   const actorText = filters.actor?.trim();
   if (actorText) {
+    // No escopo da empresa a busca só enxerga membros DELA (e nunca as linhas da equipe da plataforma): senão o dono
+    // descobriria o nome do admin digitando o e-mail dele, anulando a máscara "Equipe InnoChat".
     const users = await getPrisma().user.findMany({
-      where: { OR: [{ email: { contains: actorText, mode: "insensitive" } }, { name: { contains: actorText, mode: "insensitive" } }] },
+      where: {
+        OR: [{ email: { contains: actorText, mode: "insensitive" } }, { name: { contains: actorText, mode: "insensitive" } }],
+        ...(options.memberOfTenantId ? { memberships: { some: { tenantId: options.memberOfTenantId } } } : {}),
+      },
       select: { id: true },
       take: ACTOR_MATCH_LIMIT,
     });
     if (users.length === 0) return null;
     and.push({ actorUserId: { in: users.map((u) => u.id) } });
+    if (options.memberOfTenantId) and.push({ actorRole: { not: "PLATFORM_ADMIN" } });
   }
 
   const tenantText = options.allowTenantQuery ? filters.tenantQuery?.trim() : undefined;
@@ -113,6 +125,34 @@ function changesOf(raw: unknown, timezone: string): AuditChangeView[] {
   return out;
 }
 
+type ClientTargetRow = { id: string; tenantId: string | null; targetType: string | null; targetId: string | null };
+
+/** Agendamento e lista de espera guardam só o id; o nome do cliente vem do contato atual. Mapa: id da linha de auditoria -> nome. */
+async function resolveClientNames(rows: ClientTargetRow[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  const prisma = getPrisma();
+  const idsOf = (type: string) => rows.filter((r) => r.targetType === type && r.targetId).map((r) => r.targetId as string);
+  const appointmentIds = idsOf("appointment");
+  const entryIds = idsOf("waitlist_entry");
+  const select = { id: true, tenantId: true, contact: { select: { name: true, pushName: true, phoneE164: true } } } as const;
+  const [appointments, entries] = await Promise.all([
+    appointmentIds.length > 0 ? prisma.appointment.findMany({ where: { id: { in: appointmentIds } }, select }) : [],
+    entryIds.length > 0 ? prisma.waitlistEntry.findMany({ where: { id: { in: entryIds } }, select }) : [],
+  ]);
+  const byKey = new Map<string, string>();
+  for (const [type, list] of [["appointment", appointments], ["waitlist_entry", entries]] as const) {
+    for (const item of list) {
+      if (!item.contact) continue;
+      byKey.set(`${type}:${item.tenantId}:${item.id}`, computeDisplayName(item.contact.name, item.contact.pushName, item.contact.phoneE164));
+    }
+  }
+  for (const row of rows) {
+    const name = byKey.get(`${row.targetType}:${row.tenantId}:${row.targetId}`);
+    if (name) out.set(row.id, name);
+  }
+  return out;
+}
+
 async function runQuery(where: Prisma.AuditLogWhereInput | null, paging: Paging, options: { includeIp: boolean; timezone: string; hidePlatformAdminName: boolean }): Promise<AuditPage> {
   const pageSize = paging.pageSize ?? DEFAULT_PAGE_SIZE;
   if (!where) return { items: [], ...pageInfoOf(resolvePage(1, pageSize, 0)) };
@@ -131,6 +171,7 @@ async function runQuery(where: Prisma.AuditLogWhereInput | null, paging: Paging,
   const userIds = Array.from(new Set(rows.map((r) => r.actorUserId).filter((id): id is string => !!id)));
   const users = userIds.length > 0 ? await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true, email: true } }) : [];
   const userById = new Map(users.map((u) => [u.id, u]));
+  const clientNames = await resolveClientNames(rows);
 
   const items: AuditItem[] = rows.map((row) => {
     const user = row.actorUserId ? userById.get(row.actorUserId) : undefined;
@@ -149,7 +190,10 @@ async function runQuery(where: Prisma.AuditLogWhereInput | null, paging: Paging,
       tenant: row.tenant,
       targetType: row.targetType,
       summary: row.summary,
-      changes: changesOf(row.changes, options.timezone),
+      clientName: clientNames.get(row.id) ?? null,
+      // Para a empresa, o texto livre que a equipe da plataforma escreveu (motivo da baixa, observação) fica só no Admin:
+      // o dono continua vendo O QUE a plataforma fez (resumo e rótulo), mas não o que foi anotado por dentro.
+      changes: row.actorRole === "PLATFORM_ADMIN" && options.hidePlatformAdminName ? [] : changesOf(row.changes, options.timezone),
       ipTruncated: options.includeIp ? row.ipTruncated : null,
     };
   });
@@ -164,6 +208,6 @@ export async function listAdminAudit(filters: AuditFilters, paging: Paging): Pro
 
 /** Configurações → Histórico de alterações: SÓ as linhas desta empresa, nunca as da plataforma. */
 export async function listTenantAudit(tenantId: string, timezone: string, filters: AuditFilters, paging: Paging): Promise<AuditPage> {
-  const where = await buildWhere({ tenantId }, filters, { allowTenantQuery: false });
+  const where = await buildWhere({ tenantId }, filters, { allowTenantQuery: false, memberOfTenantId: tenantId });
   return runQuery(where, paging, { includeIp: false, timezone, hidePlatformAdminName: true });
 }

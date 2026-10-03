@@ -292,6 +292,45 @@ describe("retenção", () => {
   });
 });
 
+describe("teto de grupos do navegador (M-3 do Órion)", () => {
+  it("acima do teto, erro NOVO do navegador cai no grupo único que só conta; erro que já tem grupo segue normal", async () => {
+    const { CLIENT_OPEN_GROUPS_CAP, CLIENT_OVERFLOW_FINGERPRINT } = await import("@/modules/error-monitor/capture");
+    const now = new Date("2026-10-02T12:00:00Z");
+    await prisma.errorGroup.createMany({
+      data: Array.from({ length: CLIENT_OPEN_GROUPS_CAP }, (_, i) => ({ fingerprint: `it-fill-${i}-${randomUUID()}`, message: `m${i}`, type: "Error", source: "CLIENT" })),
+    });
+
+    await recordError({ source: "CLIENT", type: "TypeError", message: "mensagem inédita A", stack: "TypeError: A\n    at a (/x.js:1:1)" }, now);
+    __resetCaptureThrottleForTests();
+    await recordError({ source: "CLIENT", type: "TypeError", message: "mensagem inédita B", stack: "TypeError: B\n    at b (/y.js:1:1)" }, new Date(now.getTime() + MIN));
+
+    expect(await prisma.errorGroup.count({ where: { source: "CLIENT", status: "OPEN" } })).toBe(CLIENT_OPEN_GROUPS_CAP + 1);
+    const overflow = await prisma.errorGroup.findUniqueOrThrow({ where: { fingerprint: CLIENT_OVERFLOW_FINGERPRINT } });
+    expect(overflow).toMatchObject({ count: 2, source: "CLIENT", message: "Outros erros do navegador" });
+    expect(await prisma.errorEvent.count({ where: { groupId: overflow.id } })).toBe(0);
+    expect(await prisma.errorGroup.count({ where: { message: { contains: "inédita" } } })).toBe(0);
+
+    // O servidor não é afetado pelo teto do navegador.
+    await recordError({ source: "SERVER", error: asType(boom("falha do servidor")), route: "/api/z" }, now);
+    expect(await prisma.errorGroup.count({ where: { source: "SERVER" } })).toBe(1);
+  });
+
+  it("a manutenção resolve grupo OPEN do navegador parado há 30 dias e não mexe no do servidor", async () => {
+    const now = new Date("2026-10-02T12:00:00Z");
+    const old = new Date(now.getTime() - 31 * 86_400_000);
+    const fresh = new Date(now.getTime() - 5 * 86_400_000);
+    const mk = (source: string, lastSeenAt: Date) => prisma.errorGroup.create({ data: { fingerprint: `it-${randomUUID()}`, message: "m", type: "Error", source, lastSeenAt } });
+    const clientOld = await mk("CLIENT", old);
+    const clientFresh = await mk("CLIENT", fresh);
+    const serverOld = await mk("SERVER", old);
+
+    await purgeOldErrorEvents(now);
+    expect((await prisma.errorGroup.findUniqueOrThrow({ where: { id: clientOld.id } })).status).toBe("RESOLVED");
+    expect((await prisma.errorGroup.findUniqueOrThrow({ where: { id: clientFresh.id } })).status).toBe("OPEN");
+    expect((await prisma.errorGroup.findUniqueOrThrow({ where: { id: serverOld.id } })).status).toBe("OPEN");
+  });
+});
+
 describe("POST /api/client-errors", () => {
   const post = (body: unknown, headers: Record<string, string> = {}) =>
     POST(new Request("http://localhost/api/client-errors", { method: "POST", headers: { "content-type": "application/json", host: "localhost", ...headers }, body: typeof body === "string" ? body : JSON.stringify(body) }));

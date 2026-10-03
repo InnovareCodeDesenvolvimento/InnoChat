@@ -727,8 +727,50 @@ describe("Conferir backup: o que tem que reprovar", () => {
     await expect(verify(file)).rejects.toMatchObject({ code: "VERIFY" });
   });
 
-  it("cópia antiga SEM cifra continua conferível (e a tela fica sabendo que não era cifrada)", async () => {
+  it("com chave já configurada, cópia SEM cifra reprova com mensagem clara (pode ser arquivo trocado)", async () => {
     await setS3Destination();
+    const plain = path.join(dir, "forjado.dump");
+    await fs.writeFile(plain, DUMP_TEXT);
+    const error = await verify(plain, "backup-innochat-2026-10-02-03h00m00s.dump").catch((e) => e);
+    expect(error).toMatchObject({ code: "VERIFY" });
+    expect((error as Error).message).toMatch(/não está cifrada/);
+    expect((error as Error).message).toMatch(/backup novo/);
+    expect((await lastRun()).status).toBe("FAILED");
+  });
+
+  it("restore-db.sh recusa arquivo sem a marca de cifra, a menos que --aceitar-sem-cifra", async () => {
+    const script = await fs.readFile(path.join(process.cwd(), "scripts", "restore-db.sh"), "utf8");
+    expect(script).toContain("--aceitar-sem-cifra");
+    // A recusa vem ANTES de qualquer pg_restore e de qualquer toque no destino.
+    expect(script.indexOf('"$ACEITAR_SEM_CIFRA" != "1"')).toBeGreaterThan(0);
+    expect(script.indexOf('"$ACEITAR_SEM_CIFRA" != "1"')).toBeLessThan(script.indexOf("pg_restore --list"));
+
+    // Execução de verdade, com um pg_restore de mentira no PATH que avisa se foi chamado.
+    const bin = path.join(dir, "fakebin");
+    await fs.mkdir(bin, { recursive: true });
+    const marker = path.join(dir, "pg_restore_chamado");
+    await fs.writeFile(path.join(bin, "pg_restore"), ["#!/bin/sh", `echo x >> "${marker.split(path.sep).join("/")}"`, "exit 0", ""].join("\n"), { mode: 0o755 });
+    const plain = path.join(dir, "claro.dump");
+    await fs.writeFile(plain, DUMP_TEXT);
+    const { execFile } = await import("node:child_process");
+    const runScript = (extra: string[]) =>
+      new Promise<{ code: number; err: string }>((resolve) => {
+        execFile("sh", [path.join(process.cwd(), "scripts", "restore-db.sh"), plain, "postgresql://u@127.0.0.1:1/x", ...extra], { env: { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}` } }, (error, _out, stderr) =>
+          resolve({ code: error ? Number((error as { code?: number }).code ?? 1) : 0, err: stderr }),
+        );
+      });
+    const refused = await runScript([]);
+    expect(refused.code).not.toBe(0);
+    expect(refused.err).toContain("--aceitar-sem-cifra");
+    await expect(fs.access(marker)).rejects.toThrow(); // nem chegou a abrir o dump
+    const accepted = await runScript(["--aceitar-sem-cifra"]);
+    // Sem --confirmar ele para ANTES de restaurar, mas só depois de abrir o dump: prova que a recusa não era dele.
+    expect(accepted.err).not.toContain("não tem a marca de backup cifrado");
+    expect(accepted.err).toContain("falta --confirmar");
+  });
+
+  it("sem chave configurada (instalação antiga), cópia sem cifra continua conferível e a tela fica sabendo que não era cifrada", async () => {
+    await setS3Destination({}, false);
     const plain = path.join(dir, "old.dump");
     await fs.writeFile(plain, DUMP_TEXT);
     const v = await verify(plain, "backup-innochat-2026-09-01-03h00m00s.dump");

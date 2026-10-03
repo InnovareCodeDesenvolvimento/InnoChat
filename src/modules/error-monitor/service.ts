@@ -154,16 +154,20 @@ export async function setErrorGroupStatus(id: string, status: ErrorStatus, admin
 
 /**
  * Retenção (manutenção diária): ocorrências com mais de 30 dias saem (o grupo e o contador ficam), e grupo RESOLVED ou
- * IGNORED sem ocorrência há 90 dias também sai (as ocorrências vão junto, em cascata). Grupo OPEN nunca é apagado:
- * é trabalho pendente do admin.
+ * IGNORED sem ocorrência há 90 dias também sai (as ocorrências vão junto, em cascata). Grupo OPEN do SERVIDOR nunca é apagado:
+ * é trabalho pendente do admin. Grupo OPEN do NAVEGADOR sem ocorrência há 30 dias vira RESOLVED (e sai 90 dias depois).
  */
 export const ERROR_EVENT_RETENTION_DAYS = 30;
 export const ERROR_GROUP_RETENTION_DAYS = 90;
+/** Grupo OPEN do navegador (relato público, ninguém "assume") sem ocorrência há tanto tempo vira RESOLVED sozinho. */
+export const CLIENT_OPEN_GROUP_EXPIRY_DAYS = 30;
 
 export async function purgeOldErrorEvents(now: Date = new Date()): Promise<number> {
   const cutoff = new Date(now.getTime() - ERROR_EVENT_RETENTION_DAYS * 24 * 60 * 60 * 1000);
   const prisma = getPrisma();
   const result = await prisma.errorEvent.deleteMany({ where: { occurredAt: { lt: cutoff } } });
+  const clientCutoff = new Date(now.getTime() - CLIENT_OPEN_GROUP_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
+  await prisma.errorGroup.updateMany({ where: { source: "CLIENT", status: "OPEN", lastSeenAt: { lt: clientCutoff } }, data: { status: "RESOLVED", resolvedAt: now, resolvedByUserId: null } });
   const groupCutoff = new Date(now.getTime() - ERROR_GROUP_RETENTION_DAYS * 24 * 60 * 60 * 1000);
   await prisma.errorGroup.deleteMany({ where: { status: { in: ["RESOLVED", "IGNORED"] }, lastSeenAt: { lt: groupCutoff } } });
   // Linhas de reserva da janela de alerta (1 por 15 min) não precisam durar.

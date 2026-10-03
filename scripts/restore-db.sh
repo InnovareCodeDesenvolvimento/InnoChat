@@ -5,12 +5,14 @@
 # Uso:
 #   ./scripts/restore-db.sh <arquivo.dump> <url-do-banco-destino> --confirmar
 #   ./scripts/restore-db.sh <arquivo.dump.enc> <url-do-banco-destino> --confirmar --chave <arquivo-da-chave>
+#   ./scripts/restore-db.sh <arquivo.dump> <url-do-banco-destino> --confirmar --aceitar-sem-cifra
 #
 # BACKUP CIFRADO (.dump.enc, o que o painel envia ao S3/Drive): precisa de --chave, o arquivo .txt
 # baixado em Admin > Backup (ou qualquer arquivo com a linha CHAVE: ...). O script decifra para uma
 # pasta temporária 0700 (scripts/decrypt-backup.mjs, que exige Node), confere a integridade, restaura e
 # APAGA o temporário no fim, deu certo ou não. Chave errada ou arquivo adulterado param aqui, antes de
-# tocar no destino. Dump em claro (.dump) continua aceito, sem --chave.
+# tocar no destino. Arquivo SEM a marca de cifra (dump em claro, ou backup de antes da cifra) só é aceito com
+# --aceitar-sem-cifra: um dump forjado executaria SQL no destino, então a recusa é o padrão.
 #
 # POR QUE O DESTINO É UM ARGUMENTO, E NÃO A DATABASE_URL DO AMBIENTE:
 # restaurar é destrutivo — apaga o conteúdo atual antes de repor. Se este
@@ -33,10 +35,12 @@ ARQUIVO=""
 DESTINO=""
 CONFIRMACAO=""
 CHAVE=""
+ACEITAR_SEM_CIFRA="0"
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --confirmar) CONFIRMACAO="--confirmar" ;;
+    --aceitar-sem-cifra) ACEITAR_SEM_CIFRA="1" ;;
     --chave)
       shift
       CHAVE="${1:-}"
@@ -95,6 +99,11 @@ if [ "$(head -c 7 "$ARQUIVO" 2>/dev/null || true)" = "INNOBKP" ]; then
     echo "ERRO: não consegui abrir o backup com essa chave. NADA foi alterado no destino." >&2
     exit 1
   fi
+elif [ "$ACEITAR_SEM_CIFRA" != "1" ]; then
+  # Sem a marca INNOBKP o arquivo seria tratado como dump em claro. Um dump forjado executa SQL no destino, então
+  # só segue com pedido explícito (backups de antes da cifra, ou dump que você mesmo gerou).
+  echo "ERRO: este arquivo não tem a marca de backup cifrado do InnoChat. Pode ser um arquivo trocado. Se você tem certeza de que é um dump em claro seu ou um backup antigo (de antes da cifra), rode de novo com --aceitar-sem-cifra. NADA foi alterado no destino." >&2
+  exit 1
 elif [ -n "$CHAVE" ]; then
   echo "[restore] aviso: o arquivo não é cifrado, a chave foi ignorada."
 fi

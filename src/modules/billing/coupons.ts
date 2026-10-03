@@ -73,6 +73,9 @@ function eligibilityOf(c: CouponRow) {
   };
 }
 
+/** Única resposta pública (cadastro e prévia do cadastro) para qualquer cupom que não vale: não existe, venceu, esgotou, outro plano ou ciclo. */
+export const PUBLIC_COUPON_REFUSAL = "Esse cupom não existe ou não vale para este cadastro.";
+
 async function findCouponByCode(db: Pick<Prisma.TransactionClient, "coupon">, rawCode: string): Promise<CouponRow> {
   const code = normalizeCouponCode(rawCode);
   if (!isValidCouponCode(code)) throw new DomainError("COUPON_INVALID", "Esse cupom não existe ou não está mais valendo.");

@@ -178,7 +178,7 @@ describe("ações do painel da empresa", () => {
     expect(rows[2]!.changes).toEqual({ name: { de: "Corte", para: "Corte masculino" } });
   });
 
-  it("agenda: remarcar, concluir e cancelar geram uma linha cada, com nome do cliente e do serviço", async () => {
+  it("agenda: remarcar, concluir e cancelar geram uma linha cada, com o serviço e SEM o nome do cliente gravado", async () => {
     const w = await world("agenda");
     session.ctx = w.ctx;
     const start = new Date(Date.now() - 3 * 3_600_000);
@@ -206,8 +206,18 @@ describe("ações do painel da empresa", () => {
 
     const rows = await logsOf(w.tenant.id);
     expect(rows.map((r) => r.action)).toEqual(["appointment.completed", "appointment.rescheduled", "appointment.canceled"]);
-    expect(rows[0]!.summary).toContain("Júnior Rocha");
     expect(rows[0]!.summary).toContain("Corte");
+    // LGPD (M-2 do Órion): nem o resumo nem o de/para guardam nome ou telefone do cliente; o alvo é o agendamento.
+    for (const row of rows) {
+      expect(JSON.stringify([row.summary, row.changes])).not.toMatch(/Júnior|Rocha/);
+      expect(row.targetType).toBe("appointment");
+    }
+    // A tela resolve o nome pelo contato vivo e, se ele for anonimizado, mostra o que a lista de clientes mostra.
+    const shown = await listTenantAuditAction(w.tenant.slug, { area: "agenda", pageSize: 100 });
+    expect(shown.ok && shown.data.items.every((i) => i.clientName === "Júnior Rocha")).toBe(true);
+    await prisma.contact.update({ where: { id: w.contact.id }, data: { name: null, pushName: null, phoneE164: null, waJid: `anon:${w.contact.id}` } });
+    const anon = await listTenantAuditAction(w.tenant.slug, { area: "agenda", pageSize: 100 });
+    expect(anon.ok && anon.data.items.every((i) => i.clientName === "Cliente sem nome")).toBe(true);
     expect(rows[0]!.changes).toEqual({ status: { de: "SCHEDULED", para: "COMPLETED" } });
     expect(rows[1]!.changes).toHaveProperty("startsAt");
   });
@@ -413,5 +423,86 @@ describe("telas: isolamento, filtros e paginação", () => {
 
     const detail = await listAdminAuditAction({ area: "catalogo", tenantQuery: "Aud adm-b" });
     expect(detail.ok && detail.data.items[0]!.actionLabel).toBe("Serviço alterado");
+  });
+});
+
+
+describe("revisão final do Órion: M-1, M-2, B-3", () => {
+  it("M-1: o dono vê o que a plataforma fez na empresa dele, mas NÃO o texto livre do admin; o Admin vê tudo", async () => {
+    const w = await world("m1");
+    const MOTIVO = `desconto combinado com o Joao ${run}`;
+    await prisma.auditLog.create({
+      data: { tenantId: w.tenant.id, actorUserId: ADMIN, actorRole: "PLATFORM_ADMIN", action: "invoice.marked_paid_manually", targetType: "invoice", summary: "Deu baixa manual numa fatura de R$ 49,90.", changes: { motivo: { de: null, para: MOTIVO } } },
+    });
+    await prisma.auditLog.create({
+      data: { tenantId: w.tenant.id, actorUserId: w.user.id, actorRole: "OWNER", action: "service.updated", summary: "Alterou o serviço Corte.", changes: { name: { de: "Corte", para: "Corte masculino" } } },
+    });
+
+    session.ctx = w.ctx;
+    const owner = await listTenantAuditAction(w.tenant.slug, { pageSize: 100 });
+    expect(owner.ok).toBe(true);
+    if (!owner.ok) return;
+    const platformRow = owner.data.items.find((i) => i.action === "invoice.marked_paid_manually")!;
+    expect(platformRow.summary).toContain("baixa manual"); // o fato continua visível
+    expect(platformRow.actorName).toBe("Equipe InnoChat");
+    expect(platformRow.changes).toEqual([]);
+    expect(JSON.stringify(owner.data)).not.toContain(MOTIVO);
+    // O que o próprio dono mudou continua com o de/para.
+    expect(owner.data.items.find((i) => i.action === "service.updated")!.changes).toHaveLength(1);
+
+    session.ctx = null;
+    session.adminId = ADMIN;
+    const admin = await listAdminAuditAction({ tenantQuery: `Aud m1`, pageSize: 100 });
+    expect(admin.ok && admin.data.items.find((i) => i.action === "invoice.marked_paid_manually")!.changes[0]!.to).toBe(MOTIVO);
+  });
+
+  it("M-2: lista de espera e convite de equipe não gravam nome nem e-mail inteiro; o nome vem do contato vivo", async () => {
+    const w = await world("m2");
+    session.ctx = w.ctx;
+    const { addWaitlistEntryAction } = await import("@/modules/waitlist/actions");
+    const { inviteTeamMemberAction } = await import("@/modules/signup/actions");
+    const day = new Date(Date.now() + 3 * 86_400_000).toISOString().slice(0, 10);
+    const added = await addWaitlistEntryAction(w.tenant.slug, { contactId: w.contact.id, serviceId: w.service.id, date: day });
+    expect(added.ok).toBe(true);
+    const invited = await inviteTeamMemberAction(w.tenant.slug, { email: `anabela.${run}@exemplo.com.br`, role: "STAFF" });
+    expect(invited.ok).toBe(true);
+
+    const rows = await logsOf(w.tenant.id);
+    const wl = rows.find((r) => r.action === "waitlist.added")!;
+    expect(wl.summary).not.toMatch(/Júnior|Rocha/);
+    expect(wl.targetType).toBe("waitlist_entry");
+    const inv = rows.find((r) => r.action === "team.invited")!;
+    expect(inv.summary).toContain("an***@exemplo.com.br");
+    expect(inv.summary).not.toContain("anabela");
+
+    const shown = await listTenantAuditAction(w.tenant.slug, { area: "agenda" });
+    expect(shown.ok && shown.data.items[0]!.clientName).toBe("Júnior Rocha");
+    // Nada do contato ficou em nenhuma linha gravada da empresa.
+    expect(JSON.stringify(rows)).not.toMatch(/Júnior|Rocha/);
+  });
+
+  it("B-3: o filtro por pessoa, na empresa, só enxerga membros dela e nunca a equipe da plataforma", async () => {
+    const a = await world("b3a");
+    const b = await world("b3b");
+    await prisma.auditLog.create({ data: { tenantId: a.tenant.id, actorUserId: ADMIN, actorRole: "PLATFORM_ADMIN", action: "company.suspended", summary: "Suspendeu a empresa" } });
+    await prisma.auditLog.create({ data: { tenantId: a.tenant.id, actorUserId: a.user.id, actorRole: "OWNER", action: "service.updated", summary: "Mudou" } });
+    await prisma.auditLog.create({ data: { tenantId: b.tenant.id, actorUserId: b.user.id, actorRole: "OWNER", action: "service.updated", summary: "Mudou na outra" } });
+
+    session.ctx = a.ctx;
+    // Digitar o e-mail do admin da plataforma não revela as linhas "Equipe InnoChat".
+    const spyAdmin = await listTenantAuditAction(a.tenant.slug, { actor: `admin-aud-${run}` });
+    expect(spyAdmin.ok && spyAdmin.data.totalItems).toBe(0);
+    // Membro de OUTRA empresa também não é achado aqui.
+    const other = await listTenantAuditAction(a.tenant.slug, { actor: `dono-b3b-${run}` });
+    expect(other.ok && other.data.totalItems).toBe(0);
+    // Membro da própria empresa funciona.
+    const own = await listTenantAuditAction(a.tenant.slug, { actor: `dono-b3a-${run}` });
+    expect(own.ok && own.data.items.map((i) => i.action)).toEqual(["service.updated"]);
+
+    // O Admin continua achando a equipe da plataforma pelo filtro.
+    session.ctx = null;
+    session.adminId = ADMIN;
+    const adminSide = await listAdminAuditAction({ actor: `admin-aud-${run}`, tenantQuery: "Aud b3a" });
+    expect(adminSide.ok && adminSide.data.totalItems).toBe(1);
   });
 });

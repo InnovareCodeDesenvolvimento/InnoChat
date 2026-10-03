@@ -784,6 +784,13 @@ export async function verifyLatestBackup(opts: { trigger: "MANUAL" | "SCHEDULED"
       usedFingerprint = fingerprint;
     } else if (remote.name.endsWith(".enc")) {
       throw new BackupError(`A cópia "${remote.name}" deveria estar cifrada, mas não tem a marca do formato. Ela está corrompida ou foi trocada.`, "VERIFY");
+    } else if (config.encryptionKeyEnc) {
+      // Já existe chave: toda cópia nova nasce cifrada. Uma cópia mais recente SEM a marca pode ser um arquivo trocado no destino
+      // (um dump forjado executa SQL no restore), então não passa como "cópia antiga".
+      throw new BackupError(
+        `A cópia "${remote.name}" não está cifrada, mas o backup deste sistema já usa chave. Pode ser um arquivo trocado no destino. Não restaure essa cópia: faça um backup novo agora e confira de novo.`,
+        "VERIFY",
+      );
     }
 
     const tables = countTablesWithData(await exec("pg_restore", ["--list", dump], {}));

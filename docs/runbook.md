@@ -513,7 +513,8 @@ Uma cópia por dia, no horário de Brasília, enviada para **fora do servidor**.
 
 - **A cópia sai cifrada.** Antes de ir ao bucket ou ao Drive, o arquivo é cifrado com AES-256-GCM e vira `backup-innochat-....dump.enc`. Quem pegar o arquivo no destino não lê nada sem a chave. A chave é própria do backup (32 bytes aleatórios, não depende do `AUTH_SECRET`) e é gerada em Admin → Backup, no card **Chave do backup**. Ela aparece inteira **uma única vez**, com Copiar e Baixar arquivo .txt: **guarde fora do servidor** (gerenciador de senhas, pen drive). Depois a tela mostra só a impressão digital (8 caracteres) para conferir se a chave guardada é a mesma. Sem a chave o backup não sai e o automático não liga.
 - **Gerar nova chave** pede confirmação digitada. As cópias já feitas continuam precisando da chave **antiga**: o sistema não guarda a antiga. Só troque se a atual vazou, e guarde as duas.
-- A chave também fica no banco, cifrada com o `AUTH_SECRET`, para o agendador cifrar de madrugada. Se o `AUTH_SECRET` mudar, o sistema não consegue mais ler a chave dele: o backup falha com a causa `KEY` e pede para gerar outra. A cópia que você guardou segue valendo para abrir os arquivos antigos.
+- **Onde a chave mora no servidor.** Ela fica no banco, cifrada com o `AUTH_SECRET`, porque o agendador precisa dela de madrugada para cifrar. Isso protege contra vazamento do bucket ou do Drive, mas não contra quem tenha o servidor, o banco e o `AUTH_SECRET` juntos. **Trocar o `AUTH_SECRET` exige gerar uma chave nova** em Admin → Backup: o sistema não consegue mais ler a antiga, o backup falha com a causa `KEY` e pede para gerar outra. A cópia da chave que o dono guardou fora do servidor continua abrindo todos os arquivos antigos (guarde a antiga junto com a nova).
+- **Cópia sem cifra é recusada.** Depois que existe chave, a Conferência reprova uma cópia mais recente sem a marca de cifra (pode ser um arquivo trocado no destino: um dump forjado executa SQL ao restaurar). A tela diz para não restaurar essa cópia e fazer um backup novo.
 - **Conferir backup** (botão na mesma tela): baixa a cópia mais recente do destino, decifra, valida a verificação de integridade e roda `pg_restore --list` no resultado. Não escreve em banco nenhum e fica no histórico como Conferência. Uma vez por semana o sistema faz isso sozinho (com o automático ligado e pelo menos uma cópia enviada) e avisa por e-mail se reprovar. Conferir prova que o arquivo abre e está inteiro; que ele restaura num banco novo é o que o job do CI prova a cada push.
 - **Fazer backup agora** prova o caminho inteiro antes de confiar no horário. Sem destino completo ele só gera um teste (a cópia é conferida e descartada) e a tela avisa que isso não é backup.
 - Use um bucket **só para backup**. A cópia tem dados de todas as empresas.
@@ -534,7 +535,7 @@ Não existe botão de restaurar, de propósito: um clique que apaga o banco é r
 ./scripts/restore-db.sh backup-innochat-2026-10-02-03h00m12s.dump.enc "postgresql://usuario:senha@host:5432/innochat" --confirmar --chave chave-backup-innochat-2f8a5d0b.txt
 ```
 
-O script decifra para uma pasta temporária (permissão 0700) conferindo a integridade até o último byte, restaura e **apaga o temporário no fim**, dê certo ou não. Se a chave estiver errada ou o arquivo tiver sido alterado ou cortado, ele para **antes** de tocar no destino e diz o motivo (chave errada mostra as duas impressões digitais). Backups antigos, de antes da criptografia (`.dump` sem `.enc`), continuam aceitos e não precisam de `--chave`.
+O script decifra para uma pasta temporária (permissão 0700) conferindo a integridade até o último byte, restaura e **apaga o temporário no fim**, dê certo ou não. Se a chave estiver errada ou o arquivo tiver sido alterado ou cortado, ele para **antes** de tocar no destino e diz o motivo (chave errada mostra as duas impressões digitais). Arquivo **sem a marca de cifra** (um `.dump` em claro, ou backup de antes da criptografia) só é aceito com `--aceitar-sem-cifra`; sem a flag o script recusa e não toca no destino, porque um dump forjado executaria SQL lá. Use a flag só se você tem certeza da origem do arquivo.
 
 Só quer abrir o dump, sem restaurar? `node scripts/decrypt-backup.mjs backup-....dump.enc --chave chave.txt` gera o `.dump` ao lado (e não sobrescreve nada que já exista). A chave nunca vai por argumento (ela apareceria no `ps`): use o arquivo, ou a variável `BACKUP_KEY`.
 
@@ -553,7 +554,7 @@ O script confere o dump **antes** de tocar no destino, exige o destino como argu
 DATABASE_URL="postgresql://..." ./scripts/backup-db.sh ./backups
 ```
 
-Para sair cifrado, no mesmo formato do painel, aponte o arquivo da chave: `BACKUP_KEY_FILE=chave.txt DATABASE_URL="..." ./scripts/backup-db.sh ./backups`. O dump em claro é apagado e sobra só o `.dump.enc`. Sem `BACKUP_KEY_FILE` o dump fica em claro: guarde-o em lugar de confiança.
+Para sair cifrado, no mesmo formato do painel, aponte o arquivo da chave: `BACKUP_KEY_FILE=chave.txt DATABASE_URL="..." ./scripts/backup-db.sh ./backups`. O dump em claro é apagado e sobra só o `.dump.enc`. Sem `BACKUP_KEY_FILE` o dump fica em claro: guarde-o em lugar de confiança (e, para restaurá-lo, use `--aceitar-sem-cifra`).
 
 A pasta `backups/` e os arquivos `*.dump`, `*.dump.enc` e `chave-backup-*.txt` já são ignorados pelo Git.
 

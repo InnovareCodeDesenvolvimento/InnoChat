@@ -21,6 +21,15 @@ import { scheduleErrorAlertFlush } from "./alert";
 const SAME_FINGERPRINT_MIN_GAP_MS = 2_000;
 export const EVENTS_PER_GROUP = 50;
 
+/**
+ * Teto de grupos OPEN vindos do navegador. A rota é pública: quem varia a mensagem a cada envio cria um grupo novo por
+ * relato. Acima do teto, erro NOVO do navegador entra num grupo único (fingerprint fixo) que só conta; erro que já tem
+ * grupo segue normal.
+ */
+export const CLIENT_OPEN_GROUPS_CAP = 300;
+export const CLIENT_OVERFLOW_FINGERPRINT = "client-overflow";
+const CLIENT_OVERFLOW_MESSAGE = "Outros erros do navegador";
+
 type Source = "SERVER" | "CLIENT";
 export const BUDGETS: Record<Source, { maxInFlight: number; maxPerMinute: number }> = {
   SERVER: { maxInFlight: 5, maxPerMinute: 120 },
@@ -77,18 +86,19 @@ export async function recordError(input: RawErrorInput, now: Date = new Date()):
     const prepared = prepareError({ ...input, version: input.version ?? APP_VERSION });
     if (!allowedByThrottle(source, prepared.fingerprint, now.getTime())) return { recorded: false, reason: "THROTTLED" };
 
+    const overflow = prepared.source === "CLIENT" && (await clientGroupsAreFull(prepared.fingerprint));
     const group = await upsertErrorGroup({
-      fingerprint: prepared.fingerprint,
-      message: prepared.message,
-      type: prepared.type,
+      fingerprint: overflow ? CLIENT_OVERFLOW_FINGERPRINT : prepared.fingerprint,
+      message: overflow ? CLIENT_OVERFLOW_MESSAGE : prepared.message,
+      type: overflow ? "ClientOverflow" : prepared.type,
       source: prepared.source,
-      route: prepared.route,
+      route: overflow ? null : prepared.route,
       version: prepared.version,
       now,
     });
 
-    // IGNORED só conta: não guarda ocorrência.
-    if (group.status !== "IGNORED") {
+    // IGNORED só conta: não guarda ocorrência. O grupo "Outros erros do navegador" também só conta.
+    if (group.status !== "IGNORED" && !overflow) {
       const prisma = getPrisma();
       await prisma.errorEvent.create({
         data: {
@@ -110,6 +120,15 @@ export async function recordError(input: RawErrorInput, now: Date = new Date()):
   } finally {
     state[source].inFlight -= 1;
   }
+}
+
+/** Verdadeiro quando este erro do navegador é NOVO e já existem `CLIENT_OPEN_GROUPS_CAP` grupos OPEN do navegador. */
+async function clientGroupsAreFull(fingerprint: string): Promise<boolean> {
+  const prisma = getPrisma();
+  const existing = await prisma.errorGroup.findUnique({ where: { fingerprint }, select: { id: true } });
+  if (existing) return false;
+  const open = await prisma.errorGroup.count({ where: { source: "CLIENT", status: "OPEN", fingerprint: { not: CLIENT_OVERFLOW_FINGERPRINT } } });
+  return open >= CLIENT_OPEN_GROUPS_CAP;
 }
 
 async function trimGroupEvents(groupId: string): Promise<void> {

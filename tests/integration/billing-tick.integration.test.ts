@@ -32,8 +32,10 @@ const cleanupTenantIds: string[] = [];
  * Hoje às 15:00 UTC: dentro da janela de e-mail da régua (08h às 20h) no fuso das empresas de teste (UTC).
  * Os avisos só saem dentro da janela, então o teste que confere e-mail não pode depender da hora em que roda.
  */
+// Meio-dia de Brasília do dia corrente EM BRASÍLIA. Usar a data UTC fazia, depois das 21h, o "agora" do teste pular
+// para o meio-dia do dia seguinte, e tenants de testes anteriores do arquivo mudavam de situação junto.
 function windowNow(): Date {
-  const now = new Date();
+  const now = new Date(Date.now() - 3 * 60 * 60 * 1000);
   now.setUTCHours(15, 0, 0, 0);
   return now;
 }

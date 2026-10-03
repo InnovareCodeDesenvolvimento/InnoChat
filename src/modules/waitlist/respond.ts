@@ -101,6 +101,11 @@ export async function acceptWaitlistOffer(
       // Não pode agendar mais: sai da fila e o horário segue para o próximo.
       await db.waitlistEntry.updateMany({ where: { id: entry.id, status: "WAITING" }, data: { status: "CANCELED" } });
       passToNext(tenantId, entry, deps);
+    } else if (!(error instanceof DomainError && (error.code === "SLOT_TAKEN" || error.code === "RULE_VIOLATION"))) {
+      // Erro inesperado (banco fora, tempo esgotado): a pessoa volta à fila, mas o horário NÃO pode ficar parado sem oferta.
+      // O próximo da fila (nunca a mesma pessoa) recebe; se o horário não estiver mais livre, a busca simplesmente não acha nada.
+      logger.error("waitlist.accept_unexpected_error", { tenantId, entryId: entry.id, errorName: error instanceof Error ? error.name : "unknown" });
+      passToNext(tenantId, entry, deps);
     }
     throw error;
   }

@@ -17,6 +17,7 @@ import {
   listCoupons,
   listCouponRedemptions,
   previewCoupon,
+  PUBLIC_COUPON_REFUSAL,
   setCouponActive,
   updateCoupon,
   type CouponInput,
@@ -51,9 +52,6 @@ function assertRateLimit(scope: string, key: string, limit: number, windowMs: nu
 
 const PREVIEW_LIMIT = 20;
 const PREVIEW_WINDOW_MS = 10 * 60 * 1000;
-
-/** Única resposta pública para qualquer cupom que não vale (não existe, venceu, esgotou, outro plano ou ciclo). */
-const PUBLIC_COUPON_REFUSAL = "Esse cupom não existe ou não vale para este cadastro.";
 
 /**
  * Validação ao vivo do cupom no cadastro: vale para o plano padrão do cadastro e o ciclo escolhido? Quanto fica a 1ª fatura?

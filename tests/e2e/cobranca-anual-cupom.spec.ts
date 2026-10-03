@@ -219,7 +219,7 @@ test.describe.serial("Assinatura: trocar o ciclo e aplicar cupom", () => {
     await loginAndWaitForPanel(page, ownerEmail, PASSWORD, slug);
     await page.goto(`/${slug}/assinatura`);
     const card = page.getByTestId("assinatura-ciclo");
-    await expect(card.getByText("Hoje a cobrança é mensal.")).toBeVisible();
+    await expect(card.getByText("Hoje a cobrança é mensal.").first()).toBeVisible();
     await expect(card.getByTestId("proxima-fatura")).toContainText(/R\$\s?100,00/);
     await expect(card.getByRole("button", { name: "Salvar cobrança" })).toBeDisabled();
 

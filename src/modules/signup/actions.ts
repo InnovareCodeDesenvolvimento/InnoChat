@@ -11,6 +11,7 @@ import { assertCurrentTermsVersion, TERMS_VERSION } from "@/lib/legal";
 import { getGoogleSignUpPrefill, completeGoogleSignUp } from "@/modules/google-auth/signup";
 import { signGoogleToken, verifyGoogleToken } from "@/modules/google-auth/tokens";
 import { assertGoogleSignupCookie, clearGoogleSignupCookie } from "@/modules/google-auth/signup-cookie";
+import { maskEmail } from "@/modules/billing/dunning/outbox";
 import { memberActor, recordAudit } from "@/modules/audit/record";
 import { readMetaClientContext } from "@/modules/meta/request-context";
 import { trackCompleteRegistration } from "@/modules/meta/tracking";
@@ -175,7 +176,7 @@ export async function inviteTeamMemberAction(tenantSlug: string, input: unknown)
       actor: memberActor(ctx),
       action: "team.invited",
       targetType: "membership",
-      summary: `Convidou ${data.email} com o papel ${data.role === "OWNER" ? "Dono" : "Equipe"}.`,
+      summary: `Convidou ${maskEmail(data.email)} com o papel ${data.role === "OWNER" ? "Dono" : "Equipe"}.`,
       changes: { papel: { de: null, para: data.role } },
     });
     return { invited: true };

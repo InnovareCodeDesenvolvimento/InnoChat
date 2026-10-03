@@ -85,7 +85,7 @@ function formatPhoneForDisplayName(phoneE164: string): string {
   return `+${digits}`;
 }
 
-function computeDisplayName(name: string | null, pushName: string | null, phoneE164: string | null): string {
+export function computeDisplayName(name: string | null, pushName: string | null, phoneE164: string | null): string {
   if (name) return name;
   if (pushName) return pushName;
   if (phoneE164) return formatPhoneForDisplayName(phoneE164);

@@ -10,7 +10,7 @@ import { getPublicBaseUrl } from "@/lib/public-url";
 import type { MembershipRole } from "@/lib/db/types";
 import { slugify, validateSlug, type SlugValidationError } from "@/core/signup/slug";
 import { effectiveCycle, planOffersAnnual, priceInvoice, validateCpfCnpj, type BillingCycle } from "@/core/billing";
-import { adoptCouponInTx, consumeCouponCycleInTx } from "@/modules/billing/coupons";
+import { adoptCouponInTx, consumeCouponCycleInTx, PUBLIC_COUPON_REFUSAL } from "@/modules/billing/coupons";
 import { normalizeBrPhoneToE164 } from "@/core/contact/br-phone";
 import {
   billingUrlFor,
@@ -228,7 +228,13 @@ async function createAccount(input: CreateAccountInput, gateway?: MercadoPagoGat
     await tx.membership.create({ data: { userId: user.id, tenantId: tenant.id, role: "OWNER" } });
 
     // Cupom: o resgate (único por empresa) e o uso atômico acontecem aqui dentro; cupom inválido derruba o cadastro inteiro.
-    const adopted = input.couponCode ? await adoptCouponInTx(tx, { code: input.couponCode, tenantId: tenant.id, planId: plan.id, cycle, now }) : null;
+    // Rota pública: qualquer recusa vira a MESMA resposta (COUPON_INVALID), senão o cadastro serviria para minerar códigos.
+    const adopted = input.couponCode
+      ? await adoptCouponInTx(tx, { code: input.couponCode, tenantId: tenant.id, planId: plan.id, cycle, now }).catch((error: unknown) => {
+          if (error instanceof DomainError && error.code.startsWith("COUPON_")) throw new DomainError("COUPON_INVALID", PUBLIC_COUPON_REFUSAL);
+          throw error;
+        })
+      : null;
 
     const subscription = await tx.subscription.create({
       data: {

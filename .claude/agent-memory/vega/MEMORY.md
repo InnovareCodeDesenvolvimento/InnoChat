@@ -69,3 +69,4 @@
 - [Server Action que troca cookie de sessão desloga a si mesma](server_action_cookie_rerender_old_session.md) — confirmar 2FA é rota POST; guards exigem TOTP; admin já é negado no Google.
 - [Registro de auditoria (Melhoria 4)](audit_log_design.md) — recordAudit pós-sucesso e nunca lança, redação por nome de campo, escopo por empresa, retenção pendente.
 - [Lista de espera: janela de silêncio 08h-21h](waitlist_quiet_window.md) — marca em ProviderEvent, tick recupera, como os testes fixam o relógio.
+- [Correções finais do Órion (M-1/2/3, B-2/3/4/7/9)](audit_orion_final_fixes.md) — auditoria sem nome de cliente, texto do admin oculto, teto de erros do navegador, backup sem cifra recusado; armadilhas de heredoc e hora.

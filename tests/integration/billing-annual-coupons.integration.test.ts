@@ -482,6 +482,29 @@ describe("cadastro com plano anual e cupom", () => {
     expect(await prisma.user.count({ where: { email: `${slug}@example.com` } })).toBe(0);
   });
 
+  it("no cadastro, QUALQUER recusa de cupom vira COUPON_INVALID com a mesma mensagem (não serve para minerar códigos)", async () => {
+    // Usa o plano padrão que os testes anteriores deixaram ativo; `other` é inativo e nunca vira o padrão.
+    const other = await makePlan();
+    const expired = await makeCoupon({ validFrom: new Date("2020-01-01T00:00:00Z"), validUntil: new Date("2020-02-01T00:00:00Z") });
+    const future = await makeCoupon({ validFrom: addDays(new Date(), 10) });
+    const onlyOther = await makeCoupon({ planIds: [other.id] });
+    const annualOnly = await makeCoupon({ appliesToCycle: "ANNUAL" });
+    const exhausted = await makeCoupon({ maxRedemptions: 1 });
+    await prisma.coupon.update({ where: { id: exhausted.id }, data: { redemptionsCount: 1 } });
+    const off = await makeCoupon({ active: false });
+
+    const messages = new Set<string>();
+    for (const code of [expired.code, future.code, onlyOther.code, annualOnly.code, exhausted.code, off.code, "NAO-EXISTE-QQQ"]) {
+      const slug = uniq("it-anual-signup-refusal");
+      const { gateway } = createMockMercadoPagoGateway();
+      const error = await signUp({ companyName: "Cupom Ruim", slug, segment: null, ownerName: "Dona", email: `${slug}@example.com`, password: "senha-forte-123", document: "529.982.247-25", termsVersion: "v1", couponCode: code }, gateway).catch((e) => e);
+      expect(error).toMatchObject({ code: "COUPON_INVALID" });
+      messages.add((error as Error).message);
+      expect(await prisma.tenant.count({ where: { slug } })).toBe(0);
+    }
+    expect(messages.size).toBe(1);
+  });
+
   it("ciclo anual num plano sem preço anual é recusado", async () => {
     await makePlan({ sortOrder: -5002, active: true, annualPriceCents: null });
     const slug = uniq("it-anual-signup-noannual");
