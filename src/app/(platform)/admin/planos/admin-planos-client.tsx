@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Check, MessageCircle, Pencil, Sparkles, Users2, X } from "lucide-react";
+import { AlertTriangle, Check, MessageCircle, Pencil, Sparkles, Users2, X } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { navIconFor } from "@/components/shell/nav-items";
 import { Badge } from "@/components/ui/badge";
@@ -146,6 +146,8 @@ export function AdminPlanosClient({
   const [form, setForm] = useState<FormState | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [suggestion, setSuggestion] = useState<SuggestedPrice[] | null>(null);
+  /** Aviso de preço de período abaixo de 50% das mensalidades: o servidor recusa até o admin confirmar neste diálogo. */
+  const [lowPriceWarning, setLowPriceWarning] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   function openEdit(plan: PlanRow) {
@@ -211,23 +213,34 @@ export function AdminPlanosClient({
       periodCents[cycle] = value;
     }
 
+    submitPlan(editing, form, priceCents, periodCents, false);
+  }
+
+  function submitPlan(plan: PlanRow, values: FormState, priceCents: number, periodCents: Record<LongCycle, number | null>, confirmLowPrice: boolean) {
     startTransition(async () => {
-      const result = await updatePlanAction(editing.id, {
-        name: form.name.trim(),
+      const result = await updatePlanAction(plan.id, {
+        name: values.name.trim(),
         priceCents,
         quarterlyPriceCents: periodCents.QUARTERLY,
         semiannualPriceCents: periodCents.SEMIANNUAL,
         annualPriceCents: periodCents.ANNUAL,
-        maxWhatsappNumbers: Number(form.maxWhatsappNumbers) || 1,
-        maxProfessionals: form.maxProfessionalsUnlimited ? null : Number(form.maxProfessionals) || 1,
-        active: form.active,
-        sortOrder: Number(form.sortOrder) || 0,
+        maxWhatsappNumbers: Number(values.maxWhatsappNumbers) || 1,
+        maxProfessionals: values.maxProfessionalsUnlimited ? null : Number(values.maxProfessionals) || 1,
+        active: values.active,
+        sortOrder: Number(values.sortOrder) || 0,
+        ...(confirmLowPrice ? { confirmLowPrice: true } : {}),
       });
 
       if (!result.ok) {
+        if (result.error.code === "LOW_CYCLE_PRICE_UNCONFIRMED") {
+          setLowPriceWarning(result.error.message);
+          return;
+        }
+        setLowPriceWarning(null);
         setFormError(result.error.message);
         return;
       }
+      setLowPriceWarning(null);
 
       const saved = result.data as PlanRow;
       setPlans((prev) => prev.map((p) => (p.id === saved.id ? saved : p)).sort((a, b) => a.sortOrder - b.sortOrder));
@@ -310,6 +323,40 @@ export function AdminPlanosClient({
           </div>
         ))}
       </div>
+
+      <Dialog open={lowPriceWarning !== null} onOpenChange={(open) => !open && setLowPriceWarning(null)}>
+        <DialogContent>
+          <DialogHeader icon={AlertTriangle} tone="warning">
+            <DialogTitle>Esse preço está muito baixo</DialogTitle>
+            <DialogDescription data-testid="aviso-preco-baixo">{lowPriceWarning}</DialogDescription>
+          </DialogHeader>
+          <p className="text-sm text-text-secondary">Se foi engano (por exemplo, 4,90 no lugar de 490,00), volte e corrija. Se é de propósito, confirme.</p>
+          <DialogFooter>
+            <Button icon={X} type="button" variant="secondary" onClick={() => setLowPriceWarning(null)}>
+              Voltar e corrigir
+            </Button>
+            <Button
+              icon={Check}
+              type="button"
+              isLoading={isPending}
+              loadingText="Salvando…"
+              data-testid="confirmar-preco-baixo"
+              onClick={() => {
+                if (!editing || !form) return;
+                const priceCents = toCents(form.priceReais);
+                const periodCents: Record<LongCycle, number | null> = { QUARTERLY: null, SEMIANNUAL: null, ANNUAL: null };
+                for (const cycle of LONG_CYCLES) {
+                  const text = form.periodReais[cycle].trim();
+                  periodCents[cycle] = text === "" ? null : toCents(text);
+                }
+                submitPlan(editing, form, priceCents, periodCents, true);
+              }}
+            >
+              Salvar mesmo assim
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!editing} onOpenChange={(open) => !open && closeEdit()}>
         <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto">

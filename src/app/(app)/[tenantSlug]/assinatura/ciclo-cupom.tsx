@@ -9,7 +9,7 @@ import { Alert } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { Field } from "@/components/ui/field";
 import { useToast } from "@/components/ui/toast";
-import { couponSummary, cycleLabel, cycleTitle, invoiceCoverageSuffix, type BillingCycle, type CouponDuration, type CouponKind, type CycleOptionData } from "@/core/billing";
+import { couponSummary, CYCLE_INFO, cycleLabel, cycleTitle, invoiceCoverageSuffix, type BillingCycle, type CouponDuration, type CouponKind, type CycleOptionData } from "@/core/billing";
 import { CycleSelector } from "@/components/billing/cycle-selector";
 import { applyMyCouponAction, changeBillingCycleAction, previewMyCouponAction } from "@/modules/billing/coupon-actions";
 import type { CouponPreview } from "@/modules/billing/coupons";
@@ -19,6 +19,8 @@ export type CycleSnapshot = {
   billingCycle: BillingCycle;
   /** Ciclos que o plano atual oferece, com valor do período, equivalente por mês e economia. O mensal vem sempre. */
   options: CycleOptionData[];
+  /** Ciclo guardado na assinatura que o plano não oferece mais (a fatura sai mensal); `null` = tudo certo. */
+  fallbackFrom: BillingCycle | null;
   /** O que a próxima fatura vai cobrar (já com ciclo e cupom). */
   next: { grossCents: number; discountCents: number; netCents: number; cycle: BillingCycle };
   coupon: {
@@ -87,6 +89,13 @@ export function CicloCard({ tenantSlug, cycle, isOwner }: { tenantSlug: string; 
       <CardContent className="flex flex-col gap-4">
         {offersChoice ? (
           <CycleSelector options={cycle.options} value={choice} onChange={setChoice} name="ciclo" legend={`Pagar a cada (hoje: ${cycleTitle(cycle.billingCycle).toLowerCase()})`} disabled={!isOwner || isPending} />
+        ) : null}
+
+        {cycle.fallbackFrom ? (
+          <Alert variant="warning" data-testid="ciclo-caiu-no-mensal">
+            Seu plano não tem mais pagamento a cada {CYCLE_INFO[cycle.fallbackFrom].every}; a próxima fatura sai mensal.
+            {offersChoice ? " Se preferir outro ciclo, escolha abaixo." : ""}
+          </Alert>
         ) : null}
 
         <NextInvoiceLine next={cycle.next} />

@@ -194,6 +194,15 @@ export type SuggestedPrice = {
   rule: string;
 };
 
+/** Abaixo desta fração de (mensal x meses) o preço do período pede confirmação explícita do admin (quase sempre é erro de digitação). */
+export const LOW_CYCLE_PRICE_RATIO = 0.5;
+
+/** `true` quando o preço do período é menos da metade das mensalidades do período. Sem mensal definido não há base: `false`. */
+export function isLowCyclePrice(monthlyCents: number, cycle: BillingCycle, periodCents: number): boolean {
+  if (!(monthlyCents > 0)) return false;
+  return periodCents < monthlyCents * cycleMonths(cycle) * LOW_CYCLE_PRICE_RATIO;
+}
+
 /**
  * Sugestão de preços: trimestral com 5% de desconto, semestral com 10% e anual com 2 meses grátis, arredondados
  * para reais inteiros. Nunca passa de mensal x meses nem cai abaixo do mínimo. Mensal inválido devolve `[]`.

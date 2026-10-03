@@ -90,6 +90,33 @@ test.describe.serial("Admin → Planos: preços por ciclo", () => {
     expect((await prisma.plan.findUnique({ where: { code: PLAN_CODE } }))?.semiannualPriceCents).toBe(null);
   });
 
+  test("preço de período abaixo de 50% das mensalidades pede confirmação antes de salvar (S-2)", async ({ page }) => {
+    await page.goto("/admin/planos");
+    const card = main(page).locator("div.group").filter({ hasText: PLAN_NAME });
+    await card.getByRole("button", { name: "Editar plano" }).click();
+    const dialog = page.getByRole("dialog", { name: "Editar plano" });
+    // Mensal R$ 59,00 x 3 = R$ 177,00; metade = R$ 88,50. R$ 16,00 é erro de digitação típico.
+    await dialog.getByLabel(/^Trimestral/).fill("16");
+    await dialog.getByRole("button", { name: "Salvar" }).click();
+    const warning = page.getByTestId("aviso-preco-baixo");
+    await expect(warning).toContainText(/abaixo de metade de 3 mensalidades/);
+    expect((await prisma.plan.findUnique({ where: { code: PLAN_CODE } }))?.quarterlyPriceCents).toBe(16000);
+
+    // Voltar e corrigir não grava nada e deixa o formulário aberto.
+    await page.getByRole("button", { name: "Voltar e corrigir" }).click();
+    await expect(warning).toBeHidden();
+    await expect(dialog).toBeVisible();
+    expect((await prisma.plan.findUnique({ where: { code: PLAN_CODE } }))?.quarterlyPriceCents).toBe(16000);
+
+    // Confirmando de propósito, salva.
+    await dialog.getByRole("button", { name: "Salvar" }).click();
+    await expect(warning).toBeVisible();
+    await page.getByTestId("confirmar-preco-baixo").click();
+    await expect(page.getByTestId("aviso-preco-baixo")).toBeHidden();
+    await expect.poll(async () => (await prisma.plan.findUnique({ where: { code: PLAN_CODE } }))?.quarterlyPriceCents).toBe(1600);
+    await expect(card.getByTestId("plano-ciclo-QUARTERLY")).toContainText(/R\$\s?16,00/);
+  });
+
   test("layout do diálogo sem rolagem horizontal em 1440 e 390", async ({ page }) => {
     for (const [width, height] of [[1440, 900], [390, 844]] as const) {
       await page.setViewportSize({ width, height });

@@ -22,6 +22,10 @@ export type PlanListItem = {
   code: string;
   name: string;
   priceCents: number;
+  /** Preço do período inteiro por ciclo (`null` = o plano não oferece): a tela avisa antes de trocar para plano sem o ciclo atual. */
+  quarterlyPriceCents: number | null;
+  semiannualPriceCents: number | null;
+  annualPriceCents: number | null;
   maxWhatsappNumbers: number;
   maxProfessionals: number | null;
   sortOrder: number;
@@ -36,6 +40,9 @@ export async function listActivePlansAction(tenantSlug: string): Promise<Result<
       code: p.code,
       name: p.name,
       priceCents: p.priceCents,
+      quarterlyPriceCents: p.quarterlyPriceCents,
+      semiannualPriceCents: p.semiannualPriceCents,
+      annualPriceCents: p.annualPriceCents,
       maxWhatsappNumbers: p.maxWhatsappNumbers,
       maxProfessionals: p.maxProfessionals,
       sortOrder: p.sortOrder,

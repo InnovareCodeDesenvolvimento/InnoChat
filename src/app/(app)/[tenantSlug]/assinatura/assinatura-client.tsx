@@ -16,7 +16,7 @@ import { navIconFor } from "@/components/shell/nav-items";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/components/lib/cn";
-import { cycleLabel, invoiceCoverageSuffix, type BillingCycle } from "@/core/billing";
+import { cycleLabel, cycleMonths, invoiceCoverageSuffix, planOffersCycle, type BillingCycle } from "@/core/billing";
 import { formatDateTimeLabel } from "@/components/lib/format-date";
 import { BillingContactCard } from "@/components/billing/billing-contact-card";
 import type { BillingContactData, SaveBillingContact } from "@/components/billing/billing-contact-types";
@@ -353,6 +353,8 @@ function PlanosCard({
   const [blockedDetails, setBlockedDetails] = useState<DowngradeBlockedDetails | null>(null);
 
   const canChangePlan = isOwner && snapshot.status !== "CANCELED";
+  // O plano novo precisa ter o ciclo que a empresa paga hoje; senão a próxima fatura sairia mensal sem ela escolher isso.
+  const missingCycle = pendingPlanTarget && !planOffersCycle(pendingPlanTarget, snapshot.cycle.billingCycle) ? snapshot.cycle.billingCycle : null;
 
   function requestChange(plan: PlanListItem) {
     setPendingPlanTarget(plan);
@@ -490,11 +492,17 @@ function PlanosCard({
                 : `Trocar para o plano "${pendingPlanTarget?.name}"? Se o uso atual couber, a troca vale a partir do próximo ciclo.`}
             </DialogDescription>
           </DialogHeader>
+          {missingCycle && pendingPlanTarget ? (
+            <Alert variant="warning" data-testid="troca-sem-ciclo">
+              O plano {pendingPlanTarget.name} não tem pagamento a cada {cycleMonths(missingCycle)} meses. Escolha outro ciclo antes de trocar de plano
+              (o mensal sempre existe), no cartão Cobrança aqui em cima.
+            </Alert>
+          ) : null}
           <DialogFooter>
             <Button icon={X} type="button" variant="secondary" onClick={() => setPendingPlanTarget(null)}>
               Cancelar
             </Button>
-            <Button icon={Check} type="button" onClick={confirmChange} isLoading={isPending} loadingText="Confirmando…">
+            <Button icon={Check} type="button" onClick={confirmChange} isLoading={isPending} loadingText="Confirmando…" disabled={missingCycle !== null}>
               Confirmar
             </Button>
           </DialogFooter>

@@ -1,12 +1,14 @@
 import crypto from "node:crypto";
+import { addMonths } from "date-fns";
 import type { Prisma } from "@/lib/db/types";
 import { getPrisma } from "@/lib/db/prisma";
 import { forTenant } from "@/lib/db/tenant-client";
+import { lockPlanRow, lockSubscriptionRow } from "@/lib/db/billing-row-locks";
 import { DomainError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
 import { sendMail, SmtpNotConfiguredError, loadEmailContext, invoiceGeneratedEmail, subscriptionSuspendedEmail, type SendMailInput, type SendMailResult } from "@/lib/email";
 import { getPublicBaseUrl } from "@/lib/public-url";
-import { CANCEL_AFTER_SUSPENDED_TRIAL_DAYS, computeTrialEndsAt, asBillingCycle, cycleLabel, cycleMonths, effectiveStatus, validateCpfCnpj, type BillingCycle, type SubscriptionStatus } from "@/core/billing";
+import { CANCEL_AFTER_SUSPENDED_TRIAL_DAYS, computeTrialEndsAt, asBillingCycle, cycleLabel, cycleMonths, effectiveCycle, effectiveStatus, planOffersCycle, validateCpfCnpj, type BillingCycle, type SubscriptionStatus } from "@/core/billing";
 import { formatCentsBRL, formatDateBR } from "./format";
 import { consumeCouponCycleInTx, type InvoiceChargeSnapshot } from "./coupons";
 import { recordBillingEvent } from "./dunning/events";
@@ -491,8 +493,8 @@ export async function applyInvoicePayment(
     const wasSuspended = effectiveStatus(subscription, paidAt) === "SUSPENDED" || subscription.status === "SUSPENDED" || wasCanceled;
     const anchor = wasSuspended ? paidAt : subscription.currentPeriodEnd;
     // Fatura mensal cobre 1 mês, trimestral 3, semestral 6, anual 12 (vale o ciclo da FATURA paga, não o da assinatura hoje).
-    const nextPeriodEnd = new Date(anchor);
-    nextPeriodEnd.setMonth(nextPeriodEnd.getMonth() + cycleMonths(asBillingCycle(invoice.cycle)));
+    // `addMonths` (date-fns) prende o dia no fim do mês (31/08 + 6 = 28/02); `setMonth` estourava para março.
+    const nextPeriodEnd = addMonths(anchor, cycleMonths(asBillingCycle(invoice.cycle)));
 
     await tx.subscription.update({
       where: { id: subscription.id },
@@ -597,58 +599,77 @@ export type ChangePlanResult = { appliedImmediately: boolean };
 export async function changePlan(tenantId: string, newPlanId: string): Promise<ChangePlanResult> {
   const prisma = getPrisma();
 
-  const [subscription, newPlan, tenant] = await Promise.all([
-    prisma.subscription.findUnique({ where: { tenantId }, include: { plan: true } }),
-    prisma.plan.findUnique({ where: { id: newPlanId } }),
-    prisma.tenant.findUnique({ where: { id: tenantId }, select: { maxProfessionalsOverride: true, maxWhatsappNumbersOverride: true } }),
-  ]);
+  // Trava a assinatura e o plano de destino numa transação: o Admin pode estar tirando o preço de um ciclo
+  // deste plano agora (`updatePlan`, que trava a mesma linha), e a troca de ciclo da empresa também trava a
+  // assinatura. Sem isso, a empresa podia cair num ciclo sem preço.
+  const outcome = await prisma.$transaction(async (tx) => {
+    await lockSubscriptionRow(tx, tenantId);
+    await lockPlanRow(tx, newPlanId);
+    const [subscription, newPlan, tenant] = await Promise.all([
+      tx.subscription.findUnique({ where: { tenantId }, include: { plan: true } }),
+      tx.plan.findUnique({ where: { id: newPlanId } }),
+      tx.tenant.findUnique({ where: { id: tenantId }, select: { maxProfessionalsOverride: true, maxWhatsappNumbersOverride: true } }),
+    ]);
 
-  if (!subscription) throw new DomainError("NOT_FOUND", "Assinatura não encontrada para esta empresa.");
-  if (!newPlan || !newPlan.active) throw new DomainError("NOT_FOUND", "Plano não encontrado ou não disponível.");
-  if (!tenant) throw new DomainError("NOT_FOUND", "Empresa não encontrada.");
-  if (subscription.status === "CANCELED") {
-    throw new DomainError("INVALID_STATE", "Reative a assinatura antes de trocar de plano.");
-  }
-  if (newPlan.id === subscription.planId && !subscription.pendingPlanId) {
-    throw new DomainError("INVALID_STATE", "A empresa já está neste plano.");
-  }
+    if (!subscription) throw new DomainError("NOT_FOUND", "Assinatura não encontrada para esta empresa.");
+    if (!newPlan || !newPlan.active) throw new DomainError("NOT_FOUND", "Plano não encontrado ou não disponível.");
+    if (!tenant) throw new DomainError("NOT_FOUND", "Empresa não encontrada.");
+    if (subscription.status === "CANCELED") {
+      throw new DomainError("INVALID_STATE", "Reative a assinatura antes de trocar de plano.");
+    }
+    if (newPlan.id === subscription.planId && !subscription.pendingPlanId) {
+      throw new DomainError("INVALID_STATE", "A empresa já está neste plano.");
+    }
 
-  const isUpgrade = newPlan.sortOrder >= subscription.plan.sortOrder;
-
-  if (isUpgrade) {
-    await prisma.subscription.update({ where: { tenantId }, data: { planId: newPlan.id, pendingPlanId: null } });
-    await recordBillingEvent({ tenantId, subscriptionId: subscription.id, type: "PLAN_CHANGED", actorType: "OWNER", metadata: { appliedImmediately: true, planCode: newPlan.code } });
-    return { appliedImmediately: true };
-  }
-
-  const profLimit = tenant.maxProfessionalsOverride ?? newPlan.maxProfessionals;
-  const whatsappLimit = tenant.maxWhatsappNumbersOverride ?? newPlan.maxWhatsappNumbers;
-  const scoped = forTenant(tenantId);
-
-  if (profLimit !== null) {
-    const current = await scoped.professional.count({});
-    if (current > profLimit) {
+    // O ciclo que a empresa paga hoje (o EFETIVO: quem já caiu no mensal por outro caminho não fica travada) precisa existir no plano novo.
+    // Trocar em silêncio faria a próxima fatura sair mensal; quem decide é o dono, escolhendo o ciclo antes.
+    const currentCycle = effectiveCycle(subscription.plan, asBillingCycle(subscription.billingCycle));
+    if (!planOffersCycle(newPlan, currentCycle)) {
       throw new DomainError(
-        "PLAN_DOWNGRADE_BLOCKED",
-        `O plano novo permite até ${profLimit} profissional(is), e a empresa tem ${current}. Remova profissionais antes de trocar.`,
-        { rule: "maxProfessionals", limit: profLimit, current },
+        "CYCLE_NOT_AVAILABLE_ON_PLAN",
+        `O plano ${newPlan.name} não tem pagamento a cada ${cycleMonths(currentCycle)} meses. Escolha outro ciclo antes de trocar de plano.`,
+        { cycle: currentCycle, planName: newPlan.name },
       );
     }
-  }
-  if (whatsappLimit !== null) {
-    const current = await scoped.whatsappInstance.count({ where: { deletedAt: null } });
-    if (current > whatsappLimit) {
-      throw new DomainError(
-        "PLAN_DOWNGRADE_BLOCKED",
-        `O plano novo permite até ${whatsappLimit} número(s) de WhatsApp, e a empresa tem ${current}. Desconecte números antes de trocar.`,
-        { rule: "maxWhatsappNumbers", limit: whatsappLimit, current },
-      );
-    }
-  }
 
-  await prisma.subscription.update({ where: { tenantId }, data: { pendingPlanId: newPlan.id } });
-  await recordBillingEvent({ tenantId, subscriptionId: subscription.id, type: "PLAN_CHANGED", actorType: "OWNER", metadata: { appliedImmediately: false, planCode: newPlan.code } });
-  return { appliedImmediately: false };
+    const isUpgrade = newPlan.sortOrder >= subscription.plan.sortOrder;
+
+    if (isUpgrade) {
+      await tx.subscription.update({ where: { tenantId }, data: { planId: newPlan.id, pendingPlanId: null } });
+      return { subscriptionId: subscription.id, planCode: newPlan.code, appliedImmediately: true };
+    }
+
+    const profLimit = tenant.maxProfessionalsOverride ?? newPlan.maxProfessionals;
+    const whatsappLimit = tenant.maxWhatsappNumbersOverride ?? newPlan.maxWhatsappNumbers;
+    const scoped = forTenant(tenantId);
+
+    if (profLimit !== null) {
+      const current = await scoped.professional.count({});
+      if (current > profLimit) {
+        throw new DomainError(
+          "PLAN_DOWNGRADE_BLOCKED",
+          `O plano novo permite até ${profLimit} profissional(is), e a empresa tem ${current}. Remova profissionais antes de trocar.`,
+          { rule: "maxProfessionals", limit: profLimit, current },
+        );
+      }
+    }
+    if (whatsappLimit !== null) {
+      const current = await scoped.whatsappInstance.count({ where: { deletedAt: null } });
+      if (current > whatsappLimit) {
+        throw new DomainError(
+          "PLAN_DOWNGRADE_BLOCKED",
+          `O plano novo permite até ${whatsappLimit} número(s) de WhatsApp, e a empresa tem ${current}. Desconecte números antes de trocar.`,
+          { rule: "maxWhatsappNumbers", limit: whatsappLimit, current },
+        );
+      }
+    }
+
+    await tx.subscription.update({ where: { tenantId }, data: { pendingPlanId: newPlan.id } });
+    return { subscriptionId: subscription.id, planCode: newPlan.code, appliedImmediately: false };
+  });
+
+  await recordBillingEvent({ tenantId, subscriptionId: outcome.subscriptionId, type: "PLAN_CHANGED", actorType: "OWNER", metadata: { appliedImmediately: outcome.appliedImmediately, planCode: outcome.planCode } });
+  return { appliedImmediately: outcome.appliedImmediately };
 }
 
 /** Planos visíveis para a empresa escolher (docs/arquitetura.md §7.2 — `active` controla o que aparece aqui). */

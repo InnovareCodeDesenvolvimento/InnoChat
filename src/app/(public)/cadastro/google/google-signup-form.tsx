@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { ArrowLeft, Building2, Check, IdCard, LogIn, Mail, Phone, RefreshCw, TimerOff, UserCheck, UserPlus } from "lucide-react";
+import { ArrowLeft, Building2, IdCard, LogIn, Mail, RefreshCw, TimerOff, UserCheck, UserPlus } from "lucide-react";
 import { Field } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";

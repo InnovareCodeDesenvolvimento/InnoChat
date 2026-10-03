@@ -64,6 +64,8 @@ const updatePlanSchema = z.object({
   maxProfessionals: z.coerce.number().int().min(1).nullable().optional(),
   active: z.boolean().optional(),
   sortOrder: z.coerce.number().int().optional(),
+  // Confirmação explícita de preço de período abaixo de 50% das mensalidades (só vale para esse caso).
+  confirmLowPrice: z.boolean().optional(),
 });
 
 export async function updatePlanAction(planId: string, input: unknown) {

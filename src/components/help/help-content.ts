@@ -805,7 +805,7 @@ const HELP_ENTRIES = {
       "A sugestão calcula R$ 59,00 x 3 = R$ 177,00, menos 5% = R$ 168,15, e arredonda para R$ 168,00. O valor fica no campo para você editar.",
       "Na receita mensal recorrente (MRR), o plano trimestral de R$ 168,00 entra como R$ 56,00 por mês. O semestral e o anual entram dividindo pelos 6 e 12 meses.",
     ],
-    tip: "O preço de um período nunca pode passar do mensal multiplicado pelos meses dele. Para tirar um período da venda, deixe o campo em branco.",
+    tip: "O preço de um período nunca pode passar do mensal multiplicado pelos meses dele. Para tirar um período da venda, deixe o campo em branco. Se o preço ficar abaixo de metade das mensalidades do período (por exemplo, R$ 4,90 no lugar de R$ 490,00), o sistema pede uma confirmação antes de salvar.",
     warning: "Mudar o preço vale só para as próximas faturas. Quem já pagou o período não recebe devolução nem cobrança de diferença. Não dá para apagar o preço de um período que tenha assinatura ativa nele: o sistema avisa quantas são.",
   },
   "admin.cupons": {
@@ -858,7 +858,7 @@ const HELP_ENTRIES = {
     ],
     examples: [
       "Você paga R$ 59,00 por mês. Trocando para 12 meses, a próxima fatura sai de R$ 590,00 e cobre o ano todo, o que dá R$ 49,17 por mês.",
-      "Trocou para 3 meses, mas o plano que você tem deixou de oferecer esse período? A fatura sai mensal e a gente avisa.",
+      "Trocou para 3 meses, mas o plano que você tem deixou de oferecer esse período? A fatura sai mensal e a tela Assinatura mostra um aviso.",
       "Voltou para o mensal no meio do período? O período já pago continua valendo até o fim. Só a fatura seguinte volta a ser mensal.",
     ],
     warning: "Não devolvemos nem calculamos proporcional ao trocar. O período já pago segue até o fim.",
@@ -1036,6 +1036,7 @@ const HELP_ENTRIES = {
     steps: ["Clique no plano que você quer e confirme.", "Só o dono da empresa pode trocar de plano."],
     examples: [
       "Subir de plano (upgrade) vale na hora, e a diferença vem na próxima fatura.",
+      "O plano novo precisa ter o mesmo período de pagamento que você tem hoje. Se você paga a cada 6 meses e o plano novo só tem mensal, escolha antes o período mensal no cartão Cobrança e depois troque de plano.",
       "Descer de plano (downgrade) só é aceito se o que você usa hoje couber no plano menor, e vale a partir do próximo ciclo. Por exemplo: se o plano menor permite 2 profissionais e você tem 3, remova 1 antes.",
     ],
   },

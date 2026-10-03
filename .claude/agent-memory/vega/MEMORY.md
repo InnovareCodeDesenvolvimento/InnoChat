@@ -75,3 +75,4 @@
 - [Resposta automática do WhatsApp de cobrança viva](platform_autoreply_always_alive.md) — LID, 10 min/6 por dia, diagnóstico no Admin, autocorreção do webhook, armadilhas de escape.
 - [Baixos do Órion 2026-10-03](baixos_orion_fixes_2026_10_03.md) — lookup S3, prova p/ trocar chave, audit→monitor, teto waitlist, autoreply com advisory lock; void do advisory.
 - [4 ciclos: núcleo, trava de preço, armadilha do Prisma solto no banco de DEV](four_cycles_design.md) — 2026-10-03; decisões e como não repetir o erro de banco.
+- [Correções da revisão do Órion aos 4 ciclos](four_cycles_review_fixes.md) — addMonths, recusa de plano sem ciclo, travas de linha, confirmLowPrice, armadilhas.

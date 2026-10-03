@@ -4,6 +4,7 @@
 // uma senha real.
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { addMonths } from "date-fns";
 
 const prisma = new PrismaClient();
 
@@ -204,7 +205,7 @@ async function main() {
   // hoje (dado de dev — em produção nasce TRIALING via cadastro público, §7.3).
   const periodStart = new Date();
   const currentPeriodEnd = new Date(periodStart);
-  currentPeriodEnd.setMonth(currentPeriodEnd.getMonth() + 1);
+  currentPeriodEnd.setTime(addMonths(periodStart, 1).getTime());
 
   const subscription = await prisma.subscription.upsert({
     where: { tenantId: tenant.id },

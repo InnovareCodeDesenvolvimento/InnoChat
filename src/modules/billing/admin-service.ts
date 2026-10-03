@@ -1,5 +1,6 @@
 import { addMonths } from "date-fns";
 import { getPrisma } from "@/lib/db/prisma";
+import { lockPlanRow } from "@/lib/db/billing-row-locks";
 import { DomainError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
 import {
@@ -10,6 +11,7 @@ import {
   effectiveStatus,
   GRACE_DAYS_PAYING,
   GRACE_DAYS_TRIAL,
+  isLowCyclePrice,
   MIN_CHARGE_CENTS,
   mrrContributionCents,
   usesTrialRules,
@@ -46,36 +48,54 @@ export type UpdatePlanInput = {
   maxProfessionals?: number | null;
   active?: boolean;
   sortOrder?: number;
+  /** O admin confirmou um preço de período abaixo de 50% das mensalidades (só serve para esse caso; não é gravado). */
+  confirmLowPrice?: boolean;
 };
 
 export async function updatePlan(planId: string, input: UpdatePlanInput) {
-  const existing = await getPrisma().plan.findUnique({ where: { id: planId } });
-  if (!existing) throw new DomainError("NOT_FOUND", "Plano não encontrado.");
-  const monthly = input.priceCents ?? existing.priceCents;
-  const prisma = getPrisma();
-  for (const cycle of ["QUARTERLY", "SEMIANNUAL", "ANNUAL"] as const) {
-    const field = CYCLE_PRICE_FIELD[cycle];
-    const next = input[field] === undefined ? existing[field] : input[field];
-    const word = cycleLabel(cycle);
-    if (next !== null && next !== undefined) {
-      if (next < MIN_CHARGE_CENTS) throw new DomainError("INVALID_CYCLE_PRICE", `O preço ${word} precisa ser pelo menos R$ 1,00, ou deixe em branco.`);
-      // Mais caro que as mensalidades do período quase sempre é erro de digitação (centavos no lugar de reais, por exemplo).
-      if (monthly > 0 && next > monthly * cycleMonths(cycle)) {
-        throw new DomainError("INVALID_CYCLE_PRICE", `O preço ${word} não pode ser maior que ${cycleMonths(cycle)} mensalidades.`);
-      }
-    } else if (input[field] === null && existing[field] !== null) {
-      // Tirar o ciclo com assinatura viva nele deixaria a empresa cobrada como mensal sem ela saber.
-      const inUse = await countLiveSubscriptionsInCycle(planId, cycle);
-      if (inUse > 0) {
-        throw new DomainError(
-          "CYCLE_IN_USE",
-          `Não dá para tirar o preço ${word}: ${inUse === 1 ? "1 assinatura ativa usa" : `${inUse} assinaturas ativas usam`} esse ciclo neste plano. Troque o ciclo delas ou espere acabar.`,
-          { cycle, count: inUse },
-        );
+  const { confirmLowPrice, ...data } = input;
+  // Tudo numa transação com a linha do plano travada: a contagem de assinaturas no ciclo e a gravação não
+  // podem ser atravessadas por uma troca de ciclo/plano da empresa (que trava a mesma linha, ver `lockPlanRow`).
+  return getPrisma().$transaction(async (tx) => {
+    await lockPlanRow(tx, planId);
+    const existing = await tx.plan.findUnique({ where: { id: planId } });
+    if (!existing) throw new DomainError("NOT_FOUND", "Plano não encontrado.");
+    const monthly = data.priceCents ?? existing.priceCents;
+    for (const cycle of ["QUARTERLY", "SEMIANNUAL", "ANNUAL"] as const) {
+      const field = CYCLE_PRICE_FIELD[cycle];
+      const next = data[field] === undefined ? existing[field] : data[field];
+      const word = cycleLabel(cycle);
+      if (next !== null && next !== undefined) {
+        if (next < MIN_CHARGE_CENTS) throw new DomainError("INVALID_CYCLE_PRICE", `O preço ${word} precisa ser pelo menos R$ 1,00, ou deixe em branco.`);
+        // Mais caro que as mensalidades do período quase sempre é erro de digitação (centavos no lugar de reais, por exemplo).
+        if (monthly > 0 && next > monthly * cycleMonths(cycle)) {
+          throw new DomainError("INVALID_CYCLE_PRICE", `O preço ${word} não pode ser maior que ${cycleMonths(cycle)} mensalidades.`);
+        }
+        // Menos da metade das mensalidades do período: pede confirmação (só quando este salvamento muda esse preço ou o mensal).
+        const touched = next !== existing[field] || monthly !== existing.priceCents;
+        if (touched && !confirmLowPrice && isLowCyclePrice(monthly, cycle, next)) {
+          throw new DomainError(
+            "LOW_CYCLE_PRICE_UNCONFIRMED",
+            `O preço ${word} (R$ ${(next / 100).toFixed(2).replace(".", ",")}) está abaixo de metade de ${cycleMonths(cycle)} mensalidades (R$ ${((monthly * cycleMonths(cycle)) / 200).toFixed(2).replace(".", ",")}). Confirme para salvar mesmo assim.`,
+            { cycle, periodCents: next, halfOfFullCents: Math.round((monthly * cycleMonths(cycle)) / 2) },
+          );
+        }
+      } else if (data[field] === null && existing[field] !== null) {
+        // Tirar o ciclo com assinatura viva nele deixaria a empresa cobrada como mensal sem ela saber.
+        const inUse = await tx.subscription.count({
+          where: { billingCycle: cycle, status: { not: "CANCELED" }, OR: [{ planId }, { pendingPlanId: planId }] },
+        });
+        if (inUse > 0) {
+          throw new DomainError(
+            "CYCLE_IN_USE",
+            `Não dá para tirar o preço ${word}: ${inUse === 1 ? "1 assinatura ativa usa" : `${inUse} assinaturas ativas usam`} esse ciclo neste plano. Troque o ciclo delas ou espere acabar.`,
+            { cycle, count: inUse },
+          );
+        }
       }
     }
-  }
-  return prisma.plan.update({ where: { id: planId }, data: input });
+    return tx.plan.update({ where: { id: planId }, data });
+  });
 }
 
 /** Assinaturas não canceladas do plano (atual ou agendado) que pagam no ciclo. */

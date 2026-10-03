@@ -119,7 +119,10 @@ export default async function AssinaturaPage({
   const cycleSnapshot: CycleSnapshot = {
     // Ciclo EFETIVO: plano que não oferece o ciclo guardado cobra mensal (troca de plano, preço retirado).
     billingCycle: charge.cycle,
-    options: buildCycleOptions(subscription.plan),
+    // Ciclos do plano que vale na próxima fatura: é contra ele que a troca de ciclo é validada.
+    options: buildCycleOptions(billedPlan),
+    // O plano não tem mais o ciclo guardado: a próxima fatura sai mensal (aviso na tela, sem e-mail).
+    fallbackFrom: charge.cycle !== asBillingCycle(subscription.billingCycle) ? asBillingCycle(subscription.billingCycle) : null,
     next: { grossCents: charge.grossCents, discountCents: charge.discountCents, netCents: charge.netCents, cycle: charge.cycle },
     coupon: couponRow
       ? {

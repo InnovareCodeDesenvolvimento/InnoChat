@@ -19,6 +19,7 @@ import {
   cycleSavingsLabel,
   cycleTitle,
   effectiveCycle,
+  isLowCyclePrice,
   grossCentsFor,
   initialCouponCycles,
   invoiceCoverageSuffix,
@@ -332,5 +333,17 @@ describe("computeNextPeriodEnd por ciclo", () => {
   });
   it("suspensa: conta a partir do pagamento", () => {
     expect(computeNextPeriodEnd({ ...input, wasSuspended: true, months: 3 }).toISOString()).toBe("2027-01-10T12:00:00.000Z");
+  });
+});
+
+describe("isLowCyclePrice (S-2: abaixo de 50% de mensal x meses pede confirmação)", () => {
+  it("compara com metade das mensalidades do período", () => {
+    expect(isLowCyclePrice(5900, "QUARTERLY", 8849)).toBe(true);
+    expect(isLowCyclePrice(5900, "QUARTERLY", 8850)).toBe(false);
+    expect(isLowCyclePrice(5900, "ANNUAL", 490)).toBe(true);
+    expect(isLowCyclePrice(5900, "ANNUAL", 59000)).toBe(false);
+  });
+  it("sem mensal definido não há base para comparar", () => {
+    expect(isLowCyclePrice(0, "SEMIANNUAL", 100)).toBe(false);
   });
 });

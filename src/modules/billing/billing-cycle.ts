@@ -1,4 +1,5 @@
 import { getPrisma } from "@/lib/db/prisma";
+import { lockPlanRow, lockSubscriptionRow } from "@/lib/db/billing-row-locks";
 import { DomainError } from "@/lib/errors";
 import { couponAcceptsCycle, cycleLabel, planOffersCycle, type BillingCycle } from "@/core/billing";
 import { recordBillingEvent } from "./dunning/events";
@@ -18,16 +19,33 @@ export type ChangeBillingCycleResult = {
 
 export async function changeBillingCycle(tenantId: string, cycle: BillingCycle): Promise<ChangeBillingCycleResult> {
   const prisma = getPrisma();
-  const subscription = await prisma.subscription.findUnique({ where: { tenantId }, include: { plan: true, coupon: true } });
-  if (!subscription) throw new DomainError("NOT_FOUND", "Assinatura não encontrada para esta empresa.");
-  if (subscription.status === "CANCELED") throw new DomainError("INVALID_STATE", "Reative a assinatura antes de trocar a cobrança.");
-  if (!planOffersCycle(subscription.plan, cycle)) {
-    throw new DomainError("CYCLE_NOT_AVAILABLE", `O plano atual não tem cobrança ${cycleLabel(cycle)}.`);
-  }
+  // Assinatura e plano cobrado travados na mesma transação: o Admin pode estar tirando o preço deste ciclo agora
+  // (`updatePlan`, que trava a linha do plano), e uma troca de plano da empresa trava a mesma assinatura.
+  const outcome = await prisma.$transaction(async (tx) => {
+    await lockSubscriptionRow(tx, tenantId);
+    const first = await tx.subscription.findUnique({ where: { tenantId }, select: { planId: true, pendingPlanId: true } });
+    if (!first) throw new DomainError("NOT_FOUND", "Assinatura não encontrada para esta empresa.");
+    // O plano que vale na PRÓXIMA fatura (o do downgrade agendado, se houver) é o que precisa oferecer o ciclo.
+    await lockPlanRow(tx, first.pendingPlanId ?? first.planId);
+    const subscription = await tx.subscription.findUnique({ where: { tenantId }, include: { plan: true, coupon: true } });
+    if (!subscription) throw new DomainError("NOT_FOUND", "Assinatura não encontrada para esta empresa.");
+    if (subscription.status === "CANCELED") throw new DomainError("INVALID_STATE", "Reative a assinatura antes de trocar a cobrança.");
+    const billedPlan = subscription.pendingPlanId ? await tx.plan.findUnique({ where: { id: subscription.pendingPlanId } }) : subscription.plan;
+    if (!billedPlan) throw new DomainError("NOT_FOUND", "Plano não encontrado.");
+    if (!planOffersCycle(billedPlan, cycle)) {
+      throw new DomainError(
+        "CYCLE_NOT_AVAILABLE",
+        subscription.pendingPlanId ? `O plano ${billedPlan.name}, que vale a partir da próxima renovação, não tem cobrança ${cycleLabel(cycle)}.` : `O plano atual não tem cobrança ${cycleLabel(cycle)}.`,
+      );
+    }
+    const openInvoices = await tx.invoice.count({ where: { subscriptionId: subscription.id, status: "OPEN" } });
+    const changed = subscription.billingCycle !== cycle;
+    if (changed) await tx.subscription.update({ where: { id: subscription.id }, data: { billingCycle: cycle } });
+    return { subscription, openInvoices, changed };
+  });
 
-  const openInvoices = await prisma.invoice.count({ where: { subscriptionId: subscription.id, status: "OPEN" } });
-  if (subscription.billingCycle !== cycle) {
-    await prisma.subscription.update({ where: { id: subscription.id }, data: { billingCycle: cycle } });
+  const { subscription, openInvoices, changed } = outcome;
+  if (changed) {
     await recordBillingEvent({
       tenantId,
       subscriptionId: subscription.id,
