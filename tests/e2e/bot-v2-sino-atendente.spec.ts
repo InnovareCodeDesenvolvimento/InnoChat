@@ -93,7 +93,9 @@ test.describe("sino: Cliente pediu atendente", () => {
   test("pedido novo com o painel aberto aparece sem recarregar (toast e sino)", async ({ page }) => {
     // A lista inicial do sino define o "desde quando" do polling: o pedido só vira toast se nascer DEPOIS
     // dela (um pedido criado antes de a lista voltar entra na lista, sem toast — comportamento correto).
-    const firstListLoaded = page.waitForResponse(async (r) => r.request().method() === "POST" && (await r.text().catch(() => "")).includes("\"nextCursor\""));
+    // A lista é a PRIMEIRA Server Action que a página dispara. Não se lê o corpo no predicado: o Chromium às vezes já
+    // descartou o texto ("response.text: Protocol error"), o predicado cai no catch e a espera nunca termina.
+    const firstListLoaded = page.waitForResponse((r) => r.request().method() === "POST" && r.status() === 200);
     await page.goto(`/${SEED_TENANT_SLUG}/agenda`);
     await expect(page.getByRole("button", { name: /^Notificações/ })).toBeVisible();
     await firstListLoaded;

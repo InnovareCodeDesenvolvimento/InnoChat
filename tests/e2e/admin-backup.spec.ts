@@ -1,6 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { prisma } from "./fixtures/db";
 import { OWNER_STORAGE_STATE } from "./fixtures/storage-state";
+import { SEED_OWNER_PASSWORD } from "./fixtures/test-data";
 
 /**
  * Admin → Backup: a tela renderiza e o servidor RECUSA ligar o automático sem destino completo (uma cópia
@@ -152,6 +153,9 @@ test.describe.serial("Admin → Backup", () => {
     await expect(confirm).toBeDisabled();
     expect((await prisma.backupConfig.findFirstOrThrow()).encryptionKeyFingerprint).toBe(before);
     await page.getByLabel(/Para confirmar, digite GERAR NOVA CHAVE/).fill("GERAR NOVA CHAVE");
+    // Desde o 5f0e348 trocar a chave também pede a senha (ou o código de 2 etapas): só a frase não habilita o botão.
+    await expect(confirm).toBeDisabled();
+    await page.getByLabel("Sua senha").fill(SEED_OWNER_PASSWORD);
     await confirm.click();
     await expect(page.getByTestId("backup-key")).toBeVisible();
     const after = (await prisma.backupConfig.findFirstOrThrow()).encryptionKeyFingerprint;
