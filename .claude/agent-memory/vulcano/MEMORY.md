@@ -1,1 +1,2 @@
 - [Backup automático (Melhoria 2)](backup-automatico-melhoria-2.md) — módulo, agendador duplo, Dockerfile pg18/17, o que não foi provado; cifra .dump.enc, chave única, Conferir backup
+- [next 16.3.8 + nodemailer 10](atualizar-next-nodemailer-peer-override.md) — overrides do peer do next-auth; senão @auth/core aninha e tsc quebra
