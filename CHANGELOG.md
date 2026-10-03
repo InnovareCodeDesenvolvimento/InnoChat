@@ -7,6 +7,13 @@ Versão semântica (`MAJOR.MINOR.PATCH`), lida do `version` do `package.json` e 
 
 Toda publicação em produção sobe a versão e ganha uma entrada aqui.
 
+## v1.7.1 — 2026-10-02
+
+### Fluxo do bot com versão de verdade
+- O fluxo do bot passa a ter número de versão e histórico do que mudou. A versão atual é a **2.1.0**, que trouxe a lista de espera (convite quando o dia está cheio, "Minha lista de espera" no menu e resposta SIM ou NÃO ao encaixe). A 2.0.0 é o fluxo v2 original.
+- Admin → Publicar fluxo mostra a versão disponível no sistema, a versão publicada e o que mudou entre elas.
+- Trava automática: se o fluxo mudar sem subir a versão, a verificação do sistema falha e avisa.
+
 ## v1.7.0 — 2026-10-02
 
 ### Novidades para as empresas
