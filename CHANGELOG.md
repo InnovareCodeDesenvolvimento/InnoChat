@@ -7,6 +7,33 @@ Versão semântica (`MAJOR.MINOR.PATCH`), lida do `version` do `package.json` e 
 
 Toda publicação em produção sobe a versão e ganha uma entrada aqui.
 
+## v1.7.0 — 2026-10-02
+
+### Novidades para as empresas
+- **Plano anual com desconto:** no cadastro e na tela Assinatura dá para escolher mensal ou anual, com a economia à vista. A troca vale a partir da próxima fatura.
+- **Cupons de desconto** no cadastro e na Assinatura, com validação na hora e o valor da primeira fatura já calculado.
+- **Lista de espera:** quando o dia está cheio, o bot oferece a lista. Se alguém desmarcar, o primeiro da fila recebe o horário pelo WhatsApp e tem 30 minutos para aceitar. Os avisos saem só entre 8h e 21h. No painel, a tela Lista de espera mostra a fila e tem o botão "Oferecer encaixe".
+- **Relatórios** (só para o dono): faturamento por período, serviço e profissional, ticket médio, faltas por profissional e comissão a pagar, com planilha (CSV). O preço e a comissão ficam gravados quando o atendimento é concluído, então mudar um preço não altera o passado.
+- **Comissões** na ficha do profissional: uma porcentagem padrão e, se quiser, outra por serviço.
+- **Histórico de alterações** em Configurações: quem mudou o quê e quando, com o antes e o depois. Guardado por 5 anos.
+- **Verificação em 2 etapas** (opcional para donos) com app autenticador e códigos de recuperação.
+
+### Novidades no Admin
+- **Erros:** o sistema registra erros do servidor e do navegador, agrupa os iguais e avisa no sino e por e-mail quando aparece um novo.
+- **Backup automático** para S3 (ou compatível) ou Google Drive, com horário, prazo de guarda, aviso de atraso e **arquivo criptografado** com chave própria, mostrada uma única vez. O botão "Conferir backup" abre a cópia e confere se está inteira, e o sistema também confere sozinho toda semana.
+- **Verificação em 2 etapas obrigatória** para o admin da plataforma.
+- **Auditoria** de todas as empresas e da plataforma, com filtros.
+- **Cupons** e **preço anual** dos planos.
+- **Pixel do Meta e API de Conversões**, com aviso de cookies nas páginas públicas.
+
+### Site
+- Páginas para cada tipo de negócio: /salao, /barbearia, /clinica-estetica, /consultorio e /pet-shop.
+- Aviso de cookies com "Aceitar" e "Recusar" no mesmo peso; recusando, nada da Meta é carregado.
+- Termos de Uso (plano anual e cupons) e Política de Privacidade (cookies e Meta) atualizados.
+
+### Segurança
+- Duas revisões de segurança completas, com todos os pontos graves e médios corrigidos antes da publicação.
+
 ## v1.6.1 — 2026-10-02
 
 ### Melhorias
