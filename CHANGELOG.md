@@ -7,6 +7,11 @@ Versão semântica (`MAJOR.MINOR.PATCH`), lida do `version` do `package.json` e 
 
 Toda publicação em produção sobe a versão e ganha uma entrada aqui.
 
+## v1.7.4 — 2026-10-03
+
+### Correções
+- Quem estava com uma página aberta durante uma publicação podia ver um erro ao navegar, porque os arquivos da versão anterior deixam de existir. Agora a página recarrega sozinha uma vez e abre já na versão nova, e o monitor de erros não registra isso como erro.
+
 ## v1.7.3 — 2026-10-03
 
 ### Melhorias
