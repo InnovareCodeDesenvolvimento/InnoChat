@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { isBrowserExtensionOnlyStack } from "@/core/error-monitor/extension-noise";
+import { isStaleBuildError } from "@/core/error-monitor/stale-build";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { recordError } from "./capture";
 
@@ -91,6 +92,9 @@ export async function handleClientErrorReport(input: {
 
   // Erro de extensão do navegador: aceita (o navegador não precisa saber) e descarta sem gravar.
   if (isBrowserExtensionOnlyStack(parsed.stack)) return { status: 202 };
+
+  // Versão antiga aberta depois de uma publicação (chunk que sumiu): o navegador já recarrega sozinho. Não grava.
+  if (isStaleBuildError(parsed.type, parsed.message)) return { status: 202 };
 
   try {
     await recordError({
