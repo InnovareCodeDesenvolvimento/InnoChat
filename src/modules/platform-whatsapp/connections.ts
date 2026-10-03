@@ -620,6 +620,9 @@ function tokenFromWebhookUrl(url: string | null): string | null {
  * o mesmo endereço; se não, GIRA o token (novo hash no banco + novo endereço na Evolution; falhando, volta o hash antigo).
  * Nunca lança.
  */
+/** Evento do webhook mais novo que isto prova que o endereço atual funciona. */
+const WEBHOOK_ALIVE_MS = 2 * 60 * 60 * 1000;
+
 export async function ensureActiveWebhook(
   active: { id: string; instanceName: string; webhookTokenHash: string },
   evolution: EvolutionClient,
@@ -639,6 +642,18 @@ export async function ensureActiveWebhook(
     if (info && info.enabled && tokenMatches && hasMessages) {
       await record("OK");
       return "OK";
+    }
+    // Resposta da Evolution vazia ou num formato que não entendemos. Se eventos do webhook chegaram nas últimas 2 h, o
+    // endereço está funcionando: não gira o token por causa de uma leitura incerta (revisão v1.7.2 do Órion). Sem eventos
+    // recentes, aí sim cria um endereço novo.
+    if (!info) {
+      const diag = await getPlatformWhatsappDiagnostics(active.id).catch(() => null);
+      const lastEventMs = diag?.lastEventAt ? Date.parse(diag.lastEventAt) : Number.NaN;
+      if (Number.isFinite(lastEventMs) && now.getTime() - lastEventMs < WEBHOOK_ALIVE_MS) {
+        logger.warn("platform_whatsapp.webhook_check_unreadable", { connectionId: active.id });
+        await record("OK");
+        return "OK";
+      }
     }
 
     repairing = true;
@@ -660,7 +675,14 @@ export async function ensureActiveWebhook(
       await evolution.setWebhook(active.instanceName, url);
     } catch (error) {
       if (rotatedTo) {
-        await prisma.platformWhatsappConnection.updateMany({ where: { id: active.id, webhookTokenHash: rotatedTo }, data: { webhookTokenHash: active.webhookTokenHash } });
+        // Resultado ambíguo (ex.: o prazo estourou mas a Evolution aplicou o endereço novo): só volta o hash antigo se
+        // a Evolution NÃO estiver com o token novo; senão o webhook ficaria sem token válido até a próxima rodada.
+        const applied = await withTimeout(evolution.findWebhook(active.instanceName), STATE_CHECK_TIMEOUT_MS).catch(() => null);
+        const appliedToken = tokenFromWebhookUrl(applied?.url ?? null);
+        const newIsLive = appliedToken !== null && hashWebhookToken(appliedToken) === rotatedTo;
+        if (!newIsLive) {
+          await prisma.platformWhatsappConnection.updateMany({ where: { id: active.id, webhookTokenHash: rotatedTo }, data: { webhookTokenHash: active.webhookTokenHash } });
+        }
       }
       throw error;
     }

@@ -927,6 +927,19 @@ describe("resposta automática sempre viva (2026-10-03): LID, 10 min, teto diár
       expect(sent).toHaveLength(1);
     });
 
+    it("leitura vazia da Evolution com eventos recentes: não gira o token (o endereço atual está funcionando)", async () => {
+      const a = await connectNumber("Cobrança", PHONE_A);
+      const rowBefore = await prisma.platformWhatsappConnection.findUniqueOrThrow({ where: { id: a.connectionId } });
+      const { patchDiagnostics } = await import("@/modules/platform-whatsapp/diagnostics");
+      await patchDiagnostics(a.connectionId, { lastEventAt: new Date().toISOString() });
+      webhooks.delete(a.instanceName);
+      vi.mocked(fakeEvolution.setWebhook).mockClear();
+      const result = await connections.runPlatformWhatsappMaintenance({ evolution: fakeEvolution });
+      expect(result.webhook).toBe("OK");
+      expect((await prisma.platformWhatsappConnection.findUniqueOrThrow({ where: { id: a.connectionId } })).webhookTokenHash).toBe(rowBefore.webhookTokenHash);
+      expect(vi.mocked(fakeEvolution.setWebhook)).not.toHaveBeenCalledWith(a.instanceName, expect.anything());
+    });
+
     it("sem webhook nenhum na Evolution: cria um novo; se o setWebhook falha, o hash antigo volta", async () => {
       const a = await connectNumber("Cobrança", PHONE_A);
       const rowBefore = await prisma.platformWhatsappConnection.findUniqueOrThrow({ where: { id: a.connectionId } });
