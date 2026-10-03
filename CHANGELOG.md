@@ -7,6 +7,13 @@ Versão semântica (`MAJOR.MINOR.PATCH`), lida do `version` do `package.json` e 
 
 Toda publicação em produção sobe a versão e ganha uma entrada aqui.
 
+## v1.7.3 — 2026-10-03
+
+### Melhorias
+- Admin → Configurações organizado em abas, cada uma com endereço próprio: Geral, WhatsApp, Automação (n8n), Pagamentos, E-mail, Login e Marketing. Quem abre /admin/configuracoes cai em Geral.
+- Um ponto de atenção aparece na aba quando algo dela precisa de ajuste, por exemplo o SMTP sem servidor ou o WhatsApp de cobrança desconectado.
+- Ao trocar de aba com um formulário editado e não salvo, o sistema avisa antes.
+
 ## v1.7.2 — 2026-10-03
 
 ### WhatsApp de cobrança
