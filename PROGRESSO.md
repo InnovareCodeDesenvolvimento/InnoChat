@@ -5,7 +5,7 @@ para clínicas, salões e qualquer negócio de serviços com horário marcado.
 Repositório: https://github.com/InnovareCodeDesenvolvimento/InnoChat (branch `main`; o antigo é o remote `antigo`).
 Decisões do dono: memória `decisoes-iniciais-innochat` e `docs/arquitetura.md` §15.
 
-## Atualização (2026-10-03): v1.7.4 no ar
+## Atualização (2026-10-03): v1.7.5 no ar
 
 **Publicado (v1.7.0 a v1.7.4):** pacote das 8 melhorias (monitor de erros próprio, backup cifrado no Drive, 2 etapas, auditoria 5 anos, Pixel + páginas por nicho, plano anual + cupons, lista de espera no bot, relatórios com comissões), fluxo do bot versionado (2.1.0, publicado), resposta automática do WhatsApp de cobrança corrigida, contato de cobrança fácil de corrigir, Configurações do Admin em abas com rota própria, recarga automática após publicação.
 
@@ -13,7 +13,7 @@ Decisões do dono: memória `decisoes-iniciais-innochat` e `docs/arquitetura.md`
 
 **Pendências do dono (configuração):** preço anual em Admin → Planos; Pixel do Meta (se for anunciar); planos ativos na landing; repetir suspensões manuais anteriores à v1.4.1; DMARC para quarantine entre 15 e 29/10. Resolvidos pelo dono em 2026-10-03: credenciais do Google login, credenciais de teste do Mercado Pago e troca da senha do banco de produção.
 
-**Pendências da equipe:** checagem de 5 min da lista de espera no n8n; atualizar Next.js e nodemailer; baixos das revisões (DNS rebinding no S3, trocar chave do backup sem reautenticar, papel de banco da auditoria, teto de ofertas por empresa); testes da lista de espera independentes da hora; documentação das novidades (Alexandria).
+**Pendências da equipe:** nenhuma de código. Concluído na v1.7.5 (no ar em 2026-10-03 12h07): lista de espera a cada 5 min no próprio processo, Next 16.3.8 e nodemailer 10, baixos das revisões de segurança, testes independentes da hora e documentação com guia do dono. Restam só itens de configuração do dono acima. Risco residual aceito: 3 alertas do npm audit na cadeia do prisma (ferramenta de migração).
 
 ## Atualização (2026-10-02, fim do dia): v1.6.0 no ar
 
