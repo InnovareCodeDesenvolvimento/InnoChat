@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
 import { EmptyState } from "@/components/ui/empty-state";
 import { slugify, validateSlug, type SlugValidationError } from "@/core/signup/slug";
-import type { BillingCycle } from "@/core/billing/pricing";
+import { effectiveCycle, type BillingCycle } from "@/core/billing/pricing";
 import { normalizeDocumentDigits, validateCpfCnpj } from "@/core/billing/document";
 import { maskCpfCnpj } from "@/components/lib/document-mask";
 import { normalizeBrPhoneToE164 } from "@/core/contact/br-phone";
@@ -57,7 +57,7 @@ const EMPTY_FORM: FormState = {
 
 export function CadastroForm({ top, pricing = null }: { top?: React.ReactNode; pricing?: SignupPricing | null }) {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
-  // Cobrança depois do teste (mensal/anual) e cupom opcional: o servidor revalida os dois.
+  // Cobrança depois do teste (1, 3, 6 ou 12 meses) e cupom opcional: o servidor revalida os dois.
   const [billingCycle, setBillingCycle] = useState<BillingCycle>("MONTHLY");
   const [couponCode, setCouponCode] = useState("");
   const [couponError, setCouponError] = useState<string | null>(null);
@@ -130,7 +130,7 @@ export function CadastroForm({ top, pricing = null }: { top?: React.ReactNode; p
         password: form.password,
         termsVersion: TERMS_VERSION,
         acceptedTerms: form.acceptedTerms,
-        billingCycle: pricing?.annualPriceCents ? billingCycle : "MONTHLY",
+        billingCycle: pricing ? effectiveCycle(pricing, billingCycle) : "MONTHLY",
         couponCode: couponCode.trim() || undefined,
         metaEventId,
       });

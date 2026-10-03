@@ -15,6 +15,7 @@ import {
   listDelinquentCompanies,
   listInvoicesAdmin,
   listPlans,
+  liveCycleUsageByPlan,
   markInvoicePaidManually,
   reactivateCompanyManually,
   regeneratePixForInvoiceAdmin,
@@ -30,6 +31,14 @@ import { pagingInputShape, type PageInfo, type PageSize } from "./paging";
 
 /** Server Actions do admin da plataforma para planos e empresas (docs/contratos.md, Fase 7). */
 
+/** Quantas assinaturas não canceladas pagam em cada ciclo, por plano (a tela Planos avisa antes de apagar um preço em uso). */
+export async function planCycleUsageAction() {
+  return runAction(async () => {
+    await requirePlatformAdmin();
+    return liveCycleUsageByPlan();
+  });
+}
+
 export async function listPlansAction() {
   return runAction(async () => {
     await requirePlatformAdmin();
@@ -37,7 +46,7 @@ export async function listPlansAction() {
   });
 }
 
-const PLAN_FIELDS = ["name", "priceCents", "annualPriceCents", "maxWhatsappNumbers", "maxProfessionals", "active", "sortOrder"] as const;
+const PLAN_FIELDS = ["name", "priceCents", "quarterlyPriceCents", "semiannualPriceCents", "annualPriceCents", "maxWhatsappNumbers", "maxProfessionals", "active", "sortOrder"] as const;
 
 async function companyName(tenantId: string): Promise<string> {
   const row = await getPrisma().tenant.findUnique({ where: { id: tenantId }, select: { name: true } });
@@ -47,7 +56,9 @@ async function companyName(tenantId: string): Promise<string> {
 const updatePlanSchema = z.object({
   name: z.string().trim().min(1).max(80).optional(),
   priceCents: z.coerce.number().int().min(0).optional(),
-  // Preço do plano anual em centavos (positivo) ou `null` para tirar a opção anual.
+  // Preço do período em centavos (positivo) ou `null` para tirar o ciclo.
+  quarterlyPriceCents: z.coerce.number().int().min(1).nullable().optional(),
+  semiannualPriceCents: z.coerce.number().int().min(1).nullable().optional(),
   annualPriceCents: z.coerce.number().int().min(1).nullable().optional(),
   maxWhatsappNumbers: z.coerce.number().int().min(1).optional(),
   maxProfessionals: z.coerce.number().int().min(1).nullable().optional(),
@@ -63,7 +74,7 @@ export async function updatePlanAction(planId: string, input: unknown) {
     const updated = await updatePlan(planId, data);
     const changes = before ? diffChanges(before, updated, PLAN_FIELDS) : {};
     if (Object.keys(changes).length > 0) {
-      const priceChanged = "priceCents" in changes || "annualPriceCents" in changes;
+      const priceChanged = "priceCents" in changes || "quarterlyPriceCents" in changes || "semiannualPriceCents" in changes || "annualPriceCents" in changes;
       await recordAudit({
         tenantId: null,
         actor: platformAdminActor(admin.id),

@@ -11,7 +11,10 @@ import { AuthInput } from "@/components/public/auth-input";
 import { AUTH_SUBMIT_CLASS, AuthPanel, AuthTrust } from "@/components/public/auth-panel";
 import { GoogleButton, GoogleLogo } from "@/components/public/google-button";
 import { FormSection, TermsCheckbox } from "@/components/public/signup-shared";
+import { SignupBillingSection } from "@/components/public/signup-billing";
+import type { SignupPricing } from "@/components/public/signup-pricing";
 import { normalizeDocumentDigits, validateCpfCnpj } from "@/core/billing/document";
+import { effectiveCycle, type BillingCycle } from "@/core/billing/pricing";
 import { maskCpfCnpj } from "@/components/lib/document-mask";
 import { signInWithGoogleAction } from "@/app/(public)/google-actions";
 import { completeGoogleSignUpAction } from "@/modules/signup/actions";
@@ -79,16 +82,23 @@ export function GoogleSignupForm({
   token,
   email,
   name,
+  pricing = null,
 }: {
   token: string;
   email: string;
   name: string;
+  /** Preços do plano que o cadastro assume; sem eles (banco indisponível) o formulário segue sem a escolha de ciclo. */
+  pricing?: SignupPricing | null;
 }) {
   const router = useRouter();
   const firstName = name.trim().split(/\s+/)[0] || "";
   const [tenantName, setTenantName] = useState("");
   const [document, setDocument] = useState("");
   const [acceptTerms, setAcceptTerms] = useState(false);
+  // Cobrança depois do teste e cupom opcional: o servidor revalida os dois (mesma regra do cadastro com senha).
+  const [billingCycle, setBillingCycle] = useState<BillingCycle>("MONTHLY");
+  const [couponCode, setCouponCode] = useState("");
+  const [couponError, setCouponError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [tokenProblem, setTokenProblem] = useState<string | null>(null);
@@ -115,6 +125,8 @@ export function GoogleSignupForm({
         token,
         tenantName: tenantName.trim(),
         document: normalizeDocumentDigits(document),
+        billingCycle: pricing ? effectiveCycle(pricing, billingCycle) : "MONTHLY",
+        couponCode: couponCode.trim() || undefined,
         acceptTerms,
       });
 
@@ -126,6 +138,10 @@ export function GoogleSignupForm({
         }
         if (code === "INVALID_DOCUMENT") {
           setFieldErrors((prev) => ({ ...prev, document: "Informe um CPF ou CNPJ válido." }));
+          return;
+        }
+        if (code.startsWith("COUPON_") || code === "INVALID_CYCLE") {
+          setCouponError(result.error.message);
           return;
         }
         setFormError(result.error.message);
@@ -206,13 +222,27 @@ export function GoogleSignupForm({
           </Field>
         </FormSection>
 
+        <FormSection step={2} title="Depois do teste" id="sec-cobranca">
+          <SignupBillingSection
+            pricing={pricing}
+            cycle={billingCycle}
+            onCycleChange={setBillingCycle}
+            couponCode={couponCode}
+            onCouponCodeChange={(code) => {
+              setCouponCode(code);
+              setCouponError(null);
+            }}
+            couponError={couponError}
+          />
+        </FormSection>
+
         <section aria-labelledby="sec-termos" className="flex flex-col gap-4">
           <h2 id="sec-termos" className="flex items-center gap-2.5 font-display text-sm font-bold text-text">
             <span
               aria-hidden="true"
               className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-xs font-bold tabular-nums text-primary ring-1 ring-primary/25"
             >
-              2
+              3
             </span>
             Termos
             <span aria-hidden="true" className="h-px flex-1 bg-border" />

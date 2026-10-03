@@ -1,6 +1,7 @@
 import { addDays } from "date-fns";
 import { getPrisma } from "@/lib/db/prisma";
 import {
+  asBillingCycle,
   CANCELED_RETENTION_DAYS,
   CANCEL_AFTER_SUSPENDED_DAYS,
   CANCEL_AFTER_SUSPENDED_TRIAL_DAYS,
@@ -96,8 +97,8 @@ export async function buildNoticeCopyContext(args: {
     ownerName: args.ownerFirstName,
     tenantName: subject.tenantName,
     amount: formatCentsBRL(amountCents),
-    // Fatura anual: os textos dizem "plano anual" junto do valor e nunca "por mês".
-    annual: invoice ? invoice.cycle === "ANNUAL" : subject.billingCycle === "ANNUAL",
+    // Fatura trimestral, semestral ou anual: os textos dizem "plano <ciclo>" junto do valor e nunca "por mês".
+    cycle: invoice ? asBillingCycle(invoice.cycle) : subject.billingCycle,
     dueDate: formatDateBR(dueInstant, tz),
     billingUrl: `${base}/${subject.tenantSlug}/assinatura`,
     panelUrl: `${base}/${subject.tenantSlug}/inicio`,

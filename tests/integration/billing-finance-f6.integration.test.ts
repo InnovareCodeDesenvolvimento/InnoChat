@@ -933,11 +933,11 @@ describe("CSV de faturas: GET /api/admin/finance/invoices.csv", () => {
     expect(filename).toBe("faturas-2026-08-01_a_2026-09-30.csv");
     expect(csv.startsWith("﻿")).toBe(true);
     const lines = csv.split("\r\n");
-    expect(lines[0]).toBe("﻿Empresa;Documento;Plano;Competência;Vencimento;Valor;Status;Pago em;Forma;Id da fatura;Id do pagamento MP");
+    expect(lines[0]).toBe("﻿Empresa;Documento;Plano;Ciclo;Competência;Vencimento;Valor;Status;Pago em;Forma;Id da fatura;Id do pagamento MP");
     const mine = lines.filter((l) => l.includes("evil.example"));
     expect(mine).toHaveLength(2);
     // O nome da empresa e o do plano (iniciados por = e +) ganham apóstrofo; as aspas são dobradas.
-    const prefix = `"'=HYPERLINK(""http://evil.example"",""clique"")";52998224725;"'+SOMA(1;2)";`;
+    const prefix = `"'=HYPERLINK(""http://evil.example"",""clique"")";52998224725;"'+SOMA(1;2)";Mensal;`;
     for (const line of mine) expect(line.startsWith(prefix)).toBe(true);
     expect(rows).toBeGreaterThanOrEqual(2);
     // Nenhuma célula começa com = + - @ (fora do apóstrofo de proteção).

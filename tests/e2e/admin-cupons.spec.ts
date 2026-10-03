@@ -6,13 +6,15 @@ import { SEED_TENANT_SLUG } from "./fixtures/test-data";
 
 /**
  * Admin → Cupons: criar, validar no formulário, editar, travar o que já foi usado, desativar e reativar,
- * ver resgates. E Admin → Planos: preço anual com a dica de economia. Tudo pela tela; o banco só confirma.
+ * ver resgates, com caixinhas dos 4 ciclos e duração em faturas. Os preços por ciclo do plano estão em `admin-planos-ciclos.spec.ts`.
+ * Tudo pela tela; o banco só confirma.
  */
 test.use({ storageState: OWNER_STORAGE_STATE });
 
 const run = randomUUID().slice(0, 6).toUpperCase();
 const CODE = `E2EC${run}`;
 const USED_CODE = `E2EU${run}`;
+const LEGACY = { any: `E2ELA${run}`, monthly: `E2ELM${run}`, annual: `E2ELN${run}` };
 
 function main(page: Page) {
   return page.getByRole("main");
@@ -24,7 +26,7 @@ function rowOf(page: Page, code: string) {
 test.describe.serial("Admin → Cupons", () => {
   test.afterAll(async () => {
     await prisma.couponRedemption.deleteMany({ where: { coupon: { code: { in: [CODE, USED_CODE] } } } });
-    await prisma.coupon.deleteMany({ where: { code: { in: [CODE, USED_CODE] } } });
+    await prisma.coupon.deleteMany({ where: { code: { in: [CODE, USED_CODE, ...Object.values(LEGACY)] } } });
   });
 
   test("criar: erro de formulário claro, depois cria e a linha aparece com desconto e validade", async ({ page }) => {
@@ -44,7 +46,19 @@ test.describe.serial("Admin → Cupons", () => {
 
     await dialog.getByLabel(/^Desconto \(%\)/).fill("15");
     await dialog.getByLabel("Descrição (só você vê)").fill("Campanha E2E");
-    await dialog.getByLabel(/^Em qual cobrança vale/).selectOption("ANNUAL");
+    // Duração em FATURAS e ciclos por caixinha: trimestral e anual marcados.
+    await dialog.getByLabel(/^Por quanto tempo vale/).selectOption("N_CYCLES");
+    await dialog.getByLabel("Quantas faturas").fill("3");
+    // Nenhum ciclo marcado = todos: de 3 meses (mensal) a 36 meses (anual).
+    await expect(dialog.getByText(/3 faturas: de 3 meses no mensal a 36 meses no anual/)).toBeVisible();
+    const cycles = dialog.getByTestId("cupom-ciclos");
+    await expect(cycles.getByRole("checkbox")).toHaveCount(4);
+    await cycles.getByLabel("Trimestral").check();
+    await cycles.getByLabel("Anual").check();
+    await expect(dialog.getByText(/3 faturas: de 9 meses no trimestral a 36 meses no anual/)).toBeVisible();
+    await cycles.getByLabel("Anual").uncheck();
+    await expect(dialog.getByText(/3 faturas, cerca de 9 meses no trimestral/)).toBeVisible();
+    await cycles.getByLabel("Anual").check();
     await dialog.getByLabel("Limite de empresas").fill("5");
     await dialog.getByRole("button", { name: "Salvar" }).click();
     await expect(dialog).toBeHidden();
@@ -54,8 +68,10 @@ test.describe.serial("Admin → Cupons", () => {
     await expect(row.getByText("15% de desconto").or(row.getByText(/15\s?%/)).first()).toBeVisible();
     await expect(row.getByText("Ativo", { exact: true })).toBeVisible();
     await expect(row.getByText("0 de 5")).toBeVisible();
+    await expect(row.getByText("trimestral e anual")).toBeVisible();
+    await expect(row.getByText("nas 3 primeiras faturas")).toBeVisible();
     const saved = await prisma.coupon.findUnique({ where: { code: CODE } });
-    expect(saved).toMatchObject({ kind: "PERCENT", value: 15, appliesToCycle: "ANNUAL", maxRedemptions: 5, duration: "ONCE", active: true });
+    expect(saved).toMatchObject({ kind: "PERCENT", value: 15, appliesToCycles: ["QUARTERLY", "ANNUAL"], appliesToCycle: "ANY", maxRedemptions: 5, duration: "N_CYCLES", durationCycles: 3, active: true });
   });
 
   test("código repetido é recusado pelo servidor com mensagem, sem criar outro", async ({ page }) => {
@@ -119,6 +135,7 @@ test.describe.serial("Admin → Cupons", () => {
     await expect(dialog.getByLabel(/^Desconto \(%\)/)).toBeDisabled();
     await expect(dialog.getByLabel(/^Por quanto tempo vale/)).toBeDisabled();
     await expect(dialog.getByLabel("Limite de empresas")).toBeEnabled();
+    for (const label of ["Mensal", "Trimestral", "Semestral", "Anual"]) await expect(dialog.getByTestId("cupom-ciclos").getByLabel(label)).toBeDisabled();
     // O limite não pode cair abaixo do que já foi usado (1).
     await dialog.getByLabel("Limite de empresas").fill("0");
     await dialog.getByRole("button", { name: "Salvar" }).click();
@@ -131,6 +148,26 @@ test.describe.serial("Admin → Cupons", () => {
     await expect(redemptions.getByTestId("resgates-lista").getByText(`/${SEED_TENANT_SLUG}`)).toBeVisible();
   });
 
+  test("cupons convertidos pelo backfill mostram o ciclo certo na lista e no formulário", async ({ page }) => {
+    // Resultado do backfill: ANY -> [], MONTHLY -> [MONTHLY], ANNUAL -> [ANNUAL] (a coluna antiga fica com o valor de antes).
+    const base = { kind: "PERCENT", value: 10, duration: "ONCE", active: true } as const;
+    await prisma.coupon.create({ data: { ...base, code: LEGACY.any, appliesToCycle: "ANY", appliesToCycles: [] } });
+    await prisma.coupon.create({ data: { ...base, code: LEGACY.monthly, appliesToCycle: "MONTHLY", appliesToCycles: ["MONTHLY"] } });
+    await prisma.coupon.create({ data: { ...base, code: LEGACY.annual, appliesToCycle: "ANNUAL", appliesToCycles: ["ANNUAL"] } });
+    await page.goto("/admin/cupons?busca=E2EL");
+    await expect(rowOf(page, LEGACY.any).getByText("todos os ciclos")).toBeVisible();
+    await expect(rowOf(page, LEGACY.monthly).getByText("só no mensal")).toBeVisible();
+    await expect(rowOf(page, LEGACY.annual).getByText("só no anual")).toBeVisible();
+    await rowOf(page, LEGACY.annual).getByRole("button", { name: `Editar o cupom ${LEGACY.annual}` }).click();
+    const cycles = page.getByRole("dialog").getByTestId("cupom-ciclos");
+    await expect(cycles.getByLabel("Anual")).toBeChecked();
+    await expect(cycles.getByLabel("Mensal")).not.toBeChecked();
+    await page.getByRole("dialog").getByRole("button", { name: "Cancelar" }).click();
+    await rowOf(page, LEGACY.any).getByRole("button", { name: `Editar o cupom ${LEGACY.any}` }).click();
+    for (const label of ["Mensal", "Trimestral", "Semestral", "Anual"]) await expect(page.getByRole("dialog").getByTestId("cupom-ciclos").getByLabel(label)).not.toBeChecked();
+    await page.getByRole("dialog").getByRole("button", { name: "Cancelar" }).click();
+  });
+
   test("layout da lista sem rolagem horizontal em 1440 e 390", async ({ page }) => {
     for (const [width, height] of [[1440, 900], [390, 844]] as const) {
       await page.setViewportSize({ width, height });
@@ -139,42 +176,5 @@ test.describe.serial("Admin → Cupons", () => {
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
       expect(overflow, `overflow a ${width}px`).toBeLessThanOrEqual(0);
     }
-  });
-});
-
-test.describe("Admin → Planos: preço anual", () => {
-  const PLAN_CODE = `e2e-anual-${run.toLowerCase()}`;
-  test.afterAll(async () => {
-    await prisma.plan.deleteMany({ where: { code: PLAN_CODE } });
-  });
-
-  test("define o preço anual com dica de economia, recusa valor acima de 12 mensalidades e limpa para voltar a só mensal", async ({ page }) => {
-    await prisma.plan.create({ data: { code: PLAN_CODE, name: `Plano Anual ${run}`, priceCents: 10000, maxWhatsappNumbers: 1, maxProfessionals: 2, active: false, sortOrder: 998 } });
-    await page.goto("/admin/planos");
-    const card = main(page).locator("div.group").filter({ hasText: `Plano Anual ${run}` });
-    await expect(card.getByText("Sem opção anual")).toBeVisible();
-    await card.getByRole("button", { name: "Editar plano" }).click();
-    const dialog = page.getByRole("dialog");
-
-    await dialog.getByLabel(/^Preço anual/).fill("1000");
-    await expect(dialog.getByText(/economiza R\$\s?200,00.*2 meses grátis/)).toBeVisible();
-    await dialog.getByLabel(/^Preço anual/).fill("1300");
-    await expect(dialog.getByText(/Maior que 12 mensalidades/)).toBeVisible();
-    await dialog.getByRole("button", { name: "Salvar" }).click();
-    // O servidor também recusa (a dica é só aviso): nada de preço anual acima de 12 mensalidades.
-    await expect.poll(async () => (await prisma.plan.findUnique({ where: { code: PLAN_CODE } }))?.annualPriceCents).toBe(null);
-    await expect(dialog).toBeVisible();
-
-    await dialog.getByLabel(/^Preço anual/).fill("1000");
-    await dialog.getByRole("button", { name: "Salvar" }).click();
-    await expect(dialog).toBeHidden();
-    await expect(card.getByTestId("plano-anual")).toContainText("por ano");
-    expect((await prisma.plan.findUnique({ where: { code: PLAN_CODE } }))?.annualPriceCents).toBe(100000);
-
-    await card.getByRole("button", { name: "Editar plano" }).click();
-    await page.getByRole("dialog").getByLabel(/^Preço anual/).fill("");
-    await page.getByRole("dialog").getByRole("button", { name: "Salvar" }).click();
-    await expect(card.getByText("Sem opção anual")).toBeVisible();
-    expect((await prisma.plan.findUnique({ where: { code: PLAN_CODE } }))?.annualPriceCents).toBe(null);
   });
 });

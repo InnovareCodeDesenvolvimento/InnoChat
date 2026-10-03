@@ -10,6 +10,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
+import { cycleTitle } from "@/core/billing";
 import { Table, TableBody, TableCell, TableHead, TableHeadCell, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field } from "@/components/ui/field";
@@ -374,7 +375,7 @@ export function AdminCobrancaClient({
                   </TableCell>
                   <TableCell className="tabular-nums">
                     {formatCentsBRL(invoice.amountCents)}
-                    {invoice.cycle === "ANNUAL" ? <Badge variant="neutral" className="ml-1.5">Anual</Badge> : null}
+                    {invoice.cycle !== "MONTHLY" ? <Badge variant="neutral" className="ml-1.5">{cycleTitle(invoice.cycle)}</Badge> : null}
                     {invoice.discountCents > 0 ? (
                       <span className="block text-xs text-text-secondary">cupom {invoice.couponCode ?? ""}: -{formatCentsBRL(invoice.discountCents)}</span>
                     ) : null}

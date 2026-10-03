@@ -5,7 +5,7 @@ import { navIconFor } from "@/components/shell/nav-items";
 import { EmptyState } from "@/components/ui/empty-state";
 import { getPrisma } from "@/lib/db/prisma";
 import { auth } from "@/lib/auth";
-import { accessEndsAt, annualSavingsCents, annualSavingsLabel, CANCELED_RETENTION_DAYS, effectiveStatus, planOffersAnnual, type CouponKind } from "@/core/billing";
+import { accessEndsAt, asBillingCycle, buildCycleOptions, CANCELED_RETENTION_DAYS, effectiveStatus, type CouponKind } from "@/core/billing";
 import { addDays } from "date-fns";
 import { listActivePlansAction, type PlanListItem } from "@/modules/billing/actions";
 import { resolveBillingBanner } from "@/components/shell/billing-banner-state";
@@ -98,7 +98,7 @@ export default async function AssinaturaPage({
     periodEnd: row.periodEnd.toISOString(),
     status: row.status === "PAID" ? "PAID" : "OPEN",
     paidAt: row.paidAt?.toISOString() ?? null,
-    cycle: row.cycle === "ANNUAL" ? "ANNUAL" : "MONTHLY",
+    cycle: asBillingCycle(row.cycle),
     discountCents: row.discountCents,
     couponCode: row.couponCode,
   }));
@@ -117,12 +117,9 @@ export default async function AssinaturaPage({
   const charge = await loadInvoiceCharge(subscription, billedPlan);
   const couponRow = subscription.couponId ? await getPrisma().coupon.findUnique({ where: { id: subscription.couponId } }) : null;
   const cycleSnapshot: CycleSnapshot = {
-    // Ciclo EFETIVO: plano sem preço anual cobra mensal mesmo que a assinatura guarde ANNUAL (troca de plano).
+    // Ciclo EFETIVO: plano que não oferece o ciclo guardado cobra mensal (troca de plano, preço retirado).
     billingCycle: charge.cycle,
-    annualPriceCents: planOffersAnnual(subscription.plan) ? subscription.plan.annualPriceCents : null,
-    monthlyPriceCents: subscription.plan.priceCents,
-    annualSavingsCents: annualSavingsCents(subscription.plan),
-    annualSavingsLabel: annualSavingsLabel(subscription.plan),
+    options: buildCycleOptions(subscription.plan),
     next: { grossCents: charge.grossCents, discountCents: charge.discountCents, netCents: charge.netCents, cycle: charge.cycle },
     coupon: couponRow
       ? {
@@ -163,7 +160,7 @@ export default async function AssinaturaPage({
           pixCopyPaste: openInvoice.pixCopyPaste,
           pixExpiresAt: openInvoice.pixExpiresAt?.toISOString() ?? null,
           paidAt: openInvoice.paidAt?.toISOString() ?? null,
-          cycle: openInvoice.cycle === "ANNUAL" ? "ANNUAL" : "MONTHLY",
+          cycle: asBillingCycle(openInvoice.cycle),
           discountCents: openInvoice.discountCents,
           couponCode: openInvoice.couponCode,
         }

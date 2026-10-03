@@ -6,6 +6,7 @@ import { runAction, type Result } from "@/lib/result";
 import { DomainError } from "@/lib/errors";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { clientIp } from "@/lib/http/client-ip";
+import { BILLING_CYCLES } from "@/core/billing";
 import { userNameSchema } from "@/lib/validation/user-name";
 import { assertCurrentTermsVersion, TERMS_VERSION } from "@/lib/legal";
 import { getGoogleSignUpPrefill, completeGoogleSignUp } from "@/modules/google-auth/signup";
@@ -58,7 +59,7 @@ const signUpSchema = z.preprocess(
   termsVersion: z.string().min(1).max(50),
   acceptedTerms: z.boolean().refine((v) => v === true, { message: "É preciso aceitar os termos." }),
   // Cobrança escolhida (padrão mensal) e cupom opcional (Melhoria 6). O servidor revalida os dois.
-  billingCycle: z.enum(["MONTHLY", "ANNUAL"]).optional(),
+  billingCycle: z.enum(BILLING_CYCLES).optional(),
   couponCode: z.string().trim().max(40).optional(),
   // Só vem quando o visitante aceitou o Pixel do Meta: é o event_id que o navegador usou, para a API
   // de Conversões mandar o mesmo evento e a Meta descartar a duplicata. Ausente = sem rastreio.
@@ -225,6 +226,9 @@ const completeGoogleSignUpSchema = z.object({
     .refine((v) => v === "" || /^\d{10,13}$/.test(v.replace(/\D/g, "")), "Informe o telefone com DDD.")
     .optional(),
   planCode: z.string().trim().max(60).optional(),
+  // Cobrança e cupom, como no cadastro com senha. O servidor revalida os dois.
+  billingCycle: z.enum(BILLING_CYCLES).optional(),
+  couponCode: z.string().trim().max(40).optional(),
   acceptTerms: z.boolean().refine((v) => v === true, { message: "É preciso aceitar os termos." }),
   metaEventId: z.string().max(64).optional(),
 });
@@ -254,6 +258,8 @@ export async function completeGoogleSignUpAction(input: unknown): Promise<Result
       document: data.document,
       phone: data.phone || null,
       planCode: data.planCode || undefined,
+      billingCycle: data.billingCycle,
+      couponCode: data.couponCode || undefined,
       termsVersion: TERMS_VERSION,
     });
 

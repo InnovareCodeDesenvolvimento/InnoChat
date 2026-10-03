@@ -119,6 +119,8 @@ export const FIELD_LABELS: Record<string, string> = {
   durationMin: "Duração (minutos)",
   bufferAfterMin: "Intervalo depois (minutos)",
   priceCents: "Preço",
+  quarterlyPriceCents: "Preço trimestral",
+  semiannualPriceCents: "Preço semestral",
   annualPriceCents: "Preço anual",
   active: "Ativo",
   sortOrder: "Ordem na lista",
@@ -154,8 +156,8 @@ export const FIELD_LABELS: Record<string, string> = {
   validUntil: "Vale até",
   maxRedemptions: "Limite de usos",
   duration: "Duração do desconto",
-  durationCycles: "Ciclos com desconto",
-  appliesToCycle: "Vale para o ciclo",
+  durationCycles: "Faturas com desconto",
+  appliesToCycles: "Vale para os ciclos",
   situacao: "Situação",
   diasExtras: "Dias a mais",
   versao: "Versão",
@@ -217,6 +219,8 @@ const ENUM_LABELS: Record<string, string> = {
   OWNER: "Dono",
   STAFF: "Equipe",
   MONTHLY: "Mensal",
+  QUARTERLY: "Trimestral",
+  SEMIANNUAL: "Semestral",
   ANNUAL: "Anual",
   PERCENT: "Porcentagem",
   AMOUNT: "Valor fixo",
@@ -251,6 +255,10 @@ const ISO_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
 export function formatAuditValue(field: string, value: unknown, timezone = "America/Sao_Paulo"): string {
   if (value === null || value === undefined || value === "") return "vazio";
   if (typeof value === "boolean") return value ? "sim" : "não";
+  if (Array.isArray(value)) {
+    if (value.length === 0) return field === "appliesToCycles" ? "todos os ciclos" : "vazio";
+    return value.map((item) => ENUM_LABELS[String(item)] ?? String(item)).join(", ");
+  }
   if (typeof value === "number") {
     if (/cents$/i.test(field)) return BRL.format(value / 100);
     return value.toLocaleString("pt-BR");

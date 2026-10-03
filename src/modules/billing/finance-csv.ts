@@ -1,7 +1,7 @@
 import { getPrisma } from "@/lib/db/prisma";
 import { DomainError } from "@/lib/errors";
 import { CSV_BOM, csvLine } from "@/lib/csv";
-import { DEFAULT_BILLING_TIMEZONE, localDateOf } from "@/core/billing";
+import { asBillingCycle, cycleTitle, DEFAULT_BILLING_TIMEZONE, localDateOf } from "@/core/billing";
 import type { InvoiceStatus } from "@/lib/db/types";
 import { formatDateBR } from "./format";
 import { resolveCsvRange } from "./finance-service";
@@ -16,6 +16,7 @@ export const INVOICES_CSV_HEADER = [
   "Empresa",
   "Documento",
   "Plano",
+  "Ciclo",
   "Competência",
   "Vencimento",
   "Valor",
@@ -59,6 +60,7 @@ export async function buildInvoicesCsv(params: InvoicesCsvParams, now: Date = ne
         paidAt: true,
         paidByPaymentId: true,
         mpPaymentId: true,
+        cycle: true,
         subscription: { select: { plan: { select: { name: true } }, tenant: { select: { name: true, document: true, timezone: true } } } },
       },
     });
@@ -73,6 +75,7 @@ export async function buildInvoicesCsv(params: InvoicesCsvParams, now: Date = ne
           invoice.subscription.tenant.name,
           invoice.subscription.tenant.document,
           invoice.subscription.plan.name,
+          cycleTitle(asBillingCycle(invoice.cycle)),
           localDateOf(invoice.periodStart, tz).slice(0, 7),
           formatDateBR(invoice.dueAt, tz),
           reais(invoice.amountCents),

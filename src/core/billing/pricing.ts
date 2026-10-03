@@ -1,20 +1,51 @@
 /**
- * Preço da fatura: ciclo (mensal/anual) e cupom. Tudo puro (sem banco, sem relógio implícito), para o
- * mesmo cálculo valer no cadastro, na tela de Assinatura, no `billing/tick` e nos testes.
+ * Preço da fatura: ciclo (mensal, trimestral, semestral, anual) e cupom. Tudo puro (sem banco, sem relógio
+ * implícito), para o mesmo cálculo valer no cadastro, na tela de Assinatura, no `billing/tick` e nos testes.
  *
  * Regras:
+ * - O preço de cada ciclo é o valor cobrado DE UMA VEZ no período (não por mês). O mensal é `priceCents`
+ *   (sempre existe); os demais são opcionais e nulo = ciclo NÃO oferecido pelo plano.
  * - `Invoice.amountCents` é sempre o LÍQUIDO (o que o Pix cobra). Bruto = líquido + `discountCents`.
  * - Cupom PERCENT: `value` de 1 a 100, sobre o bruto do ciclo. AMOUNT: `value` em centavos, por fatura coberta.
  * - O desconto nunca deixa o líquido abaixo de `MIN_CHARGE_CENTS` (o Mercado Pago não gera Pix de valor
  *   ínfimo/zero). Cupom de 100% ou AMOUNT maior que a fatura cai no mínimo, nunca em zero ou negativo.
+ * - Cupom `durationCycles` conta FATURAS, não meses (3 faturas num plano trimestral = 9 meses).
  */
 
-export type BillingCycle = "MONTHLY" | "ANNUAL";
-export const BILLING_CYCLES: readonly BillingCycle[] = ["MONTHLY", "ANNUAL"];
+export const BILLING_CYCLES = ["MONTHLY", "QUARTERLY", "SEMIANNUAL", "ANNUAL"] as const;
+export type BillingCycle = (typeof BILLING_CYCLES)[number];
+
+export type CycleInfo = {
+  months: number;
+  /** "Mensal", "Trimestral"... (título de botão e coluna). */
+  label: string;
+  /** "mensal", "trimestral"... (no meio da frase: "plano trimestral"). */
+  word: string;
+  /** "1 mês", "3 meses"... ("a cada 3 meses"). */
+  every: string;
+};
+
+/** Fonte única dos ciclos: meses, rótulo e "a cada N meses". Nada mais no código deve decidir isso por `if`. */
+export const CYCLE_INFO: Record<BillingCycle, CycleInfo> = {
+  MONTHLY: { months: 1, label: "Mensal", word: "mensal", every: "1 mês" },
+  QUARTERLY: { months: 3, label: "Trimestral", word: "trimestral", every: "3 meses" },
+  SEMIANNUAL: { months: 6, label: "Semestral", word: "semestral", every: "6 meses" },
+  ANNUAL: { months: 12, label: "Anual", word: "anual", every: "12 meses" },
+};
+
+/** Coluna de `Plan` que guarda o preço do ciclo. */
+export const CYCLE_PRICE_FIELD = {
+  MONTHLY: "priceCents",
+  QUARTERLY: "quarterlyPriceCents",
+  SEMIANNUAL: "semiannualPriceCents",
+  ANNUAL: "annualPriceCents",
+} as const satisfies Record<BillingCycle, string>;
+
+/** Seleção de preços para `select` do Prisma: usar em toda leitura de plano que precise cobrar. */
+export const PLAN_PRICES_SELECT = { priceCents: true, quarterlyPriceCents: true, semiannualPriceCents: true, annualPriceCents: true } as const;
 
 export type CouponKind = "PERCENT" | "AMOUNT";
 export type CouponDuration = "ONCE" | "N_CYCLES" | "FOREVER";
-export type CouponCycleRule = "ANY" | "MONTHLY" | "ANNUAL";
 
 /** Menor cobrança Pix que mandamos ao Mercado Pago (R$ 1,00): abaixo disso o desconto é limitado. */
 export const MIN_CHARGE_CENTS = 100;
@@ -30,55 +61,168 @@ export function isValidCouponCode(code: string): boolean {
   return COUPON_CODE_PATTERN.test(code);
 }
 
+/** Valor vindo de fora (banco, formulário) que é um dos 4 ciclos; qualquer outra coisa vira `null`. */
+export function parseBillingCycle(value: unknown): BillingCycle | null {
+  return typeof value === "string" && (BILLING_CYCLES as readonly string[]).includes(value) ? (value as BillingCycle) : null;
+}
+
+/** Como `parseBillingCycle`, mas o desconhecido vira MONTHLY (lido de coluna que o banco já restringe). */
+export function asBillingCycle(value: unknown): BillingCycle {
+  return parseBillingCycle(value) ?? "MONTHLY";
+}
+
 /** Meses que o ciclo cobre. */
 export function cycleMonths(cycle: BillingCycle): number {
-  return cycle === "ANNUAL" ? 12 : 1;
+  return CYCLE_INFO[cycle].months;
 }
 
+/** "mensal", "trimestral", "semestral" ou "anual" (minúsculo, para o meio da frase). */
 export function cycleLabel(cycle: BillingCycle): string {
-  return cycle === "ANNUAL" ? "anual" : "mensal";
+  return CYCLE_INFO[cycle].word;
 }
 
-export type PlanPrices = { priceCents: number; annualPriceCents: number | null };
+/** "Mensal", "Trimestral", "Semestral" ou "Anual". */
+export function cycleTitle(cycle: BillingCycle): string {
+  return CYCLE_INFO[cycle].label;
+}
 
-/** O plano oferece cobrança anual (preço anual definido e positivo). */
-export function planOffersAnnual(plan: PlanPrices): boolean {
-  return plan.annualPriceCents !== null && plan.annualPriceCents > 0;
+/** "a cada 3 meses" / "a cada 1 mês". */
+export function cycleEveryLabel(cycle: BillingCycle): string {
+  return `a cada ${CYCLE_INFO[cycle].every}`;
+}
+
+export type PlanPrices = {
+  priceCents: number;
+  quarterlyPriceCents: number | null;
+  semiannualPriceCents: number | null;
+  annualPriceCents: number | null;
+};
+
+/** Preço do ciclo no plano; `null` = não oferecido (o mensal sempre existe). */
+export function priceFor(plan: PlanPrices, cycle: BillingCycle): number | null {
+  if (cycle === "MONTHLY") return plan.priceCents;
+  const value = plan[CYCLE_PRICE_FIELD[cycle]];
+  return value !== null && value > 0 ? value : null;
+}
+
+/** O plano oferece o ciclo (mensal sempre; os outros só com preço positivo). */
+export function planOffersCycle(plan: PlanPrices, cycle: BillingCycle): boolean {
+  return priceFor(plan, cycle) !== null;
+}
+
+/** Ciclos oferecidos pelo plano, do menor para o maior. O mensal vem sempre primeiro. */
+export function offeredCycles(plan: PlanPrices): BillingCycle[] {
+  return BILLING_CYCLES.filter((cycle) => planOffersCycle(plan, cycle));
 }
 
 /**
- * Ciclo realmente cobrável: pedir ANUAL num plano sem preço anual (o admin pode tirar o preço depois)
- * cai em MONTHLY em vez de cobrar errado.
+ * Ciclo realmente cobrável: pedir um ciclo que o plano não oferece (o admin pode tirar o preço depois, ou a
+ * empresa trocou de plano) cai em MONTHLY em vez de cobrar errado.
  */
 export function effectiveCycle(plan: PlanPrices, requested: BillingCycle): BillingCycle {
-  return requested === "ANNUAL" && planOffersAnnual(plan) ? "ANNUAL" : "MONTHLY";
+  return planOffersCycle(plan, requested) ? requested : "MONTHLY";
 }
 
-/** Bruto (preço de tabela) de um ciclo. */
+/** Bruto (preço de tabela) de um ciclo. Ciclo não oferecido cai no mensal, como `effectiveCycle`. */
 export function grossCentsFor(plan: PlanPrices, cycle: BillingCycle): number {
-  return cycle === "ANNUAL" && planOffersAnnual(plan) ? (plan.annualPriceCents as number) : plan.priceCents;
+  return priceFor(plan, cycle) ?? plan.priceCents;
 }
 
-/** Quanto o anual economiza em relação a 12 mensalidades (0 se não há anual ou se não compensa). */
-export function annualSavingsCents(plan: PlanPrices): number {
-  if (!planOffersAnnual(plan)) return 0;
-  return Math.max(0, plan.priceCents * 12 - (plan.annualPriceCents as number));
+/** Equivalente por mês de um preço de período, em centavos, arredondado. */
+export function monthlyEquivalentCents(periodPriceCents: number, cycle: BillingCycle): number {
+  return Math.round(periodPriceCents / cycleMonths(cycle));
 }
 
-/** Economia em meses de mensalidade, arredondada para baixo ("2 meses grátis"). 0 se menos de 1 mês. */
-export function annualFreeMonths(plan: PlanPrices): number {
-  if (plan.priceCents <= 0) return 0;
-  return Math.floor(annualSavingsCents(plan) / plan.priceCents);
-}
-
-/** Equivalente mensal do anual (MRR de um plano anual), em centavos, arredondado. */
-export function annualMonthlyEquivalentCents(annualPriceCents: number): number {
-  return Math.round(annualPriceCents / 12);
-}
-
-/** Contribuição da assinatura para o MRR: o mensal, ou o anual dividido por 12. */
+/** Contribuição da assinatura para o MRR: o preço do ciclo dividido pelos meses dele. */
 export function mrrContributionCents(plan: PlanPrices, cycle: BillingCycle): number {
-  return cycle === "ANNUAL" && planOffersAnnual(plan) ? annualMonthlyEquivalentCents(plan.annualPriceCents as number) : plan.priceCents;
+  const effective = effectiveCycle(plan, cycle);
+  return monthlyEquivalentCents(grossCentsFor(plan, effective), effective);
+}
+
+export type CycleSavings = {
+  /** Quanto o ciclo economiza em relação a pagar o mensal pelos mesmos meses (0 se não oferece ou não compensa). */
+  savingsCents: number;
+  /** Mesma economia em %, inteiro arredondado (0 a 100). */
+  percent: number;
+  /** Mensalidades inteiras que a economia equivale ("2 meses grátis"); 0 se menos de 1. */
+  freeMonths: number;
+  /** `true` quando a economia fecha meses inteiros exatos. */
+  freeMonthsExact: boolean;
+  /** Preço do período e o equivalente por mês (`null` se o plano não oferece o ciclo). */
+  periodCents: number | null;
+  perMonthCents: number | null;
+};
+
+/** Economia de um ciclo contra a mensalidade (tudo derivado de `priceCents * meses`; nada é gravado). */
+export function cycleSavings(plan: PlanPrices, cycle: BillingCycle): CycleSavings {
+  const periodCents = priceFor(plan, cycle);
+  if (periodCents === null) return { savingsCents: 0, percent: 0, freeMonths: 0, freeMonthsExact: false, periodCents: null, perMonthCents: null };
+  const full = plan.priceCents * cycleMonths(cycle);
+  const savingsCents = Math.max(0, full - periodCents);
+  const percent = full > 0 ? Math.round((savingsCents / full) * 100) : 0;
+  const freeMonths = plan.priceCents > 0 ? Math.floor(savingsCents / plan.priceCents) : 0;
+  return {
+    savingsCents,
+    percent,
+    freeMonths,
+    freeMonthsExact: freeMonths >= 1 && freeMonths * plan.priceCents === savingsCents,
+    periodCents,
+    perMonthCents: monthlyEquivalentCents(periodCents, cycle),
+  };
+}
+
+/** Maior economia (em %) entre os ciclos oferecidos; `null` se nenhum economiza. Para a landing. */
+export function bestCycle(plan: PlanPrices): { cycle: BillingCycle; savings: CycleSavings } | null {
+  let best: { cycle: BillingCycle; savings: CycleSavings } | null = null;
+  for (const cycle of offeredCycles(plan)) {
+    if (cycle === "MONTHLY") continue;
+    const savings = cycleSavings(plan, cycle);
+    if (savings.savingsCents > 0 && (best === null || savings.perMonthCents! < best.savings.perMonthCents!)) best = { cycle, savings };
+  }
+  return best;
+}
+
+export type SuggestedPrice = {
+  cycle: Exclude<BillingCycle, "MONTHLY">;
+  /** Preço cheio do período (mensal x meses). */
+  fullCents: number;
+  /** Valor exato da regra, antes de arredondar. */
+  rawCents: number;
+  /** Valor sugerido, em reais inteiros (o admin pode editar). */
+  roundedCents: number;
+  /** Regra aplicada, em texto ("5% de desconto", "2 meses grátis"). */
+  rule: string;
+};
+
+/**
+ * Sugestão de preços: trimestral com 5% de desconto, semestral com 10% e anual com 2 meses grátis, arredondados
+ * para reais inteiros. Nunca passa de mensal x meses nem cai abaixo do mínimo. Mensal inválido devolve `[]`.
+ */
+export function suggestCyclePrices(monthlyCents: number): SuggestedPrice[] {
+  if (!Number.isFinite(monthlyCents) || monthlyCents < MIN_CHARGE_CENTS) return [];
+  const make = (cycle: SuggestedPrice["cycle"], rawCents: number, rule: string): SuggestedPrice => {
+    const fullCents = monthlyCents * cycleMonths(cycle);
+    const rounded = Math.round(rawCents / 100) * 100;
+    const roundedCents = Math.min(fullCents, Math.max(MIN_CHARGE_CENTS, rounded));
+    return { cycle, fullCents, rawCents: Math.round(rawCents), roundedCents, rule };
+  };
+  return [
+    make("QUARTERLY", monthlyCents * 3 * 0.95, "5% de desconto"),
+    make("SEMIANNUAL", monthlyCents * 6 * 0.9, "10% de desconto"),
+    make("ANNUAL", monthlyCents * 10, "2 meses grátis"),
+  ];
+}
+
+/** Lista de ciclos de cupom normalizada: só os 4 válidos, sem repetir, na ordem; os 4 marcados viram `[]` (todos). */
+export function normalizeCouponCycles(cycles: readonly string[]): BillingCycle[] {
+  const set = new Set(cycles);
+  const picked = BILLING_CYCLES.filter((cycle) => set.has(cycle));
+  return picked.length === BILLING_CYCLES.length ? [] : picked;
+}
+
+/** O cupom vale no ciclo? Lista vazia = todos. */
+export function couponAcceptsCycle(appliesToCycles: readonly string[], cycle: BillingCycle): boolean {
+  return appliesToCycles.length === 0 || appliesToCycles.includes(cycle);
 }
 
 export type CouponTerms = {
@@ -112,7 +256,7 @@ export function priceInvoice(plan: PlanPrices, requestedCycle: BillingCycle, cou
   return { cycle, grossCents, discountCents, netCents: grossCents - discountCents };
 }
 
-/** `couponCyclesRemaining` inicial ao adotar o cupom: ONCE = 1, N_CYCLES = N, FOREVER = nulo (sem fim). */
+/** `couponCyclesRemaining` inicial ao adotar o cupom: ONCE = 1, N_CYCLES = N, FOREVER = nulo (sem fim). Conta FATURAS. */
 export function initialCouponCycles(duration: CouponDuration, durationCycles: number | null): number | null {
   if (duration === "ONCE") return 1;
   if (duration === "N_CYCLES") return durationCycles ?? 1;
@@ -125,7 +269,8 @@ export type CouponEligibilityInput = {
   validUntil: Date | null;
   maxRedemptions: number | null;
   redemptionsCount: number;
-  appliesToCycle: CouponCycleRule;
+  /** Ciclos válidos; lista vazia = todos. */
+  appliesToCycles: readonly string[];
   /** Planos válidos; lista vazia = todos. */
   planIds: readonly string[];
 };
@@ -148,6 +293,6 @@ export function couponIneligibleReason(
   if (coupon.validUntil && ctx.now > coupon.validUntil) return "EXPIRED";
   if (coupon.maxRedemptions !== null && coupon.redemptionsCount >= coupon.maxRedemptions) return "EXHAUSTED";
   if (coupon.planIds.length > 0 && !coupon.planIds.includes(ctx.planId)) return "WRONG_PLAN";
-  if (coupon.appliesToCycle !== "ANY" && coupon.appliesToCycle !== ctx.cycle) return "WRONG_CYCLE";
+  if (!couponAcceptsCycle(coupon.appliesToCycles, ctx.cycle)) return "WRONG_CYCLE";
   return null;
 }

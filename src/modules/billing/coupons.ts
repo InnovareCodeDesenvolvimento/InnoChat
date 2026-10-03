@@ -5,20 +5,24 @@ import { isUniqueViolation } from "@/lib/db/prisma-errors";
 import { DomainError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
 import {
+  asBillingCycle,
   BILLING_CYCLES,
   COUPON_CODE_PATTERN,
+  couponAcceptsCycle,
   couponIneligibleReason,
+  CYCLE_INFO,
   effectiveCycle,
   initialCouponCycles,
   isValidCouponCode,
   normalizeCouponCode,
+  normalizeCouponCycles,
   priceInvoice,
   type BillingCycle,
-  type CouponCycleRule,
   type CouponDuration,
   type CouponIneligibleReason,
   type CouponKind,
   type InvoicePricing,
+  type PlanPrices,
 } from "@/core/billing";
 import { DEFAULT_PAGE_SIZE, pageInfoOf, resolvePage, type PageInfo, type PageSize } from "./paging";
 
@@ -51,11 +55,18 @@ const REASON_ERROR: Record<CouponIneligibleReason, { code: CouponErrorCode; mess
   WRONG_CYCLE: { code: "COUPON_WRONG_CYCLE", message: "Esse cupom não vale para este tipo de cobrança." },
 };
 
-function reasonError(reason: CouponIneligibleReason, cycleRule?: CouponCycleRule): DomainError {
+/** "Esse cupom vale só para o plano trimestral." / "...para os planos trimestral e semestral." */
+function wrongCycleMessage(appliesToCycles: readonly string[]): string {
+  const cycles = normalizeCouponCycles(appliesToCycles);
+  const words = cycles.map((c) => CYCLE_INFO[c].word);
+  if (words.length === 0) return REASON_ERROR.WRONG_CYCLE.message;
+  if (words.length === 1) return `Esse cupom vale só para o plano ${words[0]}.`;
+  return `Esse cupom vale só para os planos ${words.slice(0, -1).join(", ")} e ${words[words.length - 1]}.`;
+}
+
+function reasonError(reason: CouponIneligibleReason, appliesToCycles: readonly string[] = []): DomainError {
   const base = REASON_ERROR[reason];
-  if (reason === "WRONG_CYCLE" && cycleRule && cycleRule !== "ANY") {
-    return new DomainError(base.code, cycleRule === "ANNUAL" ? "Esse cupom vale só para o plano anual." : "Esse cupom vale só para o plano mensal.");
-  }
+  if (reason === "WRONG_CYCLE") return new DomainError(base.code, wrongCycleMessage(appliesToCycles));
   return new DomainError(base.code, base.message);
 }
 
@@ -68,7 +79,7 @@ function eligibilityOf(c: CouponRow) {
     validUntil: c.validUntil,
     maxRedemptions: c.maxRedemptions,
     redemptionsCount: c.redemptionsCount,
-    appliesToCycle: c.appliesToCycle as CouponCycleRule,
+    appliesToCycles: c.appliesToCycles,
     planIds: c.plans.map((p) => p.planId),
   };
 }
@@ -96,7 +107,8 @@ export type CouponPublicInfo = {
   value: number;
   duration: CouponDuration;
   durationCycles: number | null;
-  appliesToCycle: CouponCycleRule;
+  /** Ciclos em que vale; vazio = todos. */
+  appliesToCycles: BillingCycle[];
 };
 
 export type CouponPreview = { coupon: CouponPublicInfo; pricing: InvoicePricing };
@@ -109,7 +121,7 @@ function publicInfo(c: CouponRow): CouponPublicInfo {
     value: c.value,
     duration: c.duration as CouponDuration,
     durationCycles: c.durationCycles,
-    appliesToCycle: c.appliesToCycle as CouponCycleRule,
+    appliesToCycles: normalizeCouponCycles(c.appliesToCycles),
   };
 }
 
@@ -130,7 +142,7 @@ export async function previewCoupon(params: {
   if (!plan) throw new DomainError("INVALID_PLAN", "Plano indisponível.");
   const cycle = effectiveCycle(plan, params.cycle);
   const reason = couponIneligibleReason(eligibilityOf(coupon), { planId: plan.id, cycle, now });
-  if (reason) throw reasonError(reason, coupon.appliesToCycle as CouponCycleRule);
+  if (reason) throw reasonError(reason, coupon.appliesToCycles);
   if (params.tenantId) {
     const used = await prisma.couponRedemption.findUnique({ where: { couponId_tenantId: { couponId: coupon.id, tenantId: params.tenantId } }, select: { id: true } });
     if (used) throw new DomainError("COUPON_ALREADY_USED", "Esta empresa já usou esse cupom.");
@@ -160,7 +172,7 @@ export async function adoptCouponInTx(
 ): Promise<AdoptedCoupon> {
   const coupon = await findCouponByCode(tx, params.code);
   const reason = couponIneligibleReason(eligibilityOf(coupon), { planId: params.planId, cycle: params.cycle, now: params.now });
-  if (reason) throw reasonError(reason, coupon.appliesToCycle as CouponCycleRule);
+  if (reason) throw reasonError(reason, coupon.appliesToCycles);
 
   // A restrição única (cupom, empresa) é o árbitro: duas ações simultâneas da mesma empresa só deixam uma passar.
   try {
@@ -175,7 +187,7 @@ export async function adoptCouponInTx(
   if (!won) {
     const fresh = await tx.coupon.findUnique({ where: { id: coupon.id }, include: { plans: { select: { planId: true } } } });
     const lost = fresh ? couponIneligibleReason(eligibilityOf(fresh), { planId: params.planId, cycle: params.cycle, now: params.now }) : "INACTIVE";
-    throw reasonError(lost ?? "EXHAUSTED", coupon.appliesToCycle as CouponCycleRule);
+    throw reasonError(lost ?? "EXHAUSTED", coupon.appliesToCycles);
   }
 
   return {
@@ -195,7 +207,7 @@ export async function applyCouponToSubscription(tenantId: string, code: string, 
   if (subscription.status === "CANCELED") throw new DomainError("INVALID_STATE", "Reative a assinatura antes de aplicar um cupom.");
   if (subscription.couponId) throw new DomainError("COUPON_ALREADY_APPLIED", "Esta empresa já tem um cupom em uso. Espere ele acabar para usar outro.");
 
-  const cycle = effectiveCycle(subscription.plan, subscription.billingCycle as BillingCycle);
+  const cycle = effectiveCycle(subscription.plan, asBillingCycle(subscription.billingCycle));
   const adopted = await prisma.$transaction(async (tx) => {
     const adoptedNow = await adoptCouponInTx(tx, { code, tenantId, planId: subscription.planId, cycle, now });
     // `updateMany` condicional: duas abas aplicando cupons ao mesmo tempo, só uma grava.
@@ -224,17 +236,16 @@ export type InvoiceChargeSnapshot = InvoicePricing & { couponId: string | null; 
  */
 export async function loadInvoiceCharge(
   subscription: { couponId: string | null; billingCycle: string },
-  plan: { id: string; priceCents: number; annualPriceCents: number | null },
+  plan: PlanPrices & { id: string },
 ): Promise<InvoiceChargeSnapshot> {
-  const requested = (BILLING_CYCLES as readonly string[]).includes(subscription.billingCycle) ? (subscription.billingCycle as BillingCycle) : "MONTHLY";
-  const cycle = effectiveCycle(plan, requested);
+  const cycle = effectiveCycle(plan, asBillingCycle(subscription.billingCycle));
   const noCoupon = (): InvoiceChargeSnapshot => ({ ...priceInvoice(plan, cycle, null), couponId: null, couponCode: null });
   if (!subscription.couponId) return noCoupon();
 
   const coupon = await getPrisma().coupon.findUnique({ where: { id: subscription.couponId }, include: { plans: { select: { planId: true } } } });
   if (!coupon) return noCoupon();
   const planOk = coupon.plans.length === 0 || coupon.plans.some((p) => p.planId === plan.id);
-  const cycleOk = coupon.appliesToCycle === "ANY" || coupon.appliesToCycle === cycle;
+  const cycleOk = couponAcceptsCycle(coupon.appliesToCycles, cycle);
   if (!planOk || !cycleOk) return noCoupon();
   const pricing = priceInvoice(plan, cycle, { kind: coupon.kind as CouponKind, value: coupon.value });
   return { ...pricing, couponId: coupon.id, couponCode: coupon.code };
@@ -278,7 +289,8 @@ export type CouponInput = {
   maxRedemptions?: number | null;
   duration: CouponDuration;
   durationCycles?: number | null;
-  appliesToCycle: CouponCycleRule;
+  /** Ciclos em que vale; vazio ou os 4 = todos. */
+  appliesToCycles?: readonly string[];
   /** Planos em que vale; vazio = todos. */
   planIds?: string[];
   active?: boolean;
@@ -286,7 +298,7 @@ export type CouponInput = {
 
 const MAX_AMOUNT_CENTS = 10_000_000; // R$ 100.000,00: teto de sanidade contra erro de digitação.
 
-function validateCouponShape(input: Pick<CouponInput, "kind" | "value" | "duration" | "durationCycles" | "validFrom" | "validUntil" | "maxRedemptions" | "description">) {
+function validateCouponShape(input: Pick<CouponInput, "kind" | "value" | "duration" | "durationCycles" | "validFrom" | "validUntil" | "maxRedemptions" | "description" | "appliesToCycles">) {
   if (!Number.isInteger(input.value)) throw new DomainError("INVALID_COUPON", "O valor do desconto precisa ser um número inteiro.");
   if (input.kind === "PERCENT" && (input.value < 1 || input.value > 100)) {
     throw new DomainError("INVALID_COUPON", "O desconto em porcentagem vai de 1 a 100.");
@@ -296,13 +308,16 @@ function validateCouponShape(input: Pick<CouponInput, "kind" | "value" | "durati
   }
   if (input.duration === "N_CYCLES") {
     if (!input.durationCycles || !Number.isInteger(input.durationCycles) || input.durationCycles < 1 || input.durationCycles > 60) {
-      throw new DomainError("INVALID_COUPON", "Informe por quantas cobranças o desconto vale (de 1 a 60).");
+      throw new DomainError("INVALID_COUPON", "Informe por quantas faturas o desconto vale (de 1 a 60).");
     }
   } else if (input.durationCycles !== null && input.durationCycles !== undefined) {
-    throw new DomainError("INVALID_COUPON", "A quantidade de cobranças só vale quando a duração é por um número de cobranças.");
+    throw new DomainError("INVALID_COUPON", "A quantidade de faturas só vale quando a duração é por um número de faturas.");
   }
   if (input.validFrom && input.validUntil && input.validFrom > input.validUntil) {
     throw new DomainError("INVALID_COUPON", "A data final precisa ser depois da inicial.");
+  }
+  if (input.appliesToCycles && input.appliesToCycles.some((c) => !(BILLING_CYCLES as readonly string[]).includes(c))) {
+    throw new DomainError("INVALID_COUPON", "Algum ciclo escolhido não existe.");
   }
   if (input.maxRedemptions !== null && input.maxRedemptions !== undefined && (!Number.isInteger(input.maxRedemptions) || input.maxRedemptions < 1)) {
     throw new DomainError("INVALID_COUPON", "O limite de usos precisa ser pelo menos 1.");
@@ -336,7 +351,7 @@ export async function createCoupon(input: CouponInput, createdByUserId: string |
         maxRedemptions: input.maxRedemptions ?? null,
         duration: input.duration,
         durationCycles: input.duration === "N_CYCLES" ? (input.durationCycles ?? null) : null,
-        appliesToCycle: input.appliesToCycle,
+        appliesToCycles: normalizeCouponCycles(input.appliesToCycles ?? []),
         active: input.active ?? true,
         createdByUserId,
         plans: { create: planIds.map((planId) => ({ planId })) },
@@ -365,7 +380,7 @@ export async function updateCoupon(couponId: string, input: CouponUpdate) {
       input.value !== existing.value ||
       input.duration !== existing.duration ||
       (input.durationCycles ?? null) !== existing.durationCycles ||
-      input.appliesToCycle !== existing.appliesToCycle;
+      normalizeCouponCycles(input.appliesToCycles ?? []).join(",") !== normalizeCouponCycles(existing.appliesToCycles).join(",");
     if (locked) {
       throw new DomainError("COUPON_LOCKED", "Esse cupom já foi usado. Tipo, valor, duração e ciclo não mudam mais. Crie outro cupom para um desconto diferente.");
     }
@@ -388,7 +403,7 @@ export async function updateCoupon(couponId: string, input: CouponUpdate) {
         maxRedemptions: input.maxRedemptions ?? null,
         duration: input.duration,
         durationCycles: input.duration === "N_CYCLES" ? (input.durationCycles ?? null) : null,
-        appliesToCycle: input.appliesToCycle,
+        appliesToCycles: normalizeCouponCycles(input.appliesToCycles ?? []),
         ...(input.active === undefined ? {} : { active: input.active }),
       },
     });
@@ -426,7 +441,7 @@ export type CouponListItem = {
   redemptionsCount: number;
   duration: CouponDuration;
   durationCycles: number | null;
-  appliesToCycle: CouponCycleRule;
+  appliesToCycles: BillingCycle[];
   active: boolean;
   state: CouponState;
   planIds: string[];
@@ -446,7 +461,7 @@ function toListItem(c: CouponRow, now: Date): CouponListItem {
     redemptionsCount: c.redemptionsCount,
     duration: c.duration as CouponDuration,
     durationCycles: c.durationCycles,
-    appliesToCycle: c.appliesToCycle as CouponCycleRule,
+    appliesToCycles: normalizeCouponCycles(c.appliesToCycles),
     active: c.active,
     state: couponStateOf(c, now),
     planIds: c.plans.map((p) => p.planId),

@@ -2,6 +2,7 @@ import { formatInTimeZone } from "date-fns-tz";
 import { Receipt } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { cycleTitle, type BillingCycle } from "@/core/billing";
 
 export type PaymentHistoryItem = {
   id: string;
@@ -10,8 +11,8 @@ export type PaymentHistoryItem = {
   periodEnd: string;
   status: "PAID" | "OPEN";
   paidAt: string | null;
-  /** Fatura de plano anual (12 meses) e desconto de cupom já abatido (opcionais: telas antigas seguem valendo). */
-  cycle?: "MONTHLY" | "ANNUAL";
+  /** Ciclo da fatura (1, 3, 6 ou 12 meses) e desconto de cupom já abatido (opcionais: telas antigas seguem valendo). */
+  cycle?: BillingCycle;
   discountCents?: number;
   couponCode?: string | null;
 };
@@ -45,7 +46,7 @@ export function PaymentHistoryCard({ items, timezone }: { items: PaymentHistoryI
                 </span>
                 <span className="flex items-center gap-3">
                   <span className="font-medium tabular-nums text-text">{BRL.format(item.amountCents / 100)}</span>
-                  {item.cycle === "ANNUAL" ? <Badge variant="neutral">Anual</Badge> : null}
+                  {item.cycle && item.cycle !== "MONTHLY" ? <Badge variant="neutral">{cycleTitle(item.cycle)}</Badge> : null}
                   {item.discountCents && item.discountCents > 0 ? (
                     <span className="text-xs text-text-secondary">cupom {item.couponCode ?? ""}: {BRL.format(item.discountCents / 100)} de desconto</span>
                   ) : null}

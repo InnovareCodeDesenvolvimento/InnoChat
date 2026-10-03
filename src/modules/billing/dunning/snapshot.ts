@@ -2,7 +2,7 @@ import { subDays } from "date-fns";
 import { getPrisma } from "@/lib/db/prisma";
 import { logger } from "@/lib/logger";
 import type { Prisma } from "@/lib/db/types";
-import { effectiveCycle, grossCentsFor, safeTimezone, usesTrialRules, type DunningInput } from "@/core/billing";
+import { asBillingCycle, effectiveCycle, grossCentsFor, PLAN_PRICES_SELECT, safeTimezone, usesTrialRules, type BillingCycle, type DunningInput } from "@/core/billing";
 import { manualSuspensionPeriodEnds } from "./events";
 
 /**
@@ -18,7 +18,7 @@ export type DunningSubject = {
   tenantSlug: string;
   planPriceCents: number;
   /** Ciclo atual da assinatura (usado quando ainda não há fatura). */
-  billingCycle: string;
+  billingCycle: BillingCycle;
 };
 
 /** Cancelamentos recentes ainda entram na varredura (aviso de encerramento automático e autocura). */
@@ -31,7 +31,7 @@ function loadRaw(where: Prisma.SubscriptionWhereInput, take?: number) {
     where,
     include: {
       tenant: { select: { id: true, name: true, slug: true, timezone: true } },
-      plan: { select: { priceCents: true, annualPriceCents: true } },
+      plan: { select: PLAN_PRICES_SELECT },
       invoices: { where: { status: "OPEN" }, orderBy: { periodStart: "desc" }, take: 1, select: { id: true, dueAt: true, createdAt: true, isTrialConversion: true } },
     },
     orderBy: { currentPeriodEnd: "asc" },
@@ -60,8 +60,9 @@ async function toSubjects(rows: LoadedSubscription[], now: Date): Promise<Dunnin
       tenantId: r.tenantId,
       tenantName: r.tenant.name,
       tenantSlug: r.tenant.slug,
-      planPriceCents: grossCentsFor(r.plan, effectiveCycle(r.plan, r.billingCycle === "ANNUAL" ? "ANNUAL" : "MONTHLY")),
-      billingCycle: r.billingCycle,
+      planPriceCents: grossCentsFor(r.plan, effectiveCycle(r.plan, asBillingCycle(r.billingCycle))),
+      // Ciclo EFETIVO (plano que deixou de oferecer o ciclo cobra mensal): é o que sai no texto do aviso.
+      billingCycle: effectiveCycle(r.plan, asBillingCycle(r.billingCycle)),
       input: {
         timezone: safeTimezone(r.tenant.timezone),
         subscription: {

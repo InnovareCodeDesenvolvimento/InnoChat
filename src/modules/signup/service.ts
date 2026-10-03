@@ -9,7 +9,7 @@ import { sendMail, loadEmailContext, verificationEmail, passwordResetEmail, team
 import { getPublicBaseUrl } from "@/lib/public-url";
 import type { MembershipRole } from "@/lib/db/types";
 import { slugify, validateSlug, type SlugValidationError } from "@/core/signup/slug";
-import { effectiveCycle, planOffersAnnual, priceInvoice, validateCpfCnpj, type BillingCycle } from "@/core/billing";
+import { cycleLabel, effectiveCycle, planOffersCycle, priceInvoice, validateCpfCnpj, type BillingCycle } from "@/core/billing";
 import { adoptCouponInTx, consumeCouponCycleInTx, PUBLIC_COUPON_REFUSAL } from "@/modules/billing/coupons";
 import { normalizeBrPhoneToE164 } from "@/core/contact/br-phone";
 import {
@@ -184,8 +184,8 @@ async function createAccount(input: CreateAccountInput, gateway?: MercadoPagoGat
   const now = new Date();
   const trialEndsAt = newTrialEndsAt(now);
   const plan = await resolveSignupPlan(input.planCode);
-  if (input.billingCycle === "ANNUAL" && !planOffersAnnual(plan)) {
-    throw new DomainError("INVALID_CYCLE", "Este plano não tem cobrança anual. Escolha a mensal.");
+  if (input.billingCycle && !planOffersCycle(plan, input.billingCycle)) {
+    throw new DomainError("INVALID_CYCLE", `Este plano não tem cobrança ${cycleLabel(input.billingCycle)}. Escolha outra.`);
   }
   const cycle = effectiveCycle(plan, input.billingCycle ?? "MONTHLY");
   const email = input.email;
@@ -293,7 +293,7 @@ async function createAccount(input: CreateAccountInput, gateway?: MercadoPagoGat
     dueAt: created.invoice.dueAt,
     pixCopyPaste: invoiceWithPix?.pixCopyPaste ?? null,
     timezone: created.tenant.timezone,
-    annual: cycle === "ANNUAL",
+    cycle,
   });
   // O envio imediato do cadastro entra no outbox como `SENT`, para a régua não repetir "Sua fatura chegou".
   // Se o SMTP falhou, nenhuma linha é gravada e a etapa INVOICE_CREATED da régua reenvia na próxima rodada.

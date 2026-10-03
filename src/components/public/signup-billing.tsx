@@ -4,31 +4,24 @@ import { useEffect, useState } from "react";
 import { Check, Loader2, Ticket, TriangleAlert } from "lucide-react";
 import { cn } from "@/components/lib/cn";
 import {
-  annualFreeMonths,
-  annualMonthlyEquivalentCents,
-  annualSavingsCents,
+  buildCycleOptions,
   couponSummary,
-  planOffersAnnual,
+  CYCLE_INFO,
+  effectiveCycle,
   priceInvoice,
   TRIAL_DAYS,
   type BillingCycle,
 } from "@/core/billing";
+import { CycleSelector } from "@/components/billing/cycle-selector";
 import { previewSignupCouponAction } from "@/modules/billing/coupon-actions";
 import type { CouponPreview } from "@/modules/billing/coupons";
 
-/** Preços do plano que o cadastro assume (o padrão de cadastro), lidos do banco pela página. */
-export type SignupPricing = { planName: string; priceCents: number; annualPriceCents: number | null };
+import type { SignupPricing } from "./signup-pricing";
+
+export type { SignupPricing };
 
 function brl(cents: number): string {
   return (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
-
-function freeMonthsLabel(plan: { priceCents: number; annualPriceCents: number | null }): string | null {
-  const savings = annualSavingsCents(plan);
-  if (savings <= 0) return null;
-  const months = annualFreeMonths(plan);
-  if (months >= 1 && months * plan.priceCents === savings) return months === 1 ? "1 mês grátis" : `${months} meses grátis`;
-  return `economize ${brl(savings)}`;
 }
 
 const DEBOUNCE_MS = 500;
@@ -40,7 +33,7 @@ type CouponStatus =
   | { kind: "invalid"; message: string };
 
 /**
- * Cobrança depois do teste, no cadastro: escolha mensal/anual (com a economia à vista) e o campo "Tenho um cupom"
+ * Cobrança depois do teste, no cadastro: escolha "Pagar a cada 1, 3, 6 ou 12 meses" (com a economia à vista) e o campo "Tenho um cupom"
  * com validação ao vivo. O servidor revalida tudo no cadastro; aqui é só para a pessoa saber antes de enviar.
  */
 export function SignupBillingSection({
@@ -59,22 +52,24 @@ export function SignupBillingSection({
   /** Erro de cupom devolvido pelo servidor no envio (código inválido, esgotado...). */
   couponError: string | null;
 }) {
-  const offersAnnual = pricing ? planOffersAnnual(pricing) : false;
-  const effectiveCycle: BillingCycle = offersAnnual ? cycle : "MONTHLY";
+  const options = pricing ? buildCycleOptions(pricing) : [];
+  const offersChoice = options.length > 1;
+  // O plano pode não oferecer o ciclo que ficou no estado (ex.: trocou de plano): cai no mensal.
+  const activeCycle: BillingCycle = pricing ? effectiveCycle(pricing, cycle) : "MONTHLY";
   const [couponOpen, setCouponOpen] = useState(couponCode.trim() !== "");
   // Resultado da última consulta, com a chave (código + ciclo) a que ele responde. O estado "idle/checking" é DERIVADO
   // (sem setState no efeito): sem chave igual, ainda está conferindo.
   const [answer, setAnswer] = useState<{ key: string; status: CouponStatus } | null>(null);
   const code = couponCode.trim();
-  const key = `${code}|${effectiveCycle}`;
+  const key = `${code}|${activeCycle}`;
   const status: CouponStatus = code.length < 3 ? { kind: "idle" } : answer && answer.key === key ? answer.status : { kind: "checking" };
 
-  // Validação ao vivo: espera a pessoa parar de digitar e refaz quando o ciclo muda (o cupom pode valer só no anual).
+  // Validação ao vivo: espera a pessoa parar de digitar e refaz quando o ciclo muda (o cupom pode valer só em alguns ciclos).
   useEffect(() => {
     if (code.length < 3) return;
     let cancelled = false;
     const timer = setTimeout(async () => {
-      const result = await previewSignupCouponAction({ code, billingCycle: effectiveCycle });
+      const result = await previewSignupCouponAction({ code, billingCycle: activeCycle });
       if (cancelled) return; // resposta velha: já digitaram outra coisa
       setAnswer({ key, status: result.ok ? { kind: "valid", preview: result.data } : { kind: "invalid", message: result.error.message } });
     }, DEBOUNCE_MS);
@@ -82,42 +77,18 @@ export function SignupBillingSection({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [code, effectiveCycle, key]);
+  }, [code, activeCycle, key]);
 
   if (!pricing) return null;
 
-  const gross = priceInvoice(pricing, effectiveCycle, null).grossCents;
+  const gross = priceInvoice(pricing, activeCycle, null).grossCents;
   const net = status.kind === "valid" ? status.preview.pricing.netCents : gross;
-  const free = freeMonthsLabel(pricing);
   const shownError = status.kind === "invalid" ? status.message : couponError;
 
   return (
     <div className="flex flex-col gap-4 md:col-span-2 lg:col-span-1 xl:col-span-2" data-testid="signup-cobranca">
-      {offersAnnual ? (
-        <fieldset>
-          <legend className="mb-2 text-sm font-medium text-text">Como você prefere pagar depois do teste</legend>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <CycleOption
-              name="billingCycle"
-              value="MONTHLY"
-              checked={effectiveCycle === "MONTHLY"}
-              onSelect={() => onCycleChange("MONTHLY")}
-              title="Mensal"
-              price={`${brl(pricing.priceCents)} por mês`}
-              note="Uma fatura por mês."
-            />
-            <CycleOption
-              name="billingCycle"
-              value="ANNUAL"
-              checked={effectiveCycle === "ANNUAL"}
-              onSelect={() => onCycleChange("ANNUAL")}
-              title="Anual"
-              badge={free}
-              price={`${brl(pricing.annualPriceCents as number)} por ano`}
-              note={`Dá ${brl(annualMonthlyEquivalentCents(pricing.annualPriceCents as number))} por mês, pagos de uma vez.`}
-            />
-          </div>
-        </fieldset>
+      {offersChoice ? (
+        <CycleSelector options={options} value={activeCycle} onChange={onCycleChange} legend="Pagar a cada (depois do teste)" />
       ) : null}
 
       <div>
@@ -178,53 +149,9 @@ export function SignupBillingSection({
 
       <p className="rounded-card bg-bg/70 p-3 text-sm text-text ring-1 ring-border" data-testid="signup-resumo-cobranca">
         Depois dos {TRIAL_DAYS} dias de teste, a primeira fatura do plano {pricing.planName} é de <strong className="tabular-nums">{brl(net)}</strong>
-        {effectiveCycle === "ANNUAL" ? " (cobre 12 meses)" : ""}
+        {activeCycle !== "MONTHLY" ? ` (cobre ${CYCLE_INFO[activeCycle].every})` : ""}
         {net < gross ? <span className="text-text-secondary"> em vez de {brl(gross)}</span> : null}. Sem cartão de crédito agora.
       </p>
     </div>
-  );
-}
-
-function CycleOption({
-  name,
-  value,
-  checked,
-  onSelect,
-  title,
-  price,
-  note,
-  badge,
-}: {
-  name: string;
-  value: string;
-  checked: boolean;
-  onSelect: () => void;
-  title: string;
-  price: string;
-  note: string;
-  badge?: string | null;
-}) {
-  return (
-    <label
-      className={cn(
-        "relative flex min-h-11 cursor-pointer flex-col gap-1 rounded-card border p-4 transition-colors motion-reduce:transition-none",
-        "has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-primary",
-        checked ? "border-primary bg-primary/5 ring-1 ring-primary/30" : "border-border bg-surface hover:border-primary/40",
-      )}
-    >
-      <input type="radio" name={name} value={value} checked={checked} onChange={onSelect} className="sr-only" />
-      <span className="flex items-center justify-between gap-2">
-        <span className="font-display text-sm font-bold text-text">{title}</span>
-        {badge ? <span className="rounded-full bg-success-bg px-2 py-0.5 text-xs font-semibold text-success">{badge}</span> : null}
-      </span>
-      <span className="font-display text-lg font-black tabular-nums text-text">{price}</span>
-      <span className="text-xs text-text-secondary">{note}</span>
-      <span
-        aria-hidden="true"
-        className={cn("absolute bottom-3 right-3 flex h-5 w-5 items-center justify-center rounded-full border", checked ? "border-primary bg-primary text-white" : "border-border")}
-      >
-        {checked ? <Check className="h-3 w-3" /> : null}
-      </span>
-    </label>
   );
 }

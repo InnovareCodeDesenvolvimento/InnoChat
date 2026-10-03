@@ -2,6 +2,7 @@ import { getPrisma } from "@/lib/db/prisma";
 import { isUniqueViolation } from "@/lib/db/prisma-errors";
 import { DomainError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
+import type { BillingCycle } from "@/core/billing";
 import { signUpWithGoogle } from "@/modules/signup/service";
 import { verifyGoogleToken } from "./tokens";
 
@@ -45,6 +46,8 @@ export async function completeGoogleSignUp(input: {
   document: string;
   phone?: string | null;
   planCode?: string;
+  billingCycle?: BillingCycle;
+  couponCode?: string;
   termsVersion: string;
 }): Promise<{ userId: string; tenantSlug: string }> {
   const claims = readClaims(input.token);
@@ -61,6 +64,8 @@ export async function completeGoogleSignUp(input: {
       phone: input.phone,
       termsVersion: input.termsVersion,
       planCode: input.planCode,
+      billingCycle: input.billingCycle,
+      couponCode: input.couponCode,
     });
     logger.info("google_auth.signup.completed", { userId: result.userId });
     return { userId: result.userId, tenantSlug: result.tenantSlug };

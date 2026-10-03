@@ -3,6 +3,7 @@ import { getPrisma } from "@/lib/db/prisma";
 import { DomainError } from "@/lib/errors";
 import {
   addDaysToLocalDate,
+  asBillingCycle,
   billingEventLabel,
   DEFAULT_BILLING_TIMEZONE,
   effectiveStatus,
@@ -10,8 +11,10 @@ import {
   localDateOf,
   mrrContributionCents,
   noticeTimelineLabel,
+  PLAN_PRICES_SELECT,
   safeTimezone,
   startOfLocalDay,
+  type BillingCycle,
   type SubscriptionStatus,
 } from "@/core/billing";
 import { listInvoicesAdmin, type AdminInvoiceListItem } from "./admin-service";
@@ -101,7 +104,7 @@ export async function getFinanceOverview(now: Date = new Date()): Promise<Financ
           manualSuspendedAt: true,
           tenant: { select: { timezone: true } },
           billingCycle: true,
-          plan: { select: { priceCents: true, annualPriceCents: true } },
+          plan: { select: PLAN_PRICES_SELECT },
         },
       }),
       prisma.subscription.count({ where: { canceledAt: { gte: start, lt: nextStart } } }),
@@ -142,13 +145,13 @@ export async function getFinanceOverview(now: Date = new Date()): Promise<Financ
 
     // MRR: quem paga (já pagou alguma vez) e está ACTIVE ou PAST_DUE. Teste e suspensas ficam de fora.
     const paying = s.firstPaidAt !== null;
-    // MRR: anual entra como preço anual / 12.
-    const cycle = s.billingCycle === "ANNUAL" ? "ANNUAL" : "MONTHLY";
+    // MRR: preço do período / meses do ciclo (trimestral /3, semestral /6, anual /12).
+    const cycle = asBillingCycle(s.billingCycle);
     if (paying && (status === "ACTIVE" || status === "PAST_DUE")) mrrCents += mrrContributionCents(s.plan, cycle);
 
     // Próximas renovações: ACTIVE pagante sem cancelamento agendado, pelo fim do período corrente (30 dias é cumulativo).
     if (paying && status === "ACTIVE" && !s.cancelAtPeriodEnd && s.currentPeriodEnd >= now) {
-      // Renovação é caixa: no anual, o valor cheio do ano (não o 1/12 do MRR).
+      // Renovação é caixa: o valor cheio do período (3, 6 ou 12 meses), não o equivalente mensal do MRR.
       const renewalCents = grossCentsFor(s.plan, cycle);
       if (s.currentPeriodEnd < in7) {
         upcoming.next7.count += 1;
@@ -208,7 +211,7 @@ export type CompanyBilling = {
     name: string;
     slug: string;
     planName: string;
-    billingCycle: "MONTHLY" | "ANNUAL";
+    billingCycle: BillingCycle;
     couponCode: string | null;
     status: SubscriptionStatus;
     currentPeriodEnd: string;
@@ -255,7 +258,7 @@ export async function getCompanyBilling(tenantId: string, now: Date = new Date()
       name: tenant.name,
       slug: tenant.slug,
       planName: sub.plan.name,
-      billingCycle: sub.billingCycle === "ANNUAL" ? "ANNUAL" : "MONTHLY",
+      billingCycle: asBillingCycle(sub.billingCycle),
       couponCode: sub.coupon?.code ?? null,
       status: effectiveStatus({ ...sub, timezone: tenant.timezone }, now),
       currentPeriodEnd: sub.currentPeriodEnd.toISOString(),

@@ -140,13 +140,13 @@ A fatura de cada mês é gerada alguns dias antes do vencimento e avisada por e-
 - **Suspensão:** terminada a carência sem pagamento, o Bot para de responder e o Painel fica **somente para leitura** (a Empresa continua vendo a agenda e os clientes e pode pagar a fatura, mas não pode criar nem alterar nada). As mensagens dos clientes continuam chegando ao celular da Empresa.
 - **Cancelamento automático:** após 60 dias de suspensão sem pagamento, a assinatura é cancelada e os números de WhatsApp são desconectados. Veja na seção 9 o que acontece com os dados.
 
-### Plano anual e cupons
+### Planos mensais, trimestrais, semestrais e anuais, e cupons
 
-O Plano pode ser contratado em ciclo **mensal** ou **anual**. No ciclo anual, a Empresa paga de uma só vez, por Pix, o valor anual do Plano, que cobre 12 meses de uso e custa menos que 12 mensalidades. A Empresa pode trocar o ciclo pelo Painel; a troca vale a partir da próxima fatura, sem cálculo proporcional, e o período já pago segue até o fim.
+O Plano pode ser contratado em ciclo **mensal**, **trimestral**, **semestral** ou **anual**, conforme os ciclos que o Plano oferecer na época da contratação. Nos ciclos trimestral, semestral e anual, a Empresa paga de uma só vez, por Pix, o valor do período, que cobre 3, 6 ou 12 meses de uso e costuma custar menos que as mensalidades do mesmo período. A Empresa pode trocar o ciclo pelo Painel; a troca vale a partir da próxima fatura, sem cálculo proporcional, e o período já pago segue até o fim.
 
-Cupons de desconto têm regras próprias (porcentagem ou valor, validade, limite de usos e número de cobranças descontadas), que aparecem ao aplicar o cupom. Cada cupom pode ser usado uma vez por Empresa e não é acumulável com outro. O desconto nunca deixa a fatura abaixo de R$ 1,00 e não vale retroativamente para faturas já emitidas.
+Cupons de desconto têm regras próprias (porcentagem ou valor, validade, limite de usos e número de faturas descontadas), que aparecem ao aplicar o cupom. Cada cupom pode ser usado uma vez por Empresa e não é acumulável com outro. O desconto nunca deixa a fatura abaixo de R$ 1,00 e não vale retroativamente para faturas já emitidas.
 
-No ciclo anual, os valores pagos não são reembolsados de forma proporcional se a Empresa cancelar antes do fim dos 12 meses; o cancelamento vale ao fim do período já pago, como descrito na seção de cancelamento, e o acesso continua até lá. Isso não afasta os direitos garantidos por lei.
+Nos ciclos trimestral, semestral e anual, os valores pagos não são reembolsados de forma proporcional se a Empresa cancelar antes do fim do período contratado; o cancelamento vale ao fim do período já pago, como descrito na seção de cancelamento, e o acesso continua até lá. Isso não afasta os direitos garantidos por lei.
 
 ### Troca de plano
 
@@ -158,7 +158,7 @@ A Innovare Code pode alterar os preços dos Planos. Avisaremos por e-mail e/ou n
 
 ### Reembolso e documentos fiscais
 
-Por se tratar de serviço pré-pago, mensal ou anual, os valores pagos não são reembolsados, nem de forma proporcional, ressalvados os direitos garantidos por lei.
+Por se tratar de serviço pré-pago, nos ciclos mensal, trimestral, semestral ou anual, os valores pagos não são reembolsados, nem de forma proporcional, ressalvados os direitos garantidos por lei.
 
 O InnoChat não emite documentos fiscais automaticamente. Dúvidas sobre documentos fiscais podem ser enviadas ao [E-MAIL DE CONTATO].
 

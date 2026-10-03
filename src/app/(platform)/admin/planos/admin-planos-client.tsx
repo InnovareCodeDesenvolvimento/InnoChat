@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Check, MessageCircle, Pencil, Users2, X } from "lucide-react";
+import { Check, MessageCircle, Pencil, Sparkles, Users2, X } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { navIconFor } from "@/components/shell/nav-items";
 import { Badge } from "@/components/ui/badge";
@@ -12,7 +12,16 @@ import { Input } from "@/components/ui/input";
 import { Alert } from "@/components/ui/alert";
 import { useToast } from "@/components/ui/toast";
 import { HelpButton } from "@/components/help/help-button";
-import { annualFreeMonths, annualSavingsCents, MIN_CHARGE_CENTS } from "@/core/billing";
+import {
+  CYCLE_INFO,
+  CYCLE_PRICE_FIELD,
+  cycleSavings,
+  cycleSavingsLabel,
+  MIN_CHARGE_CENTS,
+  suggestCyclePrices,
+  type BillingCycle,
+  type SuggestedPrice,
+} from "@/core/billing";
 import { updatePlanAction } from "@/modules/billing/admin-actions";
 
 export type PlanRow = {
@@ -20,7 +29,9 @@ export type PlanRow = {
   code: string;
   name: string;
   priceCents: number;
-  /** Preço do ano (12 meses) em centavos; `null` = o plano não tem opção anual. */
+  /** Preço do período inteiro (cobrado de uma vez), em centavos; `null` = o plano não oferece o período. */
+  quarterlyPriceCents: number | null;
+  semiannualPriceCents: number | null;
   annualPriceCents: number | null;
   maxWhatsappNumbers: number;
   maxProfessionals: number | null;
@@ -32,10 +43,14 @@ function formatBRL(cents: number): string {
   return (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+const LONG_CYCLES = ["QUARTERLY", "SEMIANNUAL", "ANNUAL"] as const;
+type LongCycle = (typeof LONG_CYCLES)[number];
+
 type FormState = {
   name: string;
   priceReais: string;
-  annualReais: string;
+  /** Preço do período por ciclo, em reais, como o admin digita. Em branco = não oferece. */
+  periodReais: Record<LongCycle, string>;
   maxWhatsappNumbers: string;
   maxProfessionalsUnlimited: boolean;
   maxProfessionals: string;
@@ -43,11 +58,19 @@ type FormState = {
   sortOrder: string;
 };
 
+function reais(cents: number | null): string {
+  return cents !== null ? (cents / 100).toFixed(2) : "";
+}
+
 function toForm(plan: PlanRow): FormState {
   return {
     name: plan.name,
     priceReais: (plan.priceCents / 100).toFixed(2),
-    annualReais: plan.annualPriceCents !== null ? (plan.annualPriceCents / 100).toFixed(2) : "",
+    periodReais: {
+      QUARTERLY: reais(plan.quarterlyPriceCents),
+      SEMIANNUAL: reais(plan.semiannualPriceCents),
+      ANNUAL: reais(plan.annualPriceCents),
+    },
     maxWhatsappNumbers: String(plan.maxWhatsappNumbers),
     maxProfessionalsUnlimited: plan.maxProfessionals === null,
     maxProfessionals: plan.maxProfessionals !== null ? String(plan.maxProfessionals) : "",
@@ -56,47 +79,100 @@ function toForm(plan: PlanRow): FormState {
   };
 }
 
-/** "2 meses grátis" quando a economia fecha meses inteiros; senão "economia de R$ X". */
-function savingsText(plan: { priceCents: number; annualPriceCents: number | null }): string {
-  const savings = annualSavingsCents(plan);
-  const months = annualFreeMonths(plan);
-  if (months >= 1 && months * plan.priceCents === savings) return months === 1 ? "1 mês grátis" : `${months} meses grátis`;
-  return `economia de ${formatBRL(savings)}`;
+function toCents(text: string): number {
+  return Math.round(Number(text.replace(",", ".")) * 100);
 }
 
-/** Dica ao vivo sob o campo do preço anual: quanto custam 12 mensalidades e quanto o anual economiza. */
-function annualHint(form: { priceReais: string; annualReais: string }): string {
-  const annualText = form.annualReais.trim();
-  if (annualText === "") return "Em branco: o plano fica só com cobrança mensal.";
-  const monthly = Math.round(Number(form.priceReais.replace(",", ".")) * 100);
-  const annual = Math.round(Number(annualText.replace(",", ".")) * 100);
-  if (Number.isNaN(annual) || annual <= 0) return "Digite o valor do ano, por exemplo 590,00.";
+/** Preços do plano como o núcleo os lê (`null` = não oferece). */
+function planPricesOf(plan: PlanRow) {
+  return {
+    priceCents: plan.priceCents,
+    quarterlyPriceCents: plan.quarterlyPriceCents,
+    semiannualPriceCents: plan.semiannualPriceCents,
+    annualPriceCents: plan.annualPriceCents,
+  };
+}
+
+function savingsLine(prices: ReturnType<typeof planPricesOf>, cycle: BillingCycle): string | null {
+  const s = cycleSavings(prices, cycle);
+  if (s.periodCents === null || s.savingsCents <= 0) return null;
+  const label = cycleSavingsLabel(prices, cycle);
+  return label ? `${label}, ${formatBRL(s.savingsCents)} de economia` : `${formatBRL(s.savingsCents)} de economia`;
+}
+
+/**
+ * Dica ao vivo sob cada campo de período: quanto custam as mensalidades do período, a economia em reais e em % e o
+ * equivalente por mês. Se há assinaturas ativas no período e o campo está em branco, avisa que não pode apagar.
+ */
+function cycleHint(cycle: LongCycle, form: FormState, inUse: number): string {
+  const info = CYCLE_INFO[cycle];
+  const text = form.periodReais[cycle].trim();
+  if (text === "") {
+    return inUse > 0
+      ? `${inUse === 1 ? "1 assinatura ativa usa" : `${inUse} assinaturas ativas usam`} este período: o preço não pode ficar em branco.`
+      : "Em branco: o plano não oferece este período.";
+  }
+  const monthly = toCents(form.priceReais);
+  const value = toCents(text);
+  if (Number.isNaN(value) || value <= 0) return "Digite o valor do período inteiro, por exemplo 168,00.";
   if (Number.isNaN(monthly) || monthly <= 0) return "Defina o preço mensal para ver a economia.";
-  if (annual > monthly * 12) return `Maior que 12 mensalidades (${formatBRL(monthly * 12)}). Confira o valor.`;
-  const plan = { priceCents: monthly, annualPriceCents: annual };
-  if (annualSavingsCents(plan) === 0) return "Igual a 12 mensalidades: sem desconto para quem escolher o anual.";
-  const months = annualFreeMonths(plan);
-  const whole = months >= 1 && months * monthly === annualSavingsCents(plan);
-  return `12 mensalidades custam ${formatBRL(monthly * 12)}. Quem escolher o anual economiza ${formatBRL(annualSavingsCents(plan))}${whole ? ` (${months === 1 ? "1 mês grátis" : `${months} meses grátis`})` : ""}.`;
+  const full = monthly * info.months;
+  if (value > full) return `Maior que ${info.months} mensalidades (${formatBRL(full)}). Confira o valor.`;
+  const prices = { priceCents: monthly, quarterlyPriceCents: null, semiannualPriceCents: null, annualPriceCents: null, [CYCLE_PRICE_FIELD[cycle]]: value } as ReturnType<typeof planPricesOf>;
+  const s = cycleSavings(prices, cycle);
+  const perMonth = `Dá ${formatBRL(s.perMonthCents as number)} por mês.`;
+  if (s.savingsCents === 0) return `Igual a ${info.months} mensalidades: sem desconto. ${perMonth}`;
+  const label = cycleSavingsLabel(prices, cycle);
+  return `${info.months} mensalidades custam ${formatBRL(full)}. Economia de ${formatBRL(s.savingsCents)} (${s.percent}%${label && label.includes("grátis") ? `, ${label}` : ""}). ${perMonth}`;
 }
 
-export function AdminPlanosClient({ initialPlans }: { initialPlans: PlanRow[] }) {
+/** Conta que o botão "Sugerir" fez, por período, para o admin conferir antes de salvar. */
+function suggestionLine(monthly: number, s: SuggestedPrice): string {
+  const info = CYCLE_INFO[s.cycle];
+  return `${info.label}: ${formatBRL(monthly)} x ${info.months} = ${formatBRL(s.fullCents)}. Com ${s.rule}: ${formatBRL(s.rawCents)}, arredondado para ${formatBRL(s.roundedCents)}.`;
+}
+
+export function AdminPlanosClient({
+  initialPlans,
+  cycleUsage = {},
+}: {
+  initialPlans: PlanRow[];
+  /** Assinaturas não canceladas por plano e ciclo (para avisar antes de apagar um preço em uso). */
+  cycleUsage?: Record<string, Partial<Record<BillingCycle, number>>>;
+}) {
   const { notify } = useToast();
   const [plans, setPlans] = useState<PlanRow[]>([...initialPlans].sort((a, b) => a.sortOrder - b.sortOrder));
   const [editing, setEditing] = useState<PlanRow | null>(null);
   const [form, setForm] = useState<FormState | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  const [suggestion, setSuggestion] = useState<SuggestedPrice[] | null>(null);
   const [isPending, startTransition] = useTransition();
 
   function openEdit(plan: PlanRow) {
     setEditing(plan);
     setForm(toForm(plan));
     setFormError(null);
+    setSuggestion(null);
   }
 
   function closeEdit() {
     setEditing(null);
     setForm(null);
+    setSuggestion(null);
+  }
+
+  /** Preenche os três períodos com 5%, 10% e 2 meses grátis, arredondados; o admin edita depois. */
+  function applySuggestion() {
+    if (!form) return;
+    const monthly = toCents(form.priceReais);
+    const suggested = suggestCyclePrices(monthly);
+    if (suggested.length === 0) {
+      setFormError("Defina o preço mensal (pelo menos R$ 1,00) para sugerir os outros períodos.");
+      return;
+    }
+    setFormError(null);
+    setSuggestion(suggested);
+    setForm((f) => f && { ...f, periodReais: { QUARTERLY: reais(suggested[0].roundedCents), SEMIANNUAL: reais(suggested[1].roundedCents), ANNUAL: reais(suggested[2].roundedCents) } });
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -110,23 +186,38 @@ export function AdminPlanosClient({ initialPlans }: { initialPlans: PlanRow[] })
       return;
     }
 
-    // Em branco = sem opção anual. Preenchido precisa ser um valor válido.
-    const annualText = form.annualReais.trim();
-    const annualPriceCents = annualText === "" ? null : Math.round(Number(annualText.replace(",", ".")) * 100);
-    if (annualPriceCents !== null && (Number.isNaN(annualPriceCents) || annualPriceCents < MIN_CHARGE_CENTS)) {
-      setFormError("O preço anual precisa ser pelo menos R$ 1,00, ou deixe em branco.");
-      return;
-    }
-    if (annualPriceCents !== null && priceCents > 0 && annualPriceCents > priceCents * 12) {
-      setFormError("O preço anual não pode ser maior que 12 mensalidades.");
-      return;
+    // Em branco = o plano não oferece o período. Preenchido precisa ser válido e não passar das mensalidades do período.
+    const periodCents: Record<LongCycle, number | null> = { QUARTERLY: null, SEMIANNUAL: null, ANNUAL: null };
+    for (const cycle of LONG_CYCLES) {
+      const info = CYCLE_INFO[cycle];
+      const text = form.periodReais[cycle].trim();
+      const inUse = cycleUsage[editing.id]?.[cycle] ?? 0;
+      if (text === "") {
+        if (inUse > 0) {
+          setFormError(`Não dá para tirar o preço ${info.word}: ${inUse === 1 ? "1 assinatura ativa usa" : `${inUse} assinaturas ativas usam`} esse período neste plano.`);
+          return;
+        }
+        continue;
+      }
+      const value = toCents(text);
+      if (Number.isNaN(value) || value < MIN_CHARGE_CENTS) {
+        setFormError(`O preço ${info.word} precisa ser pelo menos R$ 1,00, ou deixe em branco.`);
+        return;
+      }
+      if (priceCents > 0 && value > priceCents * info.months) {
+        setFormError(`O preço ${info.word} não pode ser maior que ${info.months} mensalidades.`);
+        return;
+      }
+      periodCents[cycle] = value;
     }
 
     startTransition(async () => {
       const result = await updatePlanAction(editing.id, {
         name: form.name.trim(),
         priceCents,
-        annualPriceCents,
+        quarterlyPriceCents: periodCents.QUARTERLY,
+        semiannualPriceCents: periodCents.SEMIANNUAL,
+        annualPriceCents: periodCents.ANNUAL,
         maxWhatsappNumbers: Number(form.maxWhatsappNumbers) || 1,
         maxProfessionals: form.maxProfessionalsUnlimited ? null : Number(form.maxProfessionals) || 1,
         active: form.active,
@@ -142,6 +233,7 @@ export function AdminPlanosClient({ initialPlans }: { initialPlans: PlanRow[] })
       setPlans((prev) => prev.map((p) => (p.id === saved.id ? saved : p)).sort((a, b) => a.sortOrder - b.sortOrder));
       setEditing(null);
       setForm(null);
+      setSuggestion(null);
       notify({ variant: "success", title: "Plano atualizado." });
     });
   }
@@ -181,16 +273,19 @@ export function AdminPlanosClient({ initialPlans }: { initialPlans: PlanRow[] })
               )}
               {plan.priceCents > 0 ? <span className="text-sm font-medium text-text-secondary">/mês</span> : null}
             </p>
-            {plan.annualPriceCents !== null ? (
-              <p className="mt-1 text-sm text-text-secondary" data-testid="plano-anual">
-                ou <span className="font-semibold text-text">{formatBRL(plan.annualPriceCents)}</span> por ano
-                {annualSavingsCents(plan) > 0 ? (
-                  <span className="font-semibold text-success"> ({savingsText(plan)})</span>
-                ) : null}
-              </p>
-            ) : (
-              <p className="mt-1 text-sm text-text-secondary">Sem opção anual</p>
-            )}
+            <ul className="mt-2 flex flex-col gap-1 text-sm text-text-secondary" data-testid="plano-ciclos">
+              {LONG_CYCLES.filter((cycle) => plan[CYCLE_PRICE_FIELD[cycle]] !== null).map((cycle) => {
+                const line = savingsLine(planPricesOf(plan), cycle);
+                return (
+                  <li key={cycle} data-testid={`plano-ciclo-${cycle}`}>
+                    <span className="font-medium text-text">{CYCLE_INFO[cycle].label}:</span>{" "}
+                    <span className="font-semibold text-text">{formatBRL(plan[CYCLE_PRICE_FIELD[cycle]] as number)}</span> a cada {CYCLE_INFO[cycle].every}
+                    {line ? <span className="font-semibold text-success"> ({line})</span> : null}
+                  </li>
+                );
+              })}
+              {LONG_CYCLES.every((cycle) => plan[CYCLE_PRICE_FIELD[cycle]] === null) ? <li>Só cobrança mensal</li> : null}
+            </ul>
 
             <ul className="mt-4 flex flex-col gap-2 text-sm text-text-secondary">
               <li className="flex items-center gap-2">
@@ -244,21 +339,49 @@ export function AdminPlanosClient({ initialPlans }: { initialPlans: PlanRow[] })
                 )}
               </Field>
 
-              <Field
-                label="Preço anual (R$)"
-                labelAction={<HelpButton helpKey="admin.planoAnual" />}
-                hint={annualHint(form)}
-              >
-                {(fieldProps) => (
-                  <Input
-                    {...fieldProps}
-                    inputMode="decimal"
-                    placeholder="Em branco = sem opção anual"
-                    value={form.annualReais}
-                    onChange={(e) => setForm((f) => f && { ...f, annualReais: e.target.value })}
-                  />
-                )}
-              </Field>
+              <fieldset className="flex flex-col gap-4 rounded-card border border-border p-4" data-testid="plano-precos-periodo">
+                <legend className="flex items-center gap-1 px-1 text-sm font-semibold text-text">
+                  Preços por período
+                  <HelpButton helpKey="admin.planoCiclos" />
+                </legend>
+                <p className="text-xs text-text-secondary">
+                  Valor cobrado de uma vez pelo período inteiro. Em branco, o plano não oferece aquele período.
+                </p>
+                {LONG_CYCLES.map((cycle) => (
+                  <Field
+                    key={cycle}
+                    label={`${CYCLE_INFO[cycle].label}, a cada ${CYCLE_INFO[cycle].every} (R$)`}
+                    hint={cycleHint(cycle, form, editing ? (cycleUsage[editing.id]?.[cycle] ?? 0) : 0)}
+                  >
+                    {(fieldProps) => (
+                      <Input
+                        {...fieldProps}
+                        inputMode="decimal"
+                        name={`preco-${cycle}`}
+                        placeholder="Em branco = não oferece"
+                        value={form.periodReais[cycle]}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          setForm((f) => f && { ...f, periodReais: { ...f.periodReais, [cycle]: value } });
+                        }}
+                      />
+                    )}
+                  </Field>
+                ))}
+                <div className="flex flex-col gap-2">
+                  <Button type="button" variant="secondary" size="sm" icon={Sparkles} onClick={applySuggestion} data-testid="sugerir-precos" className="w-full sm:w-auto">
+                    Sugerir preços
+                  </Button>
+                  {suggestion ? (
+                    <ul className="flex flex-col gap-1 rounded-card bg-bg/70 p-3 text-xs text-text-secondary ring-1 ring-border" data-testid="sugestao-calculo">
+                      {suggestion.map((item) => (
+                        <li key={item.cycle}>{suggestionLine(toCents(form.priceReais), item)}</li>
+                      ))}
+                      <li className="font-medium text-text">Os valores já estão nos campos. Edite se quiser e salve.</li>
+                    </ul>
+                  ) : null}
+                </div>
+              </fieldset>
 
               <Field label="Limite de números de WhatsApp" required>
                 {(fieldProps) => (

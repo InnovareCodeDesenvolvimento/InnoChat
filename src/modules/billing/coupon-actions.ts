@@ -7,7 +7,7 @@ import { runAction, type Result } from "@/lib/result";
 import { DomainError } from "@/lib/errors";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { clientIp } from "@/lib/http/client-ip";
-import { normalizeCouponCode } from "@/core/billing";
+import { asBillingCycle, BILLING_CYCLES, cycleLabel, effectiveCycle, normalizeCouponCode, PLAN_PRICES_SELECT } from "@/core/billing";
 import { memberActor, platformAdminActor, recordAudit } from "@/modules/audit/record";
 import { diffChanges } from "@/modules/audit/sanitize";
 import { changeBillingCycle, type ChangeBillingCycleResult } from "./billing-cycle";
@@ -35,7 +35,7 @@ import { pagingInputShape, type PageInfo, type PageSize } from "./paging";
  * - Admin: só `requirePlatformAdmin()`.
  */
 
-const cycleSchema = z.enum(["MONTHLY", "ANNUAL"]);
+const cycleSchema = z.enum(BILLING_CYCLES);
 const codeSchema = z.string().trim().min(1, "Digite o cupom.").max(40);
 const idSchema = z.string().trim().min(1).max(64);
 
@@ -84,9 +84,9 @@ export async function previewMyCouponAction(tenantSlug: string, input: unknown):
     const { tenant } = await requireTenantMember(tenantSlug, ["OWNER"]);
     assertRateLimit("coupon-my", tenant.id, MY_COUPON_LIMIT, MY_COUPON_WINDOW_MS);
     const data = z.object({ code: codeSchema }).parse(input);
-    const subscription = await getPrisma().subscription.findUnique({ where: { tenantId: tenant.id }, select: { planId: true, billingCycle: true } });
+    const subscription = await getPrisma().subscription.findUnique({ where: { tenantId: tenant.id }, select: { planId: true, billingCycle: true, plan: { select: PLAN_PRICES_SELECT } } });
     if (!subscription) throw new DomainError("NOT_FOUND", "Assinatura não encontrada para esta empresa.");
-    return previewCoupon({ code: data.code, planId: subscription.planId, cycle: subscription.billingCycle === "ANNUAL" ? "ANNUAL" : "MONTHLY", tenantId: tenant.id });
+    return previewCoupon({ code: data.code, planId: subscription.planId, cycle: effectiveCycle(subscription.plan, asBillingCycle(subscription.billingCycle)), tenantId: tenant.id });
   });
 }
 
@@ -110,7 +110,7 @@ export async function applyMyCouponAction(tenantSlug: string, input: unknown): P
   });
 }
 
-/** Troca mensal <-> anual; vale a partir da próxima fatura, sem proporcional. */
+/** Troca para qualquer ciclo que o plano ofereça; vale a partir da próxima fatura, sem proporcional. */
 export async function changeBillingCycleAction(tenantSlug: string, input: unknown): Promise<Result<ChangeBillingCycleResult>> {
   return runAction(async () => {
     const ctx = await requireTenantMember(tenantSlug, ["OWNER"]);
@@ -125,7 +125,7 @@ export async function changeBillingCycleAction(tenantSlug: string, input: unknow
         actor: memberActor(ctx),
         action: "subscription.cycle_changed",
         targetType: "subscription",
-        summary: `Mudou o ciclo da assinatura para ${result.billingCycle === "ANNUAL" ? "anual" : "mensal"} (vale a partir da próxima fatura).`,
+        summary: `Mudou o ciclo da assinatura para ${cycleLabel(result.billingCycle)} (vale a partir da próxima fatura).`,
         changes: { ciclo: { de: before.billingCycle, para: result.billingCycle } },
       });
     }
@@ -155,7 +155,8 @@ const couponFieldsShape = {
   maxRedemptions: z.coerce.number().int().min(1).max(1_000_000).nullable().optional(),
   duration: z.enum(["ONCE", "N_CYCLES", "FOREVER"]),
   durationCycles: z.coerce.number().int().nullable().optional(),
-  appliesToCycle: z.enum(["ANY", "MONTHLY", "ANNUAL"]),
+  // Vazio = todos os ciclos. Os 4 marcados viram vazio no serviço.
+  appliesToCycles: z.array(cycleSchema).max(4).default([]),
   planIds: z.array(idSchema).max(50).optional(),
   active: z.boolean().optional(),
 };
@@ -170,13 +171,13 @@ function toUpdateInput(data: z.infer<z.ZodObject<typeof couponFieldsShape>>): Om
     maxRedemptions: data.maxRedemptions ?? null,
     duration: data.duration,
     durationCycles: data.durationCycles ?? null,
-    appliesToCycle: data.appliesToCycle,
+    appliesToCycles: data.appliesToCycles,
     planIds: data.planIds ?? [],
     active: data.active,
   };
 }
 
-const COUPON_FIELDS = ["description", "kind", "value", "validFrom", "validUntil", "maxRedemptions", "duration", "durationCycles", "appliesToCycle", "active"] as const;
+const COUPON_FIELDS = ["description", "kind", "value", "validFrom", "validUntil", "maxRedemptions", "duration", "durationCycles", "appliesToCycles", "active"] as const;
 
 const createSchema = z.object({ code: z.string().trim().min(1).max(40), ...couponFieldsShape });
 const updateSchema = z.object(couponFieldsShape);

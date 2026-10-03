@@ -6,7 +6,7 @@ import { DomainError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
 import { sendMail, SmtpNotConfiguredError, loadEmailContext, invoiceGeneratedEmail, subscriptionSuspendedEmail, type SendMailInput, type SendMailResult } from "@/lib/email";
 import { getPublicBaseUrl } from "@/lib/public-url";
-import { CANCEL_AFTER_SUSPENDED_TRIAL_DAYS, computeTrialEndsAt, cycleMonths, effectiveStatus, validateCpfCnpj, type BillingCycle, type SubscriptionStatus } from "@/core/billing";
+import { CANCEL_AFTER_SUSPENDED_TRIAL_DAYS, computeTrialEndsAt, asBillingCycle, cycleLabel, cycleMonths, effectiveStatus, validateCpfCnpj, type BillingCycle, type SubscriptionStatus } from "@/core/billing";
 import { formatCentsBRL, formatDateBR } from "./format";
 import { consumeCouponCycleInTx, type InvoiceChargeSnapshot } from "./coupons";
 import { recordBillingEvent } from "./dunning/events";
@@ -490,9 +490,9 @@ export async function applyInvoicePayment(
     const wasCanceled = subscription.status === "CANCELED" || (subscription.cancelAtPeriodEnd && effectiveStatus(subscription, paidAt) === "CANCELED");
     const wasSuspended = effectiveStatus(subscription, paidAt) === "SUSPENDED" || subscription.status === "SUSPENDED" || wasCanceled;
     const anchor = wasSuspended ? paidAt : subscription.currentPeriodEnd;
-    // Fatura anual cobre 12 meses; a mensal, 1 (vale o ciclo da FATURA paga, não o da assinatura hoje).
+    // Fatura mensal cobre 1 mês, trimestral 3, semestral 6, anual 12 (vale o ciclo da FATURA paga, não o da assinatura hoje).
     const nextPeriodEnd = new Date(anchor);
-    nextPeriodEnd.setMonth(nextPeriodEnd.getMonth() + cycleMonths(invoice.cycle === "ANNUAL" ? "ANNUAL" : "MONTHLY"));
+    nextPeriodEnd.setMonth(nextPeriodEnd.getMonth() + cycleMonths(asBillingCycle(invoice.cycle)));
 
     await tx.subscription.update({
       where: { id: subscription.id },
@@ -695,15 +695,15 @@ export async function sendInvoiceGeneratedEmail(params: {
   dueAt: Date;
   pixCopyPaste: string | null;
   timezone: string;
-  /** Fatura de plano anual: o valor sai com "(plano anual)" para não parecer cobrança mensal. */
-  annual?: boolean;
+  /** Ciclo da fatura: fora o mensal, o valor sai com "(plano anual)" etc. para não parecer cobrança mensal. */
+  cycle?: BillingCycle;
 }): Promise<boolean> {
   const logEvent = "billing.email.invoice_generated.not_sent";
   let mail: { subject: string; html: string; text: string };
   try {
     mail = invoiceGeneratedEmail({
       tenantName: params.tenantName,
-      amountReais: params.annual ? `${formatCentsBRL(params.amountCents)} (plano anual)` : formatCentsBRL(params.amountCents),
+      amountReais: params.cycle && params.cycle !== "MONTHLY" ? `${formatCentsBRL(params.amountCents)} (plano ${cycleLabel(params.cycle)})` : formatCentsBRL(params.amountCents),
       dueDateBr: formatDateBR(params.dueAt, params.timezone),
       pixCopyPaste: params.pixCopyPaste,
       billingUrl: await billingUrlFor(params.tenantSlug),
@@ -776,7 +776,7 @@ export function newTrialEndsAt(signupAt: Date): Date {
 }
 
 export function generateInvoiceDescription(tenantName: string, cycle: BillingCycle = "MONTHLY"): string {
-  return cycle === "ANNUAL" ? `Assinatura InnoChat anual (${tenantName})` : `Assinatura InnoChat (${tenantName})`;
+  return cycle === "MONTHLY" ? `Assinatura InnoChat (${tenantName})` : `Assinatura InnoChat ${cycleLabel(cycle)} (${tenantName})`;
 }
 
 /** Chave curta para operações que precisam de aleatoriedade (ex.: idempotência local). */

@@ -65,7 +65,6 @@ async function makeCoupon(over: Partial<Parameters<typeof coupons.createCoupon>[
       kind: "PERCENT",
       value: 20,
       duration: "ONCE",
-      appliesToCycle: "ANY",
       ...over,
     },
     null,
@@ -172,7 +171,7 @@ describe("resgate atômico de cupom", () => {
     const onlyOther = await makeCoupon({ planIds: [other.id] });
     await expect(adopt(tenant.id, plan.id, onlyOther.code)).rejects.toMatchObject({ code: "COUPON_WRONG_PLAN" });
 
-    const annualOnly = await makeCoupon({ appliesToCycle: "ANNUAL" });
+    const annualOnly = await makeCoupon({ appliesToCycles: ["ANNUAL"] });
     await expect(adopt(tenant.id, plan.id, annualOnly.code, "MONTHLY")).rejects.toMatchObject({ code: "COUPON_WRONG_CYCLE" });
 
     await expect(adopt(tenant.id, plan.id, "NAO-EXISTE-XYZ")).rejects.toMatchObject({ code: "COUPON_INVALID" });
@@ -311,7 +310,7 @@ describe("fatura gerada pelo tick: ciclo e cupom", () => {
 
   it("cupom só do plano mensal não desconta (nem gasta ciclo) quando a assinatura está no anual", async () => {
     const plan = await makePlan();
-    const coupon = await makeCoupon({ appliesToCycle: "MONTHLY", duration: "N_CYCLES", durationCycles: 2 });
+    const coupon = await makeCoupon({ appliesToCycles: ["MONTHLY"], duration: "N_CYCLES", durationCycles: 2 });
     const tenant = await makeTenant("paused");
     const adopted = await adopt(tenant.id, plan.id, coupon.code, "MONTHLY");
     const sub = await makeSubscription(tenant.id, plan.id, { billingCycle: "ANNUAL", couponId: adopted.couponId, couponCyclesRemaining: 2 });
@@ -384,7 +383,7 @@ describe("troca de ciclo pelo dono", () => {
     const noAnnual = await makePlan({ annualPriceCents: null });
     const t1 = await makeTenant("cycle-no");
     await makeSubscription(t1.id, noAnnual.id);
-    await expect(changeBillingCycle(t1.id, "ANNUAL")).rejects.toMatchObject({ code: "ANNUAL_NOT_AVAILABLE" });
+    await expect(changeBillingCycle(t1.id, "ANNUAL")).rejects.toMatchObject({ code: "CYCLE_NOT_AVAILABLE" });
 
     const plan = await makePlan();
     const t2 = await makeTenant("cycle-yes");
@@ -396,7 +395,7 @@ describe("troca de ciclo pelo dono", () => {
 
   it("avisa quando o cupom em uso não vale no ciclo novo", async () => {
     const plan = await makePlan();
-    const coupon = await makeCoupon({ appliesToCycle: "MONTHLY" });
+    const coupon = await makeCoupon({ appliesToCycles: ["MONTHLY"] });
     const tenant = await makeTenant("cycle-coupon");
     const adopted = await adopt(tenant.id, plan.id, coupon.code);
     await makeSubscription(tenant.id, plan.id, { couponId: adopted.couponId, couponCyclesRemaining: 1 });
@@ -439,7 +438,7 @@ describe("cadastro com plano anual e cupom", () => {
   it("a fatura do fim do teste já sai anual e com o cupom; resgate e snapshots gravados", async () => {
     // Plano mais "barato" na ordem: é o que o cadastro assume.
     const plan = await makePlan({ sortOrder: -5000, active: true });
-    const coupon = await makeCoupon({ kind: "PERCENT", value: 10, duration: "ONCE", appliesToCycle: "ANNUAL" });
+    const coupon = await makeCoupon({ kind: "PERCENT", value: 10, duration: "ONCE", appliesToCycles: ["ANNUAL"] });
     const slug = uniq("it-anual-signup");
     const { gateway } = createMockMercadoPagoGateway();
     const result = await signUp(
@@ -488,7 +487,7 @@ describe("cadastro com plano anual e cupom", () => {
     const expired = await makeCoupon({ validFrom: new Date("2020-01-01T00:00:00Z"), validUntil: new Date("2020-02-01T00:00:00Z") });
     const future = await makeCoupon({ validFrom: addDays(new Date(), 10) });
     const onlyOther = await makeCoupon({ planIds: [other.id] });
-    const annualOnly = await makeCoupon({ appliesToCycle: "ANNUAL" });
+    const annualOnly = await makeCoupon({ appliesToCycles: ["ANNUAL"] });
     const exhausted = await makeCoupon({ maxRedemptions: 1 });
     await prisma.coupon.update({ where: { id: exhausted.id }, data: { redemptionsCount: 1 } });
     const off = await makeCoupon({ active: false });
@@ -517,16 +516,16 @@ describe("cadastro com plano anual e cupom", () => {
 
 describe("Admin: cupons e preço anual", () => {
   it("valida código, valores e duração", async () => {
-    await expect(coupons.createCoupon({ code: "a b", kind: "PERCENT", value: 10, duration: "ONCE", appliesToCycle: "ANY" }, null)).rejects.toMatchObject({ code: "INVALID_COUPON_CODE" });
-    await expect(coupons.createCoupon({ code: uniq("BAD").toUpperCase(), kind: "PERCENT", value: 101, duration: "ONCE", appliesToCycle: "ANY" }, null)).rejects.toMatchObject({ code: "INVALID_COUPON" });
-    await expect(coupons.createCoupon({ code: uniq("BAD").toUpperCase(), kind: "PERCENT", value: 10, duration: "N_CYCLES", appliesToCycle: "ANY" }, null)).rejects.toMatchObject({ code: "INVALID_COUPON" });
-    await expect(coupons.createCoupon({ code: uniq("BAD").toUpperCase(), kind: "PERCENT", value: 10, duration: "ONCE", durationCycles: 3, appliesToCycle: "ANY" }, null)).rejects.toMatchObject({ code: "INVALID_COUPON" });
+    await expect(coupons.createCoupon({ code: "a b", kind: "PERCENT", value: 10, duration: "ONCE" }, null)).rejects.toMatchObject({ code: "INVALID_COUPON_CODE" });
+    await expect(coupons.createCoupon({ code: uniq("BAD").toUpperCase(), kind: "PERCENT", value: 101, duration: "ONCE" }, null)).rejects.toMatchObject({ code: "INVALID_COUPON" });
+    await expect(coupons.createCoupon({ code: uniq("BAD").toUpperCase(), kind: "PERCENT", value: 10, duration: "N_CYCLES" }, null)).rejects.toMatchObject({ code: "INVALID_COUPON" });
+    await expect(coupons.createCoupon({ code: uniq("BAD").toUpperCase(), kind: "PERCENT", value: 10, duration: "ONCE", durationCycles: 3 }, null)).rejects.toMatchObject({ code: "INVALID_COUPON" });
   });
 
   it("código duplicado (mesmo em minúsculas) é recusado; código é gravado em maiúsculas", async () => {
     const c = await makeCoupon();
     expect(c.code).toBe(c.code.toUpperCase());
-    await expect(coupons.createCoupon({ code: c.code.toLowerCase(), kind: "PERCENT", value: 10, duration: "ONCE", appliesToCycle: "ANY" }, null)).rejects.toMatchObject({ code: "COUPON_CODE_TAKEN" });
+    await expect(coupons.createCoupon({ code: c.code.toLowerCase(), kind: "PERCENT", value: 10, duration: "ONCE" }, null)).rejects.toMatchObject({ code: "COUPON_CODE_TAKEN" });
   });
 
   it("depois de usado, tipo/valor/duração/ciclo travam; prazo, limite e planos ainda mudam", async () => {
@@ -534,7 +533,7 @@ describe("Admin: cupons e preço anual", () => {
     const c = await makeCoupon();
     const tenant = await makeTenant("locked");
     await adopt(tenant.id, plan.id, c.code);
-    const same = { kind: "PERCENT" as const, value: 20, duration: "ONCE" as const, appliesToCycle: "ANY" as const };
+    const same = { kind: "PERCENT" as const, value: 20, duration: "ONCE" as const };
     await expect(coupons.updateCoupon(c.id, { ...same, value: 30 })).rejects.toMatchObject({ code: "COUPON_LOCKED" });
     await expect(coupons.updateCoupon(c.id, { ...same, maxRedemptions: 0 })).rejects.toMatchObject({ code: "INVALID_COUPON" });
     const updated = await coupons.updateCoupon(c.id, { ...same, maxRedemptions: 10, validUntil: addDays(new Date(), 30), planIds: [plan.id], description: "novo" });
@@ -567,8 +566,8 @@ describe("Admin: cupons e preço anual", () => {
 
   it("updatePlan valida o preço anual (mínimo e no máximo 12 mensalidades) e aceita null", async () => {
     const plan = await makePlan({ priceCents: 5900, annualPriceCents: null });
-    await expect(updatePlan(plan.id, { annualPriceCents: 50 })).rejects.toMatchObject({ code: "INVALID_ANNUAL_PRICE" });
-    await expect(updatePlan(plan.id, { annualPriceCents: 5900 * 12 + 1 })).rejects.toMatchObject({ code: "INVALID_ANNUAL_PRICE" });
+    await expect(updatePlan(plan.id, { annualPriceCents: 50 })).rejects.toMatchObject({ code: "INVALID_CYCLE_PRICE" });
+    await expect(updatePlan(plan.id, { annualPriceCents: 5900 * 12 + 1 })).rejects.toMatchObject({ code: "INVALID_CYCLE_PRICE" });
     expect((await updatePlan(plan.id, { annualPriceCents: 59000 })).annualPriceCents).toBe(59000);
     expect((await updatePlan(plan.id, { annualPriceCents: null })).annualPriceCents).toBeNull();
   });

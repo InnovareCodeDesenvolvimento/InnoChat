@@ -159,11 +159,11 @@ export const TERMOS_SECTIONS: LegalSection[] = [
         ],
       },
       {
-        subtitle: "Plano anual e cupons",
+        subtitle: "Planos mensais, trimestrais, semestrais e anuais, e cupons",
         blocks: [
-          "O Plano pode ser contratado em ciclo **mensal** ou **anual**. No ciclo anual, a Empresa paga de uma só vez, por Pix, o valor anual do Plano, que cobre 12 meses de uso e custa menos que 12 mensalidades. A Empresa pode trocar o ciclo pelo Painel; a troca vale a partir da próxima fatura, sem cálculo proporcional, e o período já pago segue até o fim.",
-          "Cupons de desconto têm regras próprias (porcentagem ou valor, validade, limite de usos e número de cobranças descontadas), que aparecem ao aplicar o cupom. Cada cupom pode ser usado uma vez por Empresa e não é acumulável com outro. O desconto nunca deixa a fatura abaixo de R$ 1,00 e não vale retroativamente para faturas já emitidas.",
-          "No ciclo anual, os valores pagos não são reembolsados de forma proporcional se a Empresa cancelar antes do fim dos 12 meses; o cancelamento vale ao fim do período já pago, como descrito na seção de cancelamento, e o acesso continua até lá. Isso não afasta os direitos garantidos por lei.",
+          "O Plano pode ser contratado em ciclo **mensal**, **trimestral**, **semestral** ou **anual**, conforme os ciclos que o Plano oferecer na época da contratação. Nos ciclos trimestral, semestral e anual, a Empresa paga de uma só vez, por Pix, o valor do período, que cobre 3, 6 ou 12 meses de uso e costuma custar menos que as mensalidades do mesmo período. A Empresa pode trocar o ciclo pelo Painel; a troca vale a partir da próxima fatura, sem cálculo proporcional, e o período já pago segue até o fim.",
+          "Cupons de desconto têm regras próprias (porcentagem ou valor, validade, limite de usos e número de faturas descontadas), que aparecem ao aplicar o cupom. Cada cupom pode ser usado uma vez por Empresa e não é acumulável com outro. O desconto nunca deixa a fatura abaixo de R$ 1,00 e não vale retroativamente para faturas já emitidas.",
+          "Nos ciclos trimestral, semestral e anual, os valores pagos não são reembolsados de forma proporcional se a Empresa cancelar antes do fim do período contratado; o cancelamento vale ao fim do período já pago, como descrito na seção de cancelamento, e o acesso continua até lá. Isso não afasta os direitos garantidos por lei.",
         ],
       },
       {
@@ -181,7 +181,7 @@ export const TERMOS_SECTIONS: LegalSection[] = [
       {
         subtitle: "Reembolso e documentos fiscais",
         blocks: [
-          "Por se tratar de serviço pré-pago, mensal ou anual, os valores pagos não são reembolsados, nem de forma proporcional, ressalvados os direitos garantidos por lei.",
+          "Por se tratar de serviço pré-pago, nos ciclos mensal, trimestral, semestral ou anual, os valores pagos não são reembolsados, nem de forma proporcional, ressalvados os direitos garantidos por lei.",
           "O InnoChat não emite documentos fiscais automaticamente. Dúvidas sobre documentos fiscais podem ser enviadas ao [E-MAIL DE CONTATO].",
         ],
       },

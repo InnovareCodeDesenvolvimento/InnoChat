@@ -15,6 +15,7 @@ import { formatCentsBRL, formatDateBR } from "@/modules/billing/format";
 import { parsePageSize, parsePositiveInt } from "@/components/lib/pagination";
 import { TwoFactorResetList } from "@/components/admin/two-factor-reset-list";
 import { listCompanyTwoFactorAction } from "@/modules/two-factor/actions";
+import { cycleLabel } from "@/core/billing";
 import { BillingContactCard } from "@/components/billing/billing-contact-card";
 import { getBillingContactAsAdminAction, updateBillingContactAsAdminAction } from "@/modules/billing/contact-actions";
 import { CompanyInvoices } from "./company-invoices";
@@ -93,6 +94,9 @@ export default async function AdminEmpresaCobrancaPage({
         <BillingStatCard icon={<Layers aria-hidden="true" />} label="Plano" value={company.planName} tone="primary">
           <div className="mt-3">
             <Badge variant={statusVariant}>{statusLabel}</Badge>
+            <Badge variant="neutral" className="ml-1.5" data-testid="empresa-ciclo">
+              Cobrança {cycleLabel(company.billingCycle)}
+            </Badge>
           </div>
         </BillingStatCard>
         <BillingStatCard icon={<CalendarClock aria-hidden="true" />} label="Próximo vencimento" value={formatDateBR(new Date(company.currentPeriodEnd))} tone="warning" />
@@ -121,6 +125,7 @@ export default async function AdminEmpresaCobrancaPage({
           dueAt: new Date(inv.dueAt).toISOString(),
           paidAt: inv.paidAt ? new Date(inv.paidAt).toISOString() : null,
           kind: inv.kind,
+          cycle: inv.cycle,
         }))}
       />
 

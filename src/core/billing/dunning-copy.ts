@@ -1,3 +1,5 @@
+import type { BillingCycle } from "./pricing";
+import { cycleLabel } from "./pricing";
 import type { DunningStep } from "./dunning-policy";
 import { describeMissingStep, describeStrandedClients, describeTrialResults, type TrialUsage } from "./trial-usage";
 
@@ -17,8 +19,8 @@ export type DunningCopyData = {
   tenantName: string;
   /** "R$ 49,90". */
   amount: string;
-  /** Fatura de plano anual: o valor sai com "do plano anual" e os textos não dizem "por mês". */
-  annual?: boolean;
+  /** Ciclo da fatura: fora o mensal, o valor sai com "do plano trimestral/semestral/anual" e os textos não dizem "por mês". */
+  cycle?: BillingCycle;
   /** Vencimento da fatura ("28/10/2026"). */
   dueDate: string | null;
   /** Tela Assinatura. */
@@ -70,18 +72,18 @@ function addressed(d: DunningCopyData, text: string): string {
   return d.ownerName ? `${d.ownerName}, ${text}` : text.charAt(0).toUpperCase() + text.slice(1);
 }
 
-/** Valor com o ciclo: "R$ 539,00 do plano anual" quando a fatura é anual. */
-export function amountWithCycle(d: Pick<DunningCopyData, "amount" | "annual">): string {
-  return d.annual ? `${d.amount} do plano anual` : d.amount;
+/** Valor com o ciclo: "R$ 539,00 do plano anual" (ou trimestral, semestral) quando a fatura não é mensal. */
+export function amountWithCycle(d: Pick<DunningCopyData, "amount" | "cycle">): string {
+  return d.cycle && d.cycle !== "MONTHLY" ? `${d.amount} do plano ${cycleLabel(d.cycle)}` : d.amount;
 }
 
 function amt(d: DunningCopyData): string {
   return amountWithCycle(d);
 }
 
-/** Só o teste mostra "por mês": no anual o sufixo some, pois o valor já diz "do plano anual". */
+/** Só o teste mostra "por mês": fora do mensal o sufixo some, pois o valor já diz "do plano anual". */
 function perPeriod(d: DunningCopyData): string {
-  return d.annual ? "" : " por mês";
+  return d.cycle && d.cycle !== "MONTHLY" ? "" : " por mês";
 }
 
 function daysWord(n: number): string {

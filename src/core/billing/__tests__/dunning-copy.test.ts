@@ -147,19 +147,35 @@ describe("sequência do teste: dados reais e variação 'falta pouco'", () => {
 
 describe("régua com plano anual (Melhoria 6)", () => {
   it("amountWithCycle acrescenta o plano anual e some quando é mensal", () => {
-    expect(amountWithCycle({ amount: "R$ 590,00", annual: true })).toBe("R$ 590,00 do plano anual");
-    expect(amountWithCycle({ amount: "R$ 59,00", annual: false })).toBe("R$ 59,00");
+    expect(amountWithCycle({ amount: "R$ 590,00", cycle: "ANNUAL" })).toBe("R$ 590,00 do plano anual");
+    expect(amountWithCycle({ amount: "R$ 168,00", cycle: "QUARTERLY" })).toBe("R$ 168,00 do plano trimestral");
+    expect(amountWithCycle({ amount: "R$ 319,00", cycle: "SEMIANNUAL" })).toBe("R$ 319,00 do plano semestral");
+    expect(amountWithCycle({ amount: "R$ 59,00", cycle: "MONTHLY" })).toBe("R$ 59,00");
     expect(amountWithCycle({ amount: "R$ 59,00" })).toBe("R$ 59,00");
   });
 
   it.each(DUNNING_STEPS)("%s: todo valor aparece com 'plano anual' e nunca como 'por mês'", (step) => {
-    const d = data({ amount: "R$ 590,00", annual: true });
+    const d = data({ amount: "R$ 590,00", cycle: "ANNUAL" });
     const whats = buildWhatsappMessages(step, d).join(" ");
     const email = JSON.stringify(buildEmailCopy(step, d) ?? "");
     for (const text of [whats, email]) {
       const withAmount = text.split("R$ 590,00").length - 1;
       const withLabel = text.split("R$ 590,00 do plano anual").length - 1;
       expect(withLabel, text).toBe(withAmount);
+      expect(text).not.toContain("por mês");
+    }
+  });
+});
+
+describe("régua com plano trimestral e semestral", () => {
+  it.each([
+    ["QUARTERLY", "R$ 168,00", "do plano trimestral"],
+    ["SEMIANNUAL", "R$ 319,00", "do plano semestral"],
+  ] as const)("%s: todo valor sai com o ciclo e nunca como 'por mês'", (cycle, amount, label) => {
+    for (const step of DUNNING_STEPS) {
+      const d = data({ amount, cycle });
+      const text = `${buildWhatsappMessages(step, d).join(" ")} ${JSON.stringify(buildEmailCopy(step, d) ?? "")}`;
+      expect(text.split(`${amount} ${label}`).length, `${step}: ${text}`).toBe(text.split(amount).length);
       expect(text).not.toContain("por mês");
     }
   });

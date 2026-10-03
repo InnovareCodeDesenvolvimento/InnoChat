@@ -2,7 +2,19 @@ import { addMonths } from "date-fns";
 import { getPrisma } from "@/lib/db/prisma";
 import { DomainError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
-import { effectiveStatus, GRACE_DAYS_PAYING, GRACE_DAYS_TRIAL, MIN_CHARGE_CENTS, mrrContributionCents, usesTrialRules } from "@/core/billing";
+import {
+  asBillingCycle,
+  CYCLE_PRICE_FIELD,
+  cycleLabel,
+  cycleMonths,
+  effectiveStatus,
+  GRACE_DAYS_PAYING,
+  GRACE_DAYS_TRIAL,
+  MIN_CHARGE_CENTS,
+  mrrContributionCents,
+  usesTrialRules,
+  type BillingCycle,
+} from "@/core/billing";
 import { recordBillingEvent } from "./dunning/events";
 import { applyInvoicePayment, findBillingRecipientEmail, regeneratePixForInvoice as regeneratePixForInvoiceService } from "./service";
 import type { MercadoPagoGateway } from "./mercadopago";
@@ -26,7 +38,9 @@ export async function listPlans() {
 export type UpdatePlanInput = {
   name?: string;
   priceCents?: number;
-  /** Preço anual (12 meses) em centavos; `null` remove a opção anual. */
+  /** Preço do período (valor cobrado de uma vez) em centavos; `null` remove o ciclo. Mensal não tem `null`. */
+  quarterlyPriceCents?: number | null;
+  semiannualPriceCents?: number | null;
   annualPriceCents?: number | null;
   maxWhatsappNumbers?: number;
   maxProfessionals?: number | null;
@@ -38,15 +52,47 @@ export async function updatePlan(planId: string, input: UpdatePlanInput) {
   const existing = await getPrisma().plan.findUnique({ where: { id: planId } });
   if (!existing) throw new DomainError("NOT_FOUND", "Plano não encontrado.");
   const monthly = input.priceCents ?? existing.priceCents;
-  const annual = input.annualPriceCents === undefined ? existing.annualPriceCents : input.annualPriceCents;
-  if (annual !== null) {
-    if (annual < MIN_CHARGE_CENTS) throw new DomainError("INVALID_ANNUAL_PRICE", "O preço anual precisa ser pelo menos R$ 1,00.");
-    // Anual mais caro que 12 mensalidades quase sempre é erro de digitação (centavos no lugar de reais, por exemplo).
-    if (monthly > 0 && annual > monthly * 12) {
-      throw new DomainError("INVALID_ANNUAL_PRICE", "O preço anual não pode ser maior que 12 mensalidades.");
+  const prisma = getPrisma();
+  for (const cycle of ["QUARTERLY", "SEMIANNUAL", "ANNUAL"] as const) {
+    const field = CYCLE_PRICE_FIELD[cycle];
+    const next = input[field] === undefined ? existing[field] : input[field];
+    const word = cycleLabel(cycle);
+    if (next !== null && next !== undefined) {
+      if (next < MIN_CHARGE_CENTS) throw new DomainError("INVALID_CYCLE_PRICE", `O preço ${word} precisa ser pelo menos R$ 1,00, ou deixe em branco.`);
+      // Mais caro que as mensalidades do período quase sempre é erro de digitação (centavos no lugar de reais, por exemplo).
+      if (monthly > 0 && next > monthly * cycleMonths(cycle)) {
+        throw new DomainError("INVALID_CYCLE_PRICE", `O preço ${word} não pode ser maior que ${cycleMonths(cycle)} mensalidades.`);
+      }
+    } else if (input[field] === null && existing[field] !== null) {
+      // Tirar o ciclo com assinatura viva nele deixaria a empresa cobrada como mensal sem ela saber.
+      const inUse = await countLiveSubscriptionsInCycle(planId, cycle);
+      if (inUse > 0) {
+        throw new DomainError(
+          "CYCLE_IN_USE",
+          `Não dá para tirar o preço ${word}: ${inUse === 1 ? "1 assinatura ativa usa" : `${inUse} assinaturas ativas usam`} esse ciclo neste plano. Troque o ciclo delas ou espere acabar.`,
+          { cycle, count: inUse },
+        );
+      }
     }
   }
-  return getPrisma().plan.update({ where: { id: planId }, data: input });
+  return prisma.plan.update({ where: { id: planId }, data: input });
+}
+
+/** Assinaturas não canceladas do plano (atual ou agendado) que pagam no ciclo. */
+export async function countLiveSubscriptionsInCycle(planId: string, cycle: BillingCycle): Promise<number> {
+  return getPrisma().subscription.count({
+    where: { billingCycle: cycle, status: { not: "CANCELED" }, OR: [{ planId }, { pendingPlanId: planId }] },
+  });
+}
+
+/** Por plano e ciclo, quantas assinaturas não canceladas pagam nele (para o Admin avisar antes de apagar um preço). */
+export async function liveCycleUsageByPlan(): Promise<Record<string, Partial<Record<BillingCycle, number>>>> {
+  const rows = await getPrisma().subscription.groupBy({ by: ["planId", "billingCycle"], where: { status: { not: "CANCELED" } }, _count: { _all: true } });
+  const out: Record<string, Partial<Record<BillingCycle, number>>> = {};
+  for (const row of rows) {
+    (out[row.planId] ??= {})[asBillingCycle(row.billingCycle)] = row._count._all;
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -227,8 +273,8 @@ export type AdminInvoiceListItem = {
   createdAt: Date;
   /** `TRIAL` = fatura do cadastro (teste); a UI rotula "Teste". */
   kind: "TRIAL" | "REGULAR";
-  /** Ciclo da fatura (anual cobre 12 meses) e desconto de cupom já abatido de `amountCents`. */
-  cycle: "MONTHLY" | "ANNUAL";
+  /** Ciclo da fatura (cobre 1, 3, 6 ou 12 meses) e desconto de cupom já abatido de `amountCents`. */
+  cycle: BillingCycle;
   discountCents: number;
   couponCode: string | null;
 };
@@ -293,7 +339,7 @@ export async function listInvoicesAdmin(params: ListInvoicesAdminParams = {}): P
       hasMpPayment: !!invoice.mpPaymentId,
       createdAt: invoice.createdAt,
       kind: invoice.isTrialConversion ? "TRIAL" : "REGULAR",
-      cycle: invoice.cycle === "ANNUAL" ? "ANNUAL" : "MONTHLY",
+      cycle: asBillingCycle(invoice.cycle),
       discountCents: invoice.discountCents,
       couponCode: invoice.couponCode,
     })),
@@ -359,8 +405,8 @@ export async function billingMonthlyTotals(now: Date = new Date()): Promise<Bill
     overdueCents: overdue._sum.amountCents ?? 0,
     trialCents: trial._sum.amountCents ?? 0,
     trialCount: trial._count._all,
-    // Anual entra como preço anual / 12 (Melhoria 6).
-    mrrCents: activeSubscriptions.reduce((sum, s) => sum + mrrContributionCents(s.plan, s.billingCycle === "ANNUAL" ? "ANNUAL" : "MONTHLY"), 0),
+    // Ciclo longo entra como preço do período / meses (mensal 1, trimestral 3, semestral 6, anual 12).
+    mrrCents: activeSubscriptions.reduce((sum, s) => sum + mrrContributionCents(s.plan, asBillingCycle(s.billingCycle)), 0),
   };
 }
 

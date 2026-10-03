@@ -1,10 +1,10 @@
 import { getPrisma } from "@/lib/db/prisma";
 import { DomainError } from "@/lib/errors";
-import { planOffersAnnual, type BillingCycle } from "@/core/billing";
+import { couponAcceptsCycle, cycleLabel, planOffersCycle, type BillingCycle } from "@/core/billing";
 import { recordBillingEvent } from "./dunning/events";
 
 /**
- * Troca do ciclo de cobrança pelo OWNER (mensal <-> anual). Sem pro-rata (decisão do dono): a mudança só vale na
+ * Troca do ciclo de cobrança pelo OWNER (mensal, trimestral, semestral ou anual). Sem pro-rata (decisão do dono): a mudança só vale na
  * PRÓXIMA fatura a ser gerada. A fatura que já está em aberto continua como foi emitida e o período já pago
  * não é recalculado nem devolvido.
  */
@@ -21,8 +21,8 @@ export async function changeBillingCycle(tenantId: string, cycle: BillingCycle):
   const subscription = await prisma.subscription.findUnique({ where: { tenantId }, include: { plan: true, coupon: true } });
   if (!subscription) throw new DomainError("NOT_FOUND", "Assinatura não encontrada para esta empresa.");
   if (subscription.status === "CANCELED") throw new DomainError("INVALID_STATE", "Reative a assinatura antes de trocar a cobrança.");
-  if (cycle === "ANNUAL" && !planOffersAnnual(subscription.plan)) {
-    throw new DomainError("ANNUAL_NOT_AVAILABLE", "O plano atual não tem cobrança anual.");
+  if (!planOffersCycle(subscription.plan, cycle)) {
+    throw new DomainError("CYCLE_NOT_AVAILABLE", `O plano atual não tem cobrança ${cycleLabel(cycle)}.`);
   }
 
   const openInvoices = await prisma.invoice.count({ where: { subscriptionId: subscription.id, status: "OPEN" } });
@@ -36,6 +36,6 @@ export async function changeBillingCycle(tenantId: string, cycle: BillingCycle):
       metadata: { billingCycle: cycle, previousCycle: subscription.billingCycle, appliedImmediately: false },
     });
   }
-  const couponPaused = Boolean(subscription.coupon && subscription.coupon.appliesToCycle !== "ANY" && subscription.coupon.appliesToCycle !== cycle);
+  const couponPaused = Boolean(subscription.coupon && !couponAcceptsCycle(subscription.coupon.appliesToCycles, cycle));
   return { billingCycle: cycle, openInvoiceKeepsOldCycle: openInvoices > 0, couponPaused };
 }

@@ -16,6 +16,7 @@ import { navIconFor } from "@/components/shell/nav-items";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/components/lib/cn";
+import { cycleLabel, invoiceCoverageSuffix, type BillingCycle } from "@/core/billing";
 import { formatDateTimeLabel } from "@/components/lib/format-date";
 import { BillingContactCard } from "@/components/billing/billing-contact-card";
 import type { BillingContactData, SaveBillingContact } from "@/components/billing/billing-contact-types";
@@ -31,7 +32,7 @@ export type BillingSnapshot = {
   planName: string;
   planSortOrder: number;
   priceCents: number;
-  /** Cobrança mensal/anual e cupom em uso (Melhoria 6). */
+  /** Cobrança (mensal, trimestral, semestral ou anual) e cupom em uso (Melhoria 6). */
   cycle: CycleSnapshot;
   status: BillingStatus;
   trialEndsAt: string | null;
@@ -55,7 +56,7 @@ export type BillingSnapshot = {
     pixCopyPaste: string | null;
     pixExpiresAt: string | null;
     paidAt: string | null;
-    cycle: "MONTHLY" | "ANNUAL";
+    cycle: BillingCycle;
     discountCents: number;
     couponCode: string | null;
   } | null;
@@ -240,7 +241,7 @@ function PixCard({
       <CardHeader help="assinatura.fatura">
         <CardTitle>Fatura em aberto</CardTitle>
         <CardDescription>
-          {formatBRL(invoice.amountCents)}{invoice.cycle === "ANNUAL" ? " do plano anual (12 meses)" : ""}, com vencimento em {formatDateTimeLabel(invoice.dueAt, timezone)}
+          {formatBRL(invoice.amountCents)}{invoiceCoverageSuffix(invoice.cycle)}, com vencimento em {formatDateTimeLabel(invoice.dueAt, timezone)}
         </CardDescription>
         {invoice.discountCents > 0 ? (
           <p className="mt-1 text-sm text-success" data-testid="fatura-desconto">
@@ -551,6 +552,7 @@ export function AssinaturaClient({
 }) {
   const router = useRouter();
   const [paymentConfirmed, setPaymentConfirmed] = useState(false);
+  const currentCycleOption = snapshot.cycle.options.find((o) => o.cycle === snapshot.cycle.billingCycle) ?? null;
   const stillWaitingPayment = snapshot.invoice !== null && !snapshot.invoice.paidAt && !paymentConfirmed;
   useStatusPolling(stillWaitingPayment);
   usePaymentCheck(tenantSlug, stillWaitingPayment && !!snapshot.invoice?.pixCopyPaste, () => {
@@ -567,8 +569,8 @@ export function AssinaturaClient({
           <CardTitle>{snapshot.planName}</CardTitle>
           <CardDescription>
             {snapshot.priceCents > 0
-              ? snapshot.cycle.billingCycle === "ANNUAL" && snapshot.cycle.annualPriceCents !== null
-                ? `${formatBRL(snapshot.cycle.annualPriceCents)} por ano (cobrança anual)`
+              ? currentCycleOption && snapshot.cycle.billingCycle !== "MONTHLY"
+                ? `${formatBRL(currentCycleOption.periodCents)} a cada ${currentCycleOption.every} (cobrança ${cycleLabel(snapshot.cycle.billingCycle)})`
                 : `${formatBRL(snapshot.priceCents)} por mês`
               : "Preço a definir. O teste continua funcionando."}
           </CardDescription>

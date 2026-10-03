@@ -2,11 +2,11 @@ import { Layers } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { navIconFor } from "@/components/shell/nav-items";
 import { EmptyState } from "@/components/ui/empty-state";
-import { listPlansAction } from "@/modules/billing/admin-actions";
+import { listPlansAction, planCycleUsageAction } from "@/modules/billing/admin-actions";
 import { AdminPlanosClient, type PlanRow } from "./admin-planos-client";
 
 export default async function AdminPlanosPage() {
-  const result = await listPlansAction();
+  const [result, usage] = await Promise.all([listPlansAction(), planCycleUsageAction()]);
 
   if (!result.ok) {
     return (
@@ -17,5 +17,5 @@ export default async function AdminPlanosPage() {
     );
   }
 
-  return <AdminPlanosClient initialPlans={result.data as PlanRow[]} />;
+  return <AdminPlanosClient initialPlans={result.data as PlanRow[]} cycleUsage={usage.ok ? usage.data : {}} />;
 }

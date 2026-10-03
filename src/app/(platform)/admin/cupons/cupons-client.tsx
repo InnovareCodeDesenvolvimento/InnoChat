@@ -19,7 +19,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeadCell, TableRow } from 
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { HelpButton } from "@/components/help/help-button";
 import { useToast } from "@/components/ui/toast";
-import { couponCycleRuleLabel, couponDiscountLabel, couponDurationLabel } from "@/core/billing";
+import { BILLING_CYCLES, couponCyclesLabel, couponDiscountLabel, couponDurationHint, couponDurationLabel, CYCLE_INFO, normalizeCouponCycles, type BillingCycle } from "@/core/billing";
 import { formatCentsBRL } from "@/modules/billing/format";
 import {
   createCouponAction,
@@ -83,7 +83,8 @@ type FormState = {
   value: string;
   duration: "ONCE" | "N_CYCLES" | "FOREVER";
   durationCycles: string;
-  appliesToCycle: "ANY" | "MONTHLY" | "ANNUAL";
+  /** Ciclos marcados. Nenhum marcado = vale em todos. */
+  appliesToCycles: BillingCycle[];
   validFrom: string;
   validUntil: string;
   maxRedemptions: string;
@@ -98,7 +99,7 @@ const EMPTY_FORM: FormState = {
   value: "10",
   duration: "ONCE",
   durationCycles: "3",
-  appliesToCycle: "ANY",
+  appliesToCycles: [],
   validFrom: "",
   validUntil: "",
   maxRedemptions: "",
@@ -114,7 +115,7 @@ function toForm(c: CouponRow): FormState {
     value: c.kind === "PERCENT" ? String(c.value) : (c.value / 100).toFixed(2),
     duration: c.duration,
     durationCycles: c.durationCycles !== null ? String(c.durationCycles) : "3",
-    appliesToCycle: c.appliesToCycle,
+    appliesToCycles: c.appliesToCycles,
     validFrom: dateInput(c.validFrom),
     validUntil: dateInput(c.validUntil),
     maxRedemptions: c.maxRedemptions !== null ? String(c.maxRedemptions) : "",
@@ -190,7 +191,7 @@ export function CuponsClient({ items, paging, filters, plans }: { items: CouponR
     let durationCycles: number | null = null;
     if (form.duration === "N_CYCLES") {
       durationCycles = Number(form.durationCycles);
-      if (!Number.isInteger(durationCycles) || durationCycles < 1 || durationCycles > 60) return "Informe por quantas cobranças o desconto vale (de 1 a 60).";
+      if (!Number.isInteger(durationCycles) || durationCycles < 1 || durationCycles > 60) return "Informe por quantas faturas o desconto vale (de 1 a 60).";
     }
 
     let maxRedemptions: number | null = null;
@@ -207,7 +208,7 @@ export function CuponsClient({ items, paging, filters, plans }: { items: CouponR
       value,
       duration: form.duration,
       durationCycles,
-      appliesToCycle: form.appliesToCycle,
+      appliesToCycles: normalizeCouponCycles(form.appliesToCycles),
       validFrom: form.validFrom || null,
       validUntil: form.validUntil || null,
       maxRedemptions,
@@ -246,6 +247,10 @@ export function CuponsClient({ items, paging, filters, plans }: { items: CouponR
       notify({ variant: "success", title: c.active ? "Cupom desativado." : "Cupom ativado." });
       router.refresh();
     });
+  }
+
+  function toggleCycle(cycle: BillingCycle, checked: boolean) {
+    setForm((f) => ({ ...f, appliesToCycles: checked ? [...new Set([...f.appliesToCycles, cycle])] : f.appliesToCycles.filter((c) => c !== cycle) }));
   }
 
   function togglePlan(id: string, checked: boolean) {
@@ -320,7 +325,7 @@ export function CuponsClient({ items, paging, filters, plans }: { items: CouponR
                     </TableCell>
                     <TableCell>
                       <p>{plansLabel(c, plans)}</p>
-                      <p className="text-xs text-text-secondary">{couponCycleRuleLabel(c.appliesToCycle)}</p>
+                      <p className="text-xs text-text-secondary">{couponCyclesLabel(c.appliesToCycles)}</p>
                     </TableCell>
                     <TableCell className="whitespace-nowrap">{validityLabel(c)}</TableCell>
                     <TableCell className="whitespace-nowrap tabular-nums">{usageLabel(c)}</TableCell>
@@ -370,7 +375,7 @@ export function CuponsClient({ items, paging, filters, plans }: { items: CouponR
                   <div>
                     <dt className="text-xs text-text-secondary">Vale para</dt>
                     <dd>{plansLabel(c, plans)}</dd>
-                    <dd className="text-xs text-text-secondary">{couponCycleRuleLabel(c.appliesToCycle)}</dd>
+                    <dd className="text-xs text-text-secondary">{couponCyclesLabel(c.appliesToCycles)}</dd>
                   </div>
                   <div>
                     <dt className="text-xs text-text-secondary">Validade</dt>
@@ -472,14 +477,22 @@ export function CuponsClient({ items, paging, filters, plans }: { items: CouponR
               <Field label="Por quanto tempo vale" required>
                 {(fieldProps) => (
                   <Select {...fieldProps} value={form.duration} disabled={locked} onChange={(e) => setForm((f) => ({ ...f, duration: e.target.value as FormState["duration"] }))}>
-                    <option value="ONCE">Só na primeira cobrança</option>
-                    <option value="N_CYCLES">Em um número de cobranças</option>
-                    <option value="FOREVER">Em todas as cobranças</option>
+                    <option value="ONCE">Só na primeira fatura</option>
+                    <option value="N_CYCLES">Em um número de faturas</option>
+                    <option value="FOREVER">Em todas as faturas</option>
                   </Select>
                 )}
               </Field>
               {form.duration === "N_CYCLES" ? (
-                <Field label="Quantas cobranças" required>
+                <Field
+                  label="Quantas faturas"
+                  required
+                  hint={
+                    Number.isInteger(Number(form.durationCycles)) && Number(form.durationCycles) >= 1
+                      ? `${couponDurationHint(Number(form.durationCycles), form.appliesToCycles)}. A duração conta faturas, não meses.`
+                      : "A duração conta faturas, não meses."
+                  }
+                >
                   {(fieldProps) => (
                     <Input {...fieldProps} type="number" min={1} max={60} value={form.durationCycles} disabled={locked} onChange={(e) => setForm((f) => ({ ...f, durationCycles: e.target.value }))} />
                   )}
@@ -487,15 +500,27 @@ export function CuponsClient({ items, paging, filters, plans }: { items: CouponR
               ) : null}
             </div>
 
-            <Field label="Em qual cobrança vale" required>
-              {(fieldProps) => (
-                <Select {...fieldProps} value={form.appliesToCycle} disabled={locked} onChange={(e) => setForm((f) => ({ ...f, appliesToCycle: e.target.value as FormState["appliesToCycle"] }))}>
-                  <option value="ANY">Mensal ou anual</option>
-                  <option value="MONTHLY">Só no plano mensal</option>
-                  <option value="ANNUAL">Só no plano anual</option>
-                </Select>
-              )}
-            </Field>
+            <fieldset disabled={locked} data-testid="cupom-ciclos">
+              <legend className="mb-1 flex items-center gap-1 text-sm font-medium text-text">
+                Períodos de cobrança em que vale
+                <HelpButton helpKey="admin.cupomCiclos" />
+              </legend>
+              <p className="mb-2 text-xs text-text-secondary">Sem nenhum marcado, vale em todos: {BILLING_CYCLES.map((c) => CYCLE_INFO[c].word).join(", ")}.</p>
+              <div className="grid grid-cols-2 gap-x-4 sm:grid-cols-4">
+                {BILLING_CYCLES.map((cycle) => (
+                  <label key={cycle} className="flex min-h-11 items-center gap-2 text-sm text-text">
+                    <input
+                      type="checkbox"
+                      name={`ciclo-${cycle}`}
+                      checked={form.appliesToCycles.includes(cycle)}
+                      onChange={(e) => toggleCycle(cycle, e.target.checked)}
+                      className="h-4 w-4 rounded border-border accent-primary"
+                    />
+                    {CYCLE_INFO[cycle].label}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
 
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Vale a partir de">

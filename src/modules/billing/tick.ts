@@ -3,7 +3,7 @@ import { getPrisma } from "@/lib/db/prisma";
 import { withAdvisoryLock } from "@/lib/db/advisory-lock";
 import { describeDbError, isTransactionTimeout } from "@/lib/db/prisma-errors";
 import { logger } from "@/lib/logger";
-import { cycleMonths, effectiveStatus, validateCpfCnpj } from "@/core/billing";
+import { asBillingCycle, cycleMonths, effectiveStatus, validateCpfCnpj } from "@/core/billing";
 import { loadInvoiceCharge } from "./coupons";
 import {
   pixEnvironmentFor,
@@ -331,7 +331,7 @@ async function generateUpcomingInvoices(
         await prisma.subscription.update({ where: { id: subscription.id }, data: { planId: subscription.pendingPlanId, pendingPlanId: null } });
       }
 
-      // Ciclo (mensal/anual) e cupom da assinatura: o valor e o período da fatura saem daqui.
+      // Ciclo (mensal, trimestral, semestral ou anual) e cupom da assinatura: o valor e o período da fatura saem daqui.
       const charge = await loadInvoiceCharge(subscription, billingPlan);
       const periodEnd = addMonths(periodStart, cycleMonths(charge.cycle));
 
@@ -402,7 +402,7 @@ async function regenerateExpiredPix(
       const pix = await gateway.createPixPayment({
         externalReference: invoice.id,
         amountCents: invoice.amountCents,
-        description: generateInvoiceDescription(invoice.subscription.tenant.name, invoice.cycle === "ANNUAL" ? "ANNUAL" : "MONTHLY"),
+        description: generateInvoiceDescription(invoice.subscription.tenant.name, asBillingCycle(invoice.cycle)),
         payerEmail,
         payerName: invoice.subscription.tenant.name,
         payerDocument: tenantDocument.valid ? tenantDocument.digits : null,

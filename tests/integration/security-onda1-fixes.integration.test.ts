@@ -315,13 +315,13 @@ describe("M-3: retenção meta-signup/meta-capi", () => {
 describe("M-4: preview público de cupom", () => {
   it("qualquer motivo de recusa devolve a MESMA resposta (não confirma que o código existe)", async () => {
     const mk = async (over: Partial<Parameters<typeof coupons.createCoupon>[0]>) => {
-      const c = await coupons.createCoupon({ code: `SEC${run}${letters(couponIds.length)}`.toUpperCase(), kind: "PERCENT", value: 10, duration: "ONCE", appliesToCycle: "ANY", ...over }, null);
+      const c = await coupons.createCoupon({ code: `SEC${run}${letters(couponIds.length)}`.toUpperCase(), kind: "PERCENT", value: 10, duration: "ONCE", ...over }, null);
       couponIds.push(c.id);
       return c;
     };
     const expired = await mk({ validUntil: new Date(Date.now() - 86_400_000) });
     const future = await mk({ validFrom: new Date(Date.now() + 86_400_000 * 5) });
-    const annualOnly = await mk({ appliesToCycle: "ANNUAL" });
+    const annualOnly = await mk({ appliesToCycles: ["ANNUAL"] });
     const exhausted = await mk({ maxRedemptions: 1 });
     await prisma.coupon.update({ where: { id: exhausted.id }, data: { redemptionsCount: 1 } });
 
@@ -339,7 +339,7 @@ describe("M-4: preview público de cupom", () => {
   });
 
   it("o motivo detalhado segue existindo para quem é logado (previewCoupon direto, usado pela tela do dono e pelo Admin)", async () => {
-    const c = await coupons.createCoupon({ code: `SEC${run}DET`.toUpperCase(), kind: "PERCENT", value: 10, duration: "ONCE", appliesToCycle: "ANY", validUntil: new Date(Date.now() - 86_400_000) }, null);
+    const c = await coupons.createCoupon({ code: `SEC${run}DET`.toUpperCase(), kind: "PERCENT", value: 10, duration: "ONCE", validUntil: new Date(Date.now() - 86_400_000) }, null);
     couponIds.push(c.id);
     const plan = await prisma.plan.findFirstOrThrow({ where: { active: true } });
     await expect(coupons.previewCoupon({ code: c.code, planId: plan.id, cycle: "MONTHLY" })).rejects.toMatchObject({ code: "COUPON_EXPIRED" });
@@ -409,7 +409,7 @@ describe("SQL cru com a sessão em America/Sao_Paulo", () => {
   it("coupon-redeem: a janela de validade é respeitada ao milissegundo de hora (±1 h)", async () => {
     await withSessionTimezone("America/Sao_Paulo", async () => {
       const mk = async (n: string, validFrom: Date | null, validUntil: Date | null) => {
-        const c = await coupons.createCoupon({ code: `SEC${run}${n}`.toUpperCase(), kind: "PERCENT", value: 10, duration: "ONCE", appliesToCycle: "ANY", validFrom, validUntil }, null);
+        const c = await coupons.createCoupon({ code: `SEC${run}${n}`.toUpperCase(), kind: "PERCENT", value: 10, duration: "ONCE", validFrom, validUntil }, null);
         couponIds.push(c.id);
         return c;
       };
