@@ -7,6 +7,22 @@ Versão semântica (`MAJOR.MINOR.PATCH`), lida do `version` do `package.json` e 
 
 Toda publicação em produção sobe a versão e ganha uma entrada aqui.
 
+## v1.7.5 — 2026-10-03
+
+### Lista de espera
+- A fila é conferida pelo próprio sistema a cada 5 minutos: um encaixe que venceu passa logo para o próximo e, às 8h, sai o que esperou a noite. Antes isso dependia da rodada de hora em hora.
+- Limite de 30 ofertas automáticas por hora para cada empresa, para não disparar WhatsApp demais. O "Oferecer encaixe" manual não entra no limite.
+
+### Segurança
+- Next.js 16.3.8 e nodemailer 10, que corrigem os alertas de segurança das bibliotecas.
+- Backup no S3: o endereço é conferido de novo no momento da conexão.
+- Trocar a chave do backup passa a pedir a sua senha ou o código das 2 etapas.
+- Se o histórico de alterações não conseguir gravar uma ação, isso vira alerta no monitor de erros.
+- A resposta automática do WhatsApp de cobrança não duplica quando duas mensagens chegam juntas.
+
+### Documentação
+- Guia do dono em linguagem simples (docs/guia-do-dono.md) e manual de operação atualizado com as novidades.
+
 ## v1.7.4 — 2026-10-03
 
 ### Correções
