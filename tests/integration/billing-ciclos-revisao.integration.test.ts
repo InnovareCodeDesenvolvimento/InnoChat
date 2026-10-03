@@ -16,7 +16,7 @@ vi.mock("@/lib/email", async () => {
   return { ...actual, sendMail: vi.fn(async () => ({ sent: true })) };
 });
 
-const { runBillingTick } = await import("@/modules/billing/tick");
+const { generateInvoiceForSubscriptionId } = await import("@/modules/billing/tick");
 const { createMockMercadoPagoGateway } = await import("@/modules/billing/mercadopago.mock");
 const { applyInvoicePayment, changePlan } = await import("@/modules/billing/service");
 const { changeBillingCycle } = await import("@/modules/billing/billing-cycle");
@@ -77,7 +77,8 @@ async function subscribe(tenantId: string, planId: string, cycle: Cycle, current
 async function nextInvoiceAndPay(subscriptionId: string, now: Date, tag: string) {
   const { gateway } = createMockMercadoPagoGateway();
   const before = await prisma.invoice.count({ where: { subscriptionId } });
-  await runBillingTick(now, gateway);
+  // Só a assinatura do teste: o tick global varreria todas as empresas do banco com o relógio no futuro.
+  await generateInvoiceForSubscriptionId(subscriptionId, gateway);
   const all = await prisma.invoice.findMany({ where: { subscriptionId }, orderBy: { periodStart: "asc" } });
   expect(all.length, "o tick gera exatamente 1 fatura nova").toBe(before + 1);
   const inv = all[all.length - 1]!;

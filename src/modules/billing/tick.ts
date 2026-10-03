@@ -1,4 +1,5 @@
 import { addDays, addMonths } from "date-fns";
+import type { Prisma } from "@prisma/client";
 import { getPrisma } from "@/lib/db/prisma";
 import { withAdvisoryLock } from "@/lib/db/advisory-lock";
 import { describeDbError, isTransactionTimeout } from "@/lib/db/prisma-errors";
@@ -315,55 +316,82 @@ async function generateUpcomingInvoices(
     if (budget.isOver()) break;
     // Isolado por assinatura: uma falha (consulta, Mercado Pago, e-mail) nunca aborta as demais nem as etapas seguintes.
     try {
-      const payerEmail = await findBillingRecipientEmail(subscription.tenantId);
-      if (!payerEmail) {
-        logger.warn("billing.tick.invoice.no_owner_email", { tenantId: subscription.tenantId });
-        continue;
-      }
-
-      const periodStart = subscription.currentPeriodEnd;
-
-      // Downgrade agendado (`changePlan`, docs/arquitetura.md §7.2): o ciclo que está sendo
-      // faturado AGORA (5 dias antes de começar) é o "próximo ciclo" em que ele entra em vigor —
-      // a fatura já sai no preço do plano novo, e a assinatura já aponta para ele a partir daqui.
-      const billingPlan = subscription.pendingPlan ?? subscription.plan;
-      if (subscription.pendingPlanId) {
-        await prisma.subscription.update({ where: { id: subscription.id }, data: { planId: subscription.pendingPlanId, pendingPlanId: null } });
-      }
-
-      // Ciclo (mensal, trimestral, semestral ou anual) e cupom da assinatura: o valor e o período da fatura saem daqui.
-      const charge = await loadInvoiceCharge(subscription, billingPlan);
-      const periodEnd = addMonths(periodStart, cycleMonths(charge.cycle));
-
-      const { invoice, created } = await createInvoiceForPeriodTracked({
-        subscriptionId: subscription.id,
-        amountCents: charge.netCents,
-        charge,
-        periodStart,
-        periodEnd,
-        // Vence quando o período ATUAL acaba (= `periodStart`), que é quando o status efetivo muda. O vencimento
-        // era gravado no fim do período NOVO (um mês depois), e a régua de lembretes e o banner mentiam a data.
-        dueAt: periodStart,
-        payerEmail,
-        description: generateInvoiceDescription(subscription.tenant.name, charge.cycle),
-        gateway,
-      });
-
-      if (created) {
-        summary.invoicesCreated += 1;
-        await recordBillingEvent({
-          tenantId: subscription.tenantId,
-          subscriptionId: subscription.id,
-          invoiceId: invoice.id,
-          type: "INVOICE_CREATED",
-          metadata: { amountCents: invoice.amountCents, cycle: invoice.cycle, discountCents: invoice.discountCents },
-        });
-        // O aviso "fatura gerada" não é enviado aqui: o planejador da régua o enfileira nesta mesma rodada
-        // (etapa INVOICE_CREATED) e o despachante reenvia se o SMTP falhar.
-      }
+      await generateInvoiceForSubscription(prisma, subscription, gateway, summary);
     } catch (error) {
       logger.warn("billing.tick.invoice_generation_failed", { subscriptionId: subscription.id, ...describeDbError(error) });
     }
+  }
+}
+
+type SubscriptionForInvoice = Prisma.SubscriptionGetPayload<{ include: { plan: true; pendingPlan: true; tenant: true } }>;
+
+/**
+ * Gera a fatura do próximo período de UMA assinatura (corpo do laço de `generateUpcomingInvoices`).
+ * Exportada só para teste: permite exercitar a cadeia fatura -> baixa -> próxima fatura com relógio
+ * adiantado sem rodar o tick global (que varre todas as empresas do banco e grava estados datados no futuro).
+ */
+export async function generateInvoiceForSubscriptionId(
+  subscriptionId: string,
+  gateway: MercadoPagoGateway | undefined,
+  summary: BillingTickSummary = emptySummary(),
+): Promise<BillingTickSummary> {
+  const prisma = getPrisma();
+  const subscription = await prisma.subscription.findUniqueOrThrow({ where: { id: subscriptionId }, include: { plan: true, pendingPlan: true, tenant: true } });
+  await generateInvoiceForSubscription(prisma, subscription, gateway, summary);
+  return summary;
+}
+
+async function generateInvoiceForSubscription(
+  prisma: ReturnType<typeof getPrisma>,
+  subscription: SubscriptionForInvoice,
+  gateway: MercadoPagoGateway | undefined,
+  summary: BillingTickSummary,
+) {
+  const payerEmail = await findBillingRecipientEmail(subscription.tenantId);
+  if (!payerEmail) {
+    logger.warn("billing.tick.invoice.no_owner_email", { tenantId: subscription.tenantId });
+    return;
+  }
+
+  const periodStart = subscription.currentPeriodEnd;
+
+  // Downgrade agendado (`changePlan`, docs/arquitetura.md §7.2): o ciclo que está sendo
+  // faturado AGORA (5 dias antes de começar) é o "próximo ciclo" em que ele entra em vigor —
+  // a fatura já sai no preço do plano novo, e a assinatura já aponta para ele a partir daqui.
+  const billingPlan = subscription.pendingPlan ?? subscription.plan;
+  if (subscription.pendingPlanId) {
+    await prisma.subscription.update({ where: { id: subscription.id }, data: { planId: subscription.pendingPlanId, pendingPlanId: null } });
+  }
+
+  // Ciclo (mensal, trimestral, semestral ou anual) e cupom da assinatura: o valor e o período da fatura saem daqui.
+  const charge = await loadInvoiceCharge(subscription, billingPlan);
+  const periodEnd = addMonths(periodStart, cycleMonths(charge.cycle));
+
+  const { invoice, created } = await createInvoiceForPeriodTracked({
+    subscriptionId: subscription.id,
+    amountCents: charge.netCents,
+    charge,
+    periodStart,
+    periodEnd,
+    // Vence quando o período ATUAL acaba (= `periodStart`), que é quando o status efetivo muda. O vencimento
+    // era gravado no fim do período NOVO (um mês depois), e a régua de lembretes e o banner mentiam a data.
+    dueAt: periodStart,
+    payerEmail,
+    description: generateInvoiceDescription(subscription.tenant.name, charge.cycle),
+    gateway,
+  });
+
+  if (created) {
+    summary.invoicesCreated += 1;
+    await recordBillingEvent({
+      tenantId: subscription.tenantId,
+      subscriptionId: subscription.id,
+      invoiceId: invoice.id,
+      type: "INVOICE_CREATED",
+      metadata: { amountCents: invoice.amountCents, cycle: invoice.cycle, discountCents: invoice.discountCents },
+    });
+    // O aviso "fatura gerada" não é enviado aqui: o planejador da régua o enfileira nesta mesma rodada
+    // (etapa INVOICE_CREATED) e o despachante reenvia se o SMTP falhar.
   }
 }
 
