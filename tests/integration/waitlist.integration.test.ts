@@ -33,20 +33,36 @@ const SECRET = ["test", "internal", "secret", "waitlist"].join("-");
 const tenantIds: string[] = [];
 let planId: string | null = null;
 
+/**
+ * Só para provar a independência da hora: `WL_SIM_HOUR=3` (hora de Brasília) fixa o `Date` deste arquivo naquela hora do
+ * dia de hoje, com o relógio andando a partir dali. Sem a variável, vale o relógio real.
+ */
+const SIM_HOUR = process.env.WL_SIM_HOUR;
+if (SIM_HOUR !== undefined && SIM_HOUR !== "") {
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(new Date());
+  vi.useFakeTimers({ toFake: ["Date"], shouldAdvanceTime: true });
+  vi.setSystemTime(fromZonedTime(`${today}T${String(SIM_HOUR).padStart(2, "0")}:10:00`, TZ));
+}
+
 type Sent = { instanceName: string; number: string; text: string };
 let sent: Sent[] = [];
 let currentClient: EvolutionClient;
+let currentNow = new Date();
 
 /**
  * Relógio dos testes. As ofertas automáticas só saem entre 08h e 21h no fuso da empresa; se a suíte rodar de madrugada o
- * resultado não pode mudar. Dentro da janela usa a hora real; fora dela, hoje às 12h (o que se calcula é sempre em dias futuros).
+ * resultado não pode mudar. Dentro da janela usa a hora real; fora dela, o próximo meio-dia (o que se calcula é sempre em dias futuros).
  */
 function windowNow(): Date {
   const real = new Date();
   const hour = Number(formatInTimeZone(real, TZ, "H"));
-  return hour >= 8 && hour < 21 ? real : fromZonedTime(`${isoPlus(0)}T12:00:00`, TZ);
+  if (hour >= 8 && hour < 21) return real;
+  // Sempre meio-dia FUTURO: de madrugada é hoje às 12h; depois das 21h é amanhã às 12h. Um meio-dia que já passou faria as ofertas
+  // nascerem vencidas (prazo contado a partir dele) e o tick e as respostas, que usam a hora real, as derrubariam.
+  return fromZonedTime(`${isoPlus(hour >= 21 ? 1 : 0)}T12:00:00`, TZ);
 }
 function setClock(now: Date) {
+  currentNow = now;
   setWaitlistDepsForTests({ evolution: currentClient, now });
 }
 
@@ -272,7 +288,7 @@ describe("horário abriu: oferta ao primeiro compatível", () => {
     const w = await world("pulos");
     const day = isoPlus(3);
     const appt = await book(w, 6, w.corte.id, w.ana.id, day, "10:00");
-    await prisma.contact.update({ where: { id: w.contacts[0].id }, data: { botPausedUntil: new Date(Date.now() + 3_600_000) } });
+    await prisma.contact.update({ where: { id: w.contacts[0].id }, data: { botPausedUntil: new Date(currentNow.getTime() + 3_600_000) } });
     const paused = await join(w, 0, { date: day });
     const next = await join(w, 1, { date: day });
     await cancelAppointment(w.tenant.id, appt.id, "system");
@@ -449,7 +465,9 @@ describe("resposta do cliente", () => {
     const stuck = await join(w, 0, { date: day });
     await prisma.waitlistEntry.update({ where: { id: stuck.id }, data: { status: "ACCEPTED", updatedAt: new Date(Date.now() - 3_600_000) } });
     // updatedAt é @updatedAt: força o valor antigo por SQL.
-    await prisma.$executeRaw`UPDATE "waitlist_entries" SET "updatedAt" = now() - interval '1 hour' WHERE "id" = ${stuck.id}`;
+    // Hora do app (não `now()` do banco): com o relógio simulado os dois divergem.
+    const anHourAgo = new Date(Date.now() - 3_600_000);
+    await prisma.$executeRaw`UPDATE "waitlist_entries" SET "updatedAt" = ${anHourAgo} WHERE "id" = ${stuck.id}`;
     await runWaitlistTick(new Date());
     expect((await entryOf(w, stuck.id)).status).toBe("WAITING");
   });
@@ -514,6 +532,8 @@ describe("claim v2 com oferta pendente", () => {
     await cancelAppointment(w.tenant.id, appt.id, "system");
     await drainWaitlistHook();
     expect((await entryOf(w, entry.id)).status).toBe("OFFERED");
+    // A oferta nasce no relógio do teste (meio-dia futuro se a suíte rodar fora de 08h-21h); o cliente responde na hora real.
+    await prisma.waitlistEntry.update({ where: { id: entry.id }, data: { offeredAt: new Date(Date.now() - 1_000), offerExpiresAt: new Date(Date.now() + 30 * 60_000) } });
 
     const result = await claimMessage(w.ctx, payload(w.instance.instanceName, w.contacts[0].waJid, "sim"), { flow: 2 });
     if (result.action !== "process" || !("flow" in result)) throw new Error("esperava process v2");

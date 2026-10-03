@@ -2,12 +2,47 @@
 // horário abre (mensagem do PAINEL pela Evolution falsa), SIM/NÃO, horário ocupado por outro canal e oferta vencida.
 // Uso: node scripts/bot-sim/withdb.mjs node scripts/bot-sim/scenarios-v2.mjs "^WL-"
 // Tenant "grade": 1 serviço (Escova, 45 min), 1 profissional (Ana, 09-18), grade 30, sem antecedência mínima.
-import { scenario, check, sub, conv, say, start, api, sql, db, sleep, S, T, TZ, localISO, addDaysISO, ddmm, newPhone, allSlots, createAppt, ensureFake, fakeSent, clearFakeSent, parseOptions, brief } from "./v2-kit.mjs";
+import { scenario as baseScenario, check, sub, conv, say, start, api, sql, db, sleep, S, T, TZ, localISO, addDaysISO, ddmm, newPhone, allSlots, createAppt, ensureFake, fakeSent, clearFakeSent, parseOptions, brief } from "./v2-kit.mjs";
 
 const TENANT = "grade";
-const tz = TZ[TENANT];
 const RUN = String(Date.now()).slice(-6);
 let seq = 0;
+
+// ---------------------------------------------------------------- relógio das ofertas automáticas
+// A oferta automática só sai entre 08h e 21h no fuso da empresa (de propósito: fora disso fica adiada até a manhã; essa regra é
+// provada nos testes de integração, com relógio injetado). O simulador fala com um painel real, sem como injetar relógio, então
+// os cenários que esperam a oferta chegar rodam com a empresa "grade" num fuso em que AGORA é horário comercial (10h às 19h,
+// margem para a rodada não cruzar a borda). Se o fuso atual da empresa já serve, nada muda. Restaura no fim, mesmo se falhar.
+// `BOTSIM_WL_TZ_START` (um fuso IANA) simula "a empresa começa num fuso em que é de madrugada/de noite" para provar a escolha.
+const WINDOW_TZ_CANDIDATES = ["America/Sao_Paulo", "America/Los_Angeles", "America/New_York", "Europe/Lisbon", "Europe/Moscow", "Asia/Dubai", "Asia/Kolkata", "Asia/Tokyo", "Pacific/Auckland", "Pacific/Honolulu"];
+const hourIn = (zone, now = new Date()) => Number(new Intl.DateTimeFormat("en-GB", { timeZone: zone, hour: "2-digit", hourCycle: "h23" }).format(now));
+const comfortable = (zone) => { const h = hourIn(zone); return h >= 10 && h < 19; };
+
+function pickWindowTz(start) {
+  if (comfortable(start)) return start;
+  const found = WINDOW_TZ_CANDIDATES.find(comfortable);
+  if (!found) throw new Error("nenhum fuso candidato está em horário comercial agora");
+  return found;
+}
+
+async function withOpenSendWindow(fn) {
+  const original = TZ[TENANT];
+  const chosen = pickWindowTz(process.env.BOTSIM_WL_TZ_START || original);
+  if (chosen !== original || process.env.BOTSIM_WL_TZ_START) {
+    await sql(`UPDATE tenants SET timezone = $1 WHERE id = $2`, chosen, S(TENANT).tenantId);
+    TZ[TENANT] = chosen;
+  }
+  try {
+    return await fn();
+  } finally {
+    if (TZ[TENANT] !== original) {
+      TZ[TENANT] = original;
+      await sql(`UPDATE tenants SET timezone = $1 WHERE id = $2`, original, S(TENANT).tenantId);
+    }
+  }
+}
+/** Cenário que depende da oferta automática: roda com a janela de envio aberta (ver acima). */
+const scenario = (id, title, task, fn) => baseScenario(id, title, task, () => withOpenSendWindow(fn));
 
 const W = {
   INVITE: /lista de espera/i,
@@ -22,7 +57,7 @@ const W = {
   EMPTY: /não está em nenhuma lista de espera/,
 };
 
-const dayFor = (offset) => addDaysISO(localISO(new Date(), tz), offset);
+const dayFor = (offset) => addDaysISO(localISO(new Date(), TZ[TENANT]), offset);
 const svc = () => S(TENANT).services.Escova;
 const ana = () => S(TENANT).pros.ana;
 
@@ -72,7 +107,7 @@ async function waitSent(number, re) {
   return null;
 }
 
-scenario("WL-01", "Dia cheio: convite, entrar na lista, 'Ver outros dias' segue procurando; fila FIFO guardada no banco", "W-1", async () => {
+baseScenario("WL-01", "Dia cheio: convite, entrar na lista, 'Ver outros dias' segue procurando; fila FIFO guardada no banco", "W-1", async () => {
   await ensureFake();
   const date = dayFor(6);
   await fillDay(date);
@@ -123,7 +158,7 @@ scenario("WL-01", "Dia cheio: convite, entrar na lista, 'Ver outros dias' segue 
   });
 });
 
-scenario("WL-02", "Minha lista de espera: ver e sair pelo menu; vazia diz que não há lista", "W-1", async () => {
+baseScenario("WL-02", "Minha lista de espera: ver e sair pelo menu; vazia diz que não há lista", "W-1", async () => {
   const date = dayFor(7);
   await fillDay(date);
   const c = conv(TENANT);
