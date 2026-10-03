@@ -11,7 +11,7 @@ Decisões do dono: memória `decisoes-iniciais-innochat` e `docs/arquitetura.md`
 
 **Feito pelo dono:** 2 etapas ativada no Admin; fluxo 2.1.0 publicado; backup no Google Drive configurado, cifrado e conferido.
 
-**Pendências do dono (configuração):** preço anual em Admin → Planos; Pixel do Meta (se for anunciar); conferir credenciais do Google login e planos ativos na landing; repetir suspensões manuais anteriores à v1.4.1; trocar a senha do banco de produção; conferir credenciais de teste do Mercado Pago; DMARC para quarantine entre 15 e 29/10.
+**Pendências do dono (configuração):** preço anual em Admin → Planos; Pixel do Meta (se for anunciar); planos ativos na landing; repetir suspensões manuais anteriores à v1.4.1; DMARC para quarantine entre 15 e 29/10. Resolvidos pelo dono em 2026-10-03: credenciais do Google login, credenciais de teste do Mercado Pago e troca da senha do banco de produção.
 
 **Pendências da equipe:** checagem de 5 min da lista de espera no n8n; atualizar Next.js e nodemailer; baixos das revisões (DNS rebinding no S3, trocar chave do backup sem reautenticar, papel de banco da auditoria, teto de ofertas por empresa); testes da lista de espera independentes da hora; documentação das novidades (Alexandria).
 
