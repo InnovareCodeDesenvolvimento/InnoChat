@@ -1,5 +1,4 @@
 import { addDays, addMonths } from "date-fns";
-import type { Prisma } from "@prisma/client";
 import { getPrisma } from "@/lib/db/prisma";
 import { withAdvisoryLock } from "@/lib/db/advisory-lock";
 import { describeDbError, isTransactionTimeout } from "@/lib/db/prisma-errors";
@@ -323,7 +322,11 @@ async function generateUpcomingInvoices(
   }
 }
 
-type SubscriptionForInvoice = Prisma.SubscriptionGetPayload<{ include: { plan: true; pendingPlan: true; tenant: true } }>;
+/** Assinatura com plano, plano pendente e empresa (mesma forma que o laço do tick carrega). */
+function loadSubscriptionForInvoice(subscriptionId: string) {
+  return getPrisma().subscription.findUniqueOrThrow({ where: { id: subscriptionId }, include: { plan: true, pendingPlan: true, tenant: true } });
+}
+type SubscriptionForInvoice = Awaited<ReturnType<typeof loadSubscriptionForInvoice>>;
 
 /**
  * Gera a fatura do próximo período de UMA assinatura (corpo do laço de `generateUpcomingInvoices`).
@@ -336,7 +339,7 @@ export async function generateInvoiceForSubscriptionId(
   summary: BillingTickSummary = emptySummary(),
 ): Promise<BillingTickSummary> {
   const prisma = getPrisma();
-  const subscription = await prisma.subscription.findUniqueOrThrow({ where: { id: subscriptionId }, include: { plan: true, pendingPlan: true, tenant: true } });
+  const subscription = await loadSubscriptionForInvoice(subscriptionId);
   await generateInvoiceForSubscription(prisma, subscription, gateway, summary);
   return summary;
 }
