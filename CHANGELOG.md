@@ -7,6 +7,11 @@ Versão semântica (`MAJOR.MINOR.PATCH`), lida do `version` do `package.json` e 
 
 Toda publicação em produção sobe a versão e ganha uma entrada aqui.
 
+## v1.8.1 — 2026-10-05
+
+### Correções
+- Backup automático: uma cópia feita pelo botão "Fazer backup agora" à tarde fazia o sistema pular a cópia da madrugada seguinte, e o aviso de 36 horas sem backup disparava. Agora só as cópias automáticas contam para a regra de uma por dia, e se o sistema estiver fora do ar na hora marcada a cópia sai assim que ele voltar (até 12 horas depois).
+
 ## v1.8.0 — 2026-10-03
 
 ### Novidade: planos com 4 ciclos
