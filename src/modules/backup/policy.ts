@@ -118,12 +118,32 @@ export function isVerifyDue(lastVerifyAt: Date | null, now: Date): boolean {
 }
 
 /** É a hora marcada (Brasília), e ainda não houve tentativa nas últimas ~20 h? */
-export function isDue(config: Pick<BackupConfigFields, "enabled" | "hourLocal" | "lastAttemptAt">, now: Date = new Date()): boolean {
+/** Se o processo estava fora do ar na hora marcada (deploy, reinício), ainda dá para cobrir o dia até este tempo depois. */
+export const CATCH_UP_MS = 12 * 60 * 60 * 1000;
+
+/** Início do horário marcado mais recente que já chegou (hora de Brasília), em UTC. */
+export function latestSlotStart(hourLocal: number, now: Date = new Date()): Date {
+  const targetUtcHour = (hourLocal + BRASILIA_UTC_OFFSET_HOURS) % 24;
+  const slot = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), targetUtcHour, 0, 0, 0));
+  if (slot.getTime() > now.getTime()) slot.setTime(slot.getTime() - 24 * 60 * 60 * 1000);
+  return slot;
+}
+
+/**
+ * O backup do dia está devido? Sim quando já passou a hora marcada, ainda estamos dentro da folga de recuperação, e não
+ * houve tentativa AGENDADA desde esse horário. Backup manual ("Fazer backup agora") NÃO conta: antes contava, e uma cópia
+ * manual à tarde fazia o sistema pular a madrugada seguinte (incidente de 2026-10-05). `lastScheduledAttemptAt` vem do
+ * histórico (`BackupRun` com trigger SCHEDULED).
+ */
+export function isDue(
+  config: Pick<BackupConfigFields, "enabled" | "hourLocal">,
+  now: Date = new Date(),
+  lastScheduledAttemptAt: Date | null = null,
+): boolean {
   if (!config.enabled) return false;
-  const targetUtcHour = (config.hourLocal + BRASILIA_UTC_OFFSET_HOURS) % 24;
-  if (now.getUTCHours() !== targetUtcHour) return false;
-  const last = config.lastAttemptAt?.getTime() ?? 0;
-  return now.getTime() - last >= REPEAT_WINDOW_MS;
+  const slot = latestSlotStart(config.hourLocal, now);
+  if (now.getTime() - slot.getTime() >= CATCH_UP_MS) return false;
+  return !lastScheduledAttemptAt || lastScheduledAttemptAt.getTime() < slot.getTime();
 }
 
 export type PruneCandidate = { id: string; createdAt: Date };

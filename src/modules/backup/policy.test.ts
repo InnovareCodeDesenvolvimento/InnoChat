@@ -117,20 +117,30 @@ describe("e-mails da chave e da conferência", () => {
 });
 
 describe("isDue", () => {
-  const cfg = { enabled: true, hourLocal: 3, lastAttemptAt: null as Date | null };
-  it("só na hora marcada (3h de Brasília = 6h UTC)", () => {
-    expect(isDue(cfg, new Date("2026-10-02T06:10:00Z"))).toBe(true);
-    expect(isDue(cfg, new Date("2026-10-02T07:10:00Z"))).toBe(false);
+  const cfg = { enabled: true, hourLocal: 3 };
+  it("roda a partir da hora marcada (3h de Brasília = 6h UTC), não antes", () => {
+    expect(isDue(cfg, new Date("2026-10-02T06:10:00Z"), null)).toBe(true);
+    expect(isDue(cfg, new Date("2026-10-02T05:50:00Z"), new Date("2026-10-01T06:05:00Z"))).toBe(false);
   });
-  it("não repete se já houve tentativa nas últimas 20 h", () => {
-    expect(isDue({ ...cfg, lastAttemptAt: new Date("2026-10-02T06:00:00Z") }, new Date("2026-10-02T06:50:00Z"))).toBe(false);
-    expect(isDue({ ...cfg, lastAttemptAt: new Date("2026-10-01T06:00:00Z") }, new Date("2026-10-02T06:10:00Z"))).toBe(true);
+  it("não repete no mesmo dia depois de uma tentativa agendada", () => {
+    expect(isDue(cfg, new Date("2026-10-02T06:50:00Z"), new Date("2026-10-02T06:00:00Z"))).toBe(false);
+    expect(isDue(cfg, new Date("2026-10-02T06:10:00Z"), new Date("2026-10-01T06:00:00Z"))).toBe(true);
+  });
+  it("incidente 2026-10-05: backup manual à tarde não impede o da madrugada seguinte", () => {
+    // A última tentativa AGENDADA é de dois dias antes; a manual da tarde nem entra na conta.
+    expect(isDue(cfg, new Date("2026-10-04T06:10:00Z"), new Date("2026-10-02T06:05:00Z"))).toBe(true);
+    expect(isDue(cfg, new Date("2026-10-04T06:10:00Z"), null)).toBe(true);
+  });
+  it("recupera o dia se o sistema estava fora na hora marcada, até 12 h depois", () => {
+    expect(isDue(cfg, new Date("2026-10-04T09:40:00Z"), new Date("2026-10-03T06:05:00Z"))).toBe(true);
+    expect(isDue(cfg, new Date("2026-10-04T18:10:00Z"), new Date("2026-10-03T06:05:00Z"))).toBe(false);
   });
   it("desligado nunca roda", () => {
-    expect(isDue({ ...cfg, enabled: false }, new Date("2026-10-02T06:10:00Z"))).toBe(false);
+    expect(isDue({ ...cfg, enabled: false }, new Date("2026-10-02T06:10:00Z"), null)).toBe(false);
   });
   it("hora 22 em Brasília cai na 1h UTC do dia seguinte", () => {
-    expect(isDue({ ...cfg, hourLocal: 22 }, new Date("2026-10-03T01:05:00Z"))).toBe(true);
+    expect(isDue({ ...cfg, hourLocal: 22 }, new Date("2026-10-03T01:05:00Z"), new Date("2026-10-02T01:05:00Z"))).toBe(true);
+    expect(isDue({ ...cfg, hourLocal: 22 }, new Date("2026-10-03T00:55:00Z"), new Date("2026-10-02T01:05:00Z"))).toBe(false);
   });
 });
 

@@ -914,7 +914,8 @@ export async function runBackupTick(now: Date = new Date(), deps: RunBackupDeps 
   try {
     summary.staleRunsClosed = await closeStaleRuns(now);
     const config = await loadBackupConfig();
-    if (isDue(config, now)) {
+    const lastScheduled = await getPrisma().backupRun.findFirst({ where: { trigger: "SCHEDULED" }, orderBy: { startedAt: "desc" }, select: { startedAt: true } });
+    if (isDue(config, now, lastScheduled?.startedAt ?? null)) {
       summary.ran = true;
       try {
         await runBackup({ trigger: "SCHEDULED" }, { ...deps, now: () => now });

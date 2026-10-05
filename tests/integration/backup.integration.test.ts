@@ -284,9 +284,22 @@ describe("agendador", () => {
   it("fora da hora não roda", async () => {
     await setS3Destination();
     await saveBackupConfig({ enabled: true, hourLocal: 3 }, "adm");
-    const summary = await runBackupTick(new Date("2026-10-02T09:10:00Z"), { exec: fakeExec() });
+    // 16h10 em Brasília: passou da hora marcada (3h) e também da folga de recuperação de 12 h.
+    const summary = await runBackupTick(new Date("2026-10-02T19:10:00Z"), { exec: fakeExec() });
     expect(summary.ran).toBe(false);
     expect(await prisma.backupRun.count()).toBe(0);
+  });
+
+  it("incidente 2026-10-05: backup manual na tarde anterior não impede o agendado da madrugada", async () => {
+    await setS3Destination();
+    await saveBackupConfig({ enabled: true, hourLocal: 3 }, "adm");
+    // Cópia manual às 13h de Brasília do dia anterior (14 h antes da hora marcada): antes, isso bloqueava a madrugada.
+    const manualAt = new Date(dueAt.getTime() - 17 * 3_600_000);
+    await prisma.backupRun.create({ data: { status: "SUCCESS", trigger: "MANUAL", startedAt: manualAt, finishedAt: manualAt } });
+    await prisma.backupConfig.update({ where: { id: 1 }, data: { lastAttemptAt: manualAt, lastSuccessAt: manualAt } });
+    const summary = await runBackupTick(dueAt, { exec: fakeExec() });
+    expect(summary.ran).toBe(true);
+    expect(await prisma.backupRun.count({ where: { trigger: "SCHEDULED" } })).toBe(1);
   });
 
   it("na hora, roda como AGENDADO; o destino inalcançável vira falha registrada, sem derrubar o tick", async () => {
@@ -787,7 +800,7 @@ describe("Conferir backup: o que tem que reprovar", () => {
 });
 
 describe("conferência semanal no agendador", () => {
-  const notDueHour = new Date("2026-10-02T12:10:00Z"); // 09:10 em Brasília, longe da hora do backup (03h)
+  const notDueHour = new Date("2026-10-02T19:10:00Z"); // 16:10 em Brasília: fora da hora do backup (03h) e da folga de 12 h
   const day = 24 * 3_600_000;
 
   async function readyForVerify() {
