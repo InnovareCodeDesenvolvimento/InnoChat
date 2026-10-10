@@ -6,6 +6,22 @@ import { GoogleLogo } from "@/components/public/google-button";
 
 /** Quanto esperar antes de achar que o navegador do sistema não abriu e mostrar o passo manual. */
 const OPEN_TIMEOUT_MS = 1500;
+/** No iPhone o Instagram costuma ignorar o `x-safari-https://` (teste real em 2026-10-10): o guia aparece quase na hora. */
+const IOS_OPEN_TIMEOUT_MS = 500;
+
+/** O mesmo endereço em https, para copiar e colar no navegador (tira o esquema do iOS ou lê o fallback do Android). */
+export function plainHttpsUrl(href: string): string {
+  if (href.startsWith("x-safari-https://")) return `https://${href.slice("x-safari-https://".length)}`;
+  const fallback = /S.browser_fallback_url=([^;]+)/.exec(href);
+  if (href.startsWith("intent://") && fallback) {
+    try {
+      return decodeURIComponent(fallback[1]);
+    } catch {
+      return href;
+    }
+  }
+  return href;
+}
 
 /**
  * "Continuar com Google" para quem está no navegador embutido do Instagram/Facebook, onde o Google
@@ -15,6 +31,8 @@ const OPEN_TIMEOUT_MS = 1500;
  */
 export function GoogleExternalButton({ href, label = "Continuar com Google" }: { href: string; label?: string }) {
   const [showHint, setShowHint] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const isIos = href.startsWith("x-safari-https://");
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -40,7 +58,18 @@ export function GoogleExternalButton({ href, label = "Continuar com Google" }: {
     timer.current = setTimeout(() => {
       timer.current = null;
       if (!document.hidden) setShowHint(true);
-    }, OPEN_TIMEOUT_MS);
+    }, isIos ? IOS_OPEN_TIMEOUT_MS : OPEN_TIMEOUT_MS);
+  }
+
+  async function copyLink() {
+    const url = plainHttpsUrl(href);
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+    } catch {
+      // Sem permissão de área de transferência: mostra o endereço para a pessoa copiar na mão.
+      window.prompt("Copie o link e cole no Safari ou no Chrome:", url);
+    }
   }
 
   return (
@@ -60,9 +89,27 @@ export function GoogleExternalButton({ href, label = "Continuar com Google" }: {
       </a>
       <p className="text-center text-xs leading-relaxed text-text-secondary">O Google abre no navegador do celular, fora do Instagram.</p>
       {showHint ? (
-        <p role="status" className="rounded-card bg-warning-bg px-3 py-2 text-center text-sm text-warning" data-testid="cadastro-google-externo-dica">
-          Não abriu? Toque em ⋯ e depois em Abrir no navegador.
-        </p>
+        <div role="status" className="flex flex-col gap-2 rounded-card bg-warning-bg px-4 py-3 text-sm text-warning" data-testid="cadastro-google-externo-dica">
+          <p className="font-medium">O Instagram não deixou abrir sozinho. Leva 2 toques:</p>
+          <ol className="list-decimal space-y-1 pl-5">
+            <li>
+              Toque em <strong>⋯</strong> no canto de cima da tela.
+            </li>
+            <li>
+              Escolha <strong>{isIos ? "Abrir no navegador externo" : "Abrir no Chrome"}</strong>. O Google começa lá.
+            </li>
+          </ol>
+          <p>Se preferir, copie o link e cole no {isIos ? "Safari" : "Chrome"}:</p>
+          <button
+            type="button"
+            onClick={copyLink}
+            className="h-11 rounded-card border border-current bg-white px-4 font-medium text-[#1f1f1f]"
+            data-testid="cadastro-google-externo-copiar"
+          >
+            {copied ? "Link copiado ✓" : "Copiar link"}
+          </button>
+          <p className="text-xs">Ou cadastre aqui mesmo com e-mail e senha, logo acima. É rapidinho.</p>
+        </div>
       ) : null}
     </div>
   );

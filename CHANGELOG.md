@@ -7,6 +7,11 @@ Versão semântica (`MAJOR.MINOR.PATCH`), lida do `version` do `package.json` e 
 
 Toda publicação em produção sobe a versão e ganha uma entrada aqui.
 
+## v1.9.1 — 2026-10-10
+
+### Correções
+- iPhone dentro do Instagram: o Instagram não deixa o "Continuar com Google" abrir o Safari sozinho. Agora, ao tocar, aparece na hora um passo a passo de 2 toques (⋯ e "Abrir no navegador externo"), um botão "Copiar link" para colar no Safari e o lembrete de que dá para cadastrar ali mesmo com e-mail e senha. No Android, o mesmo guia aparece se o Chrome não abrir.
+
 ## v1.9.0 — 2026-10-10
 
 ### Novidade: cadastro sem fricção

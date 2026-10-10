@@ -273,7 +273,8 @@ test.describe("Cadastro público (/cadastro) ponta a ponta", () => {
         // Se o sistema não abrir o outro navegador em ~1,5 s, aparece o passo manual.
         await page.evaluate(() => document.addEventListener("click", (e) => e.preventDefault(), { capture: true }));
         await link.click();
-        await expect(main.getByTestId("cadastro-google-externo-dica")).toContainText("Toque em ⋯ e depois em Abrir no navegador.", { timeout: 4_000 });
+        await expect(main.getByTestId("cadastro-google-externo-dica")).toContainText("Toque em ⋯", { timeout: 4_000 });
+        await expect(main.getByTestId("cadastro-google-externo-copiar")).toHaveText("Copiar link");
         await context.close();
       }
     } finally {
