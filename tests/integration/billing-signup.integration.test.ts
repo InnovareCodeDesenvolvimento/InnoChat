@@ -22,7 +22,7 @@ vi.mock("@/lib/email", async () => {
   };
 });
 
-const { signUp, verifyEmail, resendVerificationEmail } = await import("@/modules/signup/service");
+const { signUp, verifyEmail, resendVerificationEmail, pickAvailableSlug } = await import("@/modules/signup/service");
 const { createMockMercadoPagoGateway } = await import("@/modules/billing/mercadopago.mock");
 
 const prisma = getPrisma();
@@ -52,10 +52,11 @@ function signupInput(overrides: Partial<Parameters<typeof signUp>[0]> = {}) {
     ownerName: "Dona da Empresa",
     email: `${slug}@example.com`,
     password: "senha-forte-123",
-    // CPF válido (dígito verificador correto) — decisão do dono, 2026-09-29: o documento passou
-    // a ser OBRIGATÓRIO no cadastro (ver `signup/service.ts#signUp`), então todo teste que não
-    // está testando especificamente a rejeição do documento usa este valor.
+    // CPF válido: desde 2026-10-10 o documento é OPCIONAL no cadastro (pedido na hora de pagar), mas a maioria
+    // dos testes segue o caminho com documento (Pix já na primeira fatura). O caminho sem documento tem teste próprio.
     document: "529.982.247-25",
+    // WhatsApp é obrigatório (DDD existente).
+    phone: "(84) 99999-8888",
     termsVersion: "v1",
     ...overrides,
   };
@@ -102,9 +103,44 @@ describe("signUp — cadastro público completo", () => {
     await expect(signUp(signupInput({ document: "111.111.111-11" }), gateway)).rejects.toMatchObject({ code: "INVALID_DOCUMENT" });
   });
 
-  it("rejeita slug reservado (INVALID_SLUG)", async () => {
+  it("sem CPF/CNPJ (cadastro enxuto): a conta nasce, a fatura do teste fica OPEN SEM Pix, o MP não é chamado e nenhum e-mail de fatura sai no dia 0", async () => {
     const { gateway } = createMockMercadoPagoGateway();
-    await expect(signUp(signupInput({ slug: "admin" }), gateway)).rejects.toMatchObject({ code: "INVALID_SLUG" });
+    const createPix = vi.spyOn(gateway, "createPixPayment");
+    const result = await signUp(signupInput({ document: undefined }), gateway);
+    createdTenantIds.push((await prisma.tenant.findUniqueOrThrow({ where: { slug: result.tenantSlug } })).id);
+    createdUserIds.push(result.userId);
+
+    const tenant = await prisma.tenant.findUniqueOrThrow({ where: { slug: result.tenantSlug } });
+    expect(tenant.document).toBeNull();
+    const subscription = await prisma.subscription.findUniqueOrThrow({ where: { tenantId: tenant.id } });
+    const invoice = await prisma.invoice.findFirstOrThrow({ where: { subscriptionId: subscription.id } });
+    expect(invoice).toMatchObject({ status: "OPEN", isTrialConversion: true, pixCopyPaste: null, mpPaymentId: null });
+    expect(createPix).not.toHaveBeenCalled();
+    expect(sentEmails.some((e) => e.subject.includes("Fatura"))).toBe(false);
+    expect(sentEmails.some((e) => e.subject.includes("Confirme seu e-mail"))).toBe(true); // a verificação segue saindo
+  });
+
+  it("documento vazio (espaços) vale como ausente; preenchido e inválido segue recusado", async () => {
+    const { gateway } = createMockMercadoPagoGateway();
+    const result = await signUp(signupInput({ document: "   " }), gateway);
+    createdTenantIds.push((await prisma.tenant.findUniqueOrThrow({ where: { slug: result.tenantSlug } })).id);
+    createdUserIds.push(result.userId);
+    expect((await prisma.tenant.findUniqueOrThrow({ where: { slug: result.tenantSlug } })).document).toBeNull();
+    await expect(signUp(signupInput({ document: "123" }), gateway)).rejects.toMatchObject({ code: "INVALID_DOCUMENT" });
+  });
+
+  it("o endereço (slug) é sempre automático: o 'slug' legado é ignorado e nome reservado ganha sufixo seguro", async () => {
+    const { gateway } = createMockMercadoPagoGateway();
+    const legacy = await signUp(signupInput({ slug: "admin", companyName: `Studio Legado ${randomUUID().slice(0, 6)}` }), gateway);
+    createdTenantIds.push((await prisma.tenant.findUniqueOrThrow({ where: { slug: legacy.tenantSlug } })).id);
+    createdUserIds.push(legacy.userId);
+    expect(legacy.tenantSlug).not.toBe("admin");
+    expect(legacy.tenantSlug).toMatch(/^studio-legado-/);
+
+    const reserved = await signUp(signupInput({ companyName: "Admin" }), gateway);
+    createdTenantIds.push((await prisma.tenant.findUniqueOrThrow({ where: { slug: reserved.tenantSlug } })).id);
+    createdUserIds.push(reserved.userId);
+    expect(reserved.tenantSlug).toMatch(/^admin-clinica/);
   });
 
   it("rejeita e-mail duplicado (EMAIL_TAKEN)", async () => {
@@ -118,15 +154,57 @@ describe("signUp — cadastro público completo", () => {
     await expect(signUp(signupInput({ email }), gateway)).rejects.toMatchObject({ code: "EMAIL_TAKEN" });
   });
 
-  it("rejeita slug duplicado (SLUG_TAKEN)", async () => {
+  it("nome de empresa repetido NÃO é erro: o endereço ganha sufixo (-2, -3)", async () => {
     const { gateway } = createMockMercadoPagoGateway();
-    const slug = uniqueSlug("dup-slug");
+    const companyName = `Mesmo Nome ${randomUUID().slice(0, 8)}`;
 
-    const first = await signUp(signupInput({ slug }), gateway);
-    createdTenantIds.push((await prisma.tenant.findUniqueOrThrow({ where: { slug: first.tenantSlug } })).id);
-    createdUserIds.push(first.userId);
+    const first = await signUp(signupInput({ companyName }), gateway);
+    const second = await signUp(signupInput({ companyName }), gateway);
+    const third = await signUp(signupInput({ companyName }), gateway);
+    for (const created of [first, second, third]) {
+      createdTenantIds.push((await prisma.tenant.findUniqueOrThrow({ where: { slug: created.tenantSlug } })).id);
+      createdUserIds.push(created.userId);
+    }
+    expect(second.tenantSlug).toBe(`${first.tenantSlug}-2`);
+    expect(third.tenantSlug).toBe(`${first.tenantSlug}-3`);
+  });
 
-    await expect(signUp(signupInput({ slug }), gateway)).rejects.toMatchObject({ code: "SLUG_TAKEN" });
+  it("três cadastros SIMULTÂNEOS do mesmo nome: os três nascem (a corrida do endereço refaz com outro sufixo)", async () => {
+    const { gateway } = createMockMercadoPagoGateway();
+    const companyName = `Corrida Slug ${randomUUID().slice(0, 8)}`;
+    const results = await Promise.all([signUp(signupInput({ companyName }), gateway), signUp(signupInput({ companyName }), gateway), signUp(signupInput({ companyName }), gateway)]);
+    for (const created of results) {
+      createdTenantIds.push((await prisma.tenant.findUniqueOrThrow({ where: { slug: created.tenantSlug } })).id);
+      createdUserIds.push(created.userId);
+    }
+    expect(new Set(results.map((r) => r.tenantSlug)).size).toBe(3);
+  });
+
+  it("dois cadastros SIMULTÂNEOS do mesmo e-mail: um nasce, o outro recebe EMAIL_TAKEN (nunca erro de endereço, nunca conta pela metade)", async () => {
+    const { gateway } = createMockMercadoPagoGateway();
+    const email = `${uniqueSlug("dup-race")}@example.com`;
+    const settled = await Promise.allSettled([
+      signUp(signupInput({ email, companyName: `Race A ${randomUUID().slice(0, 6)}` }), gateway),
+      signUp(signupInput({ email, companyName: `Race B ${randomUUID().slice(0, 6)}` }), gateway),
+    ]);
+    const ok = settled.filter((r): r is PromiseFulfilledResult<Awaited<ReturnType<typeof signUp>>> => r.status === "fulfilled");
+    const failed = settled.filter((r): r is PromiseRejectedResult => r.status === "rejected");
+    expect(ok).toHaveLength(1);
+    expect(failed).toHaveLength(1);
+    expect(failed[0]!.reason).toMatchObject({ code: "EMAIL_TAKEN" });
+    createdTenantIds.push((await prisma.tenant.findUniqueOrThrow({ where: { slug: ok[0]!.value.tenantSlug } })).id);
+    createdUserIds.push(ok[0]!.value.userId);
+    expect(await prisma.user.count({ where: { email } })).toBe(1);
+  });
+
+  it("pickAvailableSlug: nomes curtos, acentuados, só símbolos, reservados e muito longos geram endereço válido", async () => {
+    const { validateSlug } = await import("@/core/signup/slug");
+    const names = ["Ab", "Salão da Ação", "!!!", "Admin", "Login", "x".repeat(200), `${"a".repeat(54)}-${"b".repeat(10)}`];
+    for (const name of names) {
+      const slug = await pickAvailableSlug(name);
+      expect(validateSlug(slug), `${name.slice(0, 20)} -> ${slug}`).toBeNull();
+    }
+    expect(await pickAvailableSlug("Salão da Ação")).toBe("salao-da-acao");
   });
 
   it("verificação de e-mail: consome o token uma única vez", async () => {

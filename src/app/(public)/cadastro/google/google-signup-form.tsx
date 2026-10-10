@@ -3,21 +3,21 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { ArrowLeft, Building2, IdCard, LogIn, Mail, RefreshCw, TimerOff, UserCheck, UserPlus } from "lucide-react";
+import { ArrowLeft, Building2, LogIn, Mail, Phone, RefreshCw, TimerOff, UserCheck, UserPlus } from "lucide-react";
 import { Field } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
 import { AuthInput } from "@/components/public/auth-input";
 import { AUTH_SUBMIT_CLASS, AuthPanel, AuthTrust } from "@/components/public/auth-panel";
 import { GoogleButton, GoogleLogo } from "@/components/public/google-button";
-import { FormSection, TermsCheckbox } from "@/components/public/signup-shared";
-import { SignupBillingSection } from "@/components/public/signup-billing";
-import type { SignupPricing } from "@/components/public/signup-pricing";
-import { normalizeDocumentDigits, validateCpfCnpj } from "@/core/billing/document";
-import { effectiveCycle, type BillingCycle } from "@/core/billing/pricing";
-import { maskCpfCnpj } from "@/components/lib/document-mask";
+import { TermsCheckbox } from "@/components/public/signup-shared";
+import { normalizeBrPhoneToE164 } from "@/core/contact/br-phone";
+import { maskBrPhone } from "@/components/lib/phone-mask";
 import { signInWithGoogleAction } from "@/app/(public)/google-actions";
 import { completeGoogleSignUpAction } from "@/modules/signup/actions";
+
+const PHONE_ERROR = "Confira o WhatsApp: DDD e número, como (84) 99999-8888.";
+const GENERIC_ERROR = "Não deu para criar a conta agora. Confira os dados e tente de novo.";
 
 /** Estado de erro do link: token ausente, inválido, expirado (ou falha ao ler). */
 export function GoogleSignupError({ reason, message }: { reason: string; message?: string }) {
@@ -78,27 +78,12 @@ export function GoogleSignupError({ reason, message }: { reason: string; message
   );
 }
 
-export function GoogleSignupForm({
-  token,
-  email,
-  name,
-  pricing = null,
-}: {
-  token: string;
-  email: string;
-  name: string;
-  /** Preços do plano que o cadastro assume; sem eles (banco indisponível) o formulário segue sem a escolha de ciclo. */
-  pricing?: SignupPricing | null;
-}) {
+export function GoogleSignupForm({ token, email, name }: { token: string; email: string; name: string }) {
   const router = useRouter();
   const firstName = name.trim().split(/\s+/)[0] || "";
   const [tenantName, setTenantName] = useState("");
-  const [document, setDocument] = useState("");
+  const [phone, setPhone] = useState("");
   const [acceptTerms, setAcceptTerms] = useState(false);
-  // Cobrança depois do teste e cupom opcional: o servidor revalida os dois (mesma regra do cadastro com senha).
-  const [billingCycle, setBillingCycle] = useState<BillingCycle>("MONTHLY");
-  const [couponCode, setCouponCode] = useState("");
-  const [couponError, setCouponError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [tokenProblem, setTokenProblem] = useState<string | null>(null);
@@ -109,7 +94,8 @@ export function GoogleSignupForm({
   function validate(): boolean {
     const errors: Record<string, string> = {};
     if (tenantName.trim().length < 2) errors.tenantName = "Informe o nome da empresa.";
-    if (!validateCpfCnpj(document).valid) errors.document = "Informe um CPF ou CNPJ válido.";
+    if (!phone.trim()) errors.phone = "Informe seu WhatsApp. É por ele que avisamos sobre o teste.";
+    else if (!normalizeBrPhoneToE164(phone)) errors.phone = PHONE_ERROR;
     if (!acceptTerms) errors.acceptedTerms = "É preciso aceitar os termos e a privacidade.";
     setFieldErrors(errors);
     return Object.keys(errors).length === 0;
@@ -121,12 +107,11 @@ export function GoogleSignupForm({
     if (!validate()) return;
 
     startTransition(async () => {
+      // O cupom do link não passa por aqui: o servidor lê do cookie que guardou antes de ir ao Google.
       const result = await completeGoogleSignUpAction({
         token,
         tenantName: tenantName.trim(),
-        document: normalizeDocumentDigits(document),
-        billingCycle: pricing ? effectiveCycle(pricing, billingCycle) : "MONTHLY",
-        couponCode: couponCode.trim() || undefined,
+        phone: phone.trim(),
         acceptTerms,
       });
 
@@ -136,15 +121,11 @@ export function GoogleSignupForm({
           setTokenProblem(code);
           return;
         }
-        if (code === "INVALID_DOCUMENT") {
-          setFieldErrors((prev) => ({ ...prev, document: "Informe um CPF ou CNPJ válido." }));
+        if (code === "INVALID_PHONE") {
+          setFieldErrors((prev) => ({ ...prev, phone: PHONE_ERROR }));
           return;
         }
-        if (code.startsWith("COUPON_") || code === "INVALID_CYCLE") {
-          setCouponError(result.error.message);
-          return;
-        }
-        setFormError(result.error.message);
+        setFormError(code === "RATE_LIMITED" ? result.error.message : GENERIC_ERROR);
         return;
       }
       router.push(result.data.redirectTo);
@@ -154,101 +135,77 @@ export function GoogleSignupForm({
   return (
     <AuthPanel
       title={firstName ? `Falta pouco, ${firstName}!` : "Falta pouco!"}
-      description="Conte sobre a sua empresa para criar a conta. Você entra com o Google, sem precisar de senha."
+      description="Só mais dois dados e sua conta está pronta. Você entra com o Google, sem senha."
+      compact
+      className="p-5 sm:p-8"
     >
-      <form onSubmit={handleSubmit} className="flex flex-col gap-6" noValidate>
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
         {formError ? <Alert variant="danger">{formError}</Alert> : null}
 
-        <FormSection step={1} title="Sua empresa" id="sec-empresa">
-          <div className="md:col-span-2 lg:col-span-1 xl:col-span-2">
-            <Field label="E-mail da conta Google" htmlFor="google-email" hint="Vem do Google e não pode ser alterado aqui.">
-              {(fieldProps) => (
-                <div className="relative">
-                  <AuthInput
-                    {...fieldProps}
-                    icon={Mail}
-                    type="email"
-                    name="googleEmail"
-                    value={email}
-                    readOnly
-                    className="bg-bg pr-12 text-text-secondary"
-                  />
-                  <span
-                    aria-hidden="true"
-                    className="pointer-events-none absolute right-3 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-white"
-                  >
-                    <GoogleLogo className="h-4 w-4" />
-                  </span>
-                </div>
-              )}
-            </Field>
-          </div>
-          <div className="md:col-span-2 lg:col-span-1 xl:col-span-2">
-            <Field label="Nome da empresa" htmlFor="tenantName" required error={fieldErrors.tenantName}>
-              {(fieldProps) => (
-                <AuthInput
-                  {...fieldProps}
-                  icon={Building2}
-                  name="tenantName"
-                  autoComplete="organization"
-                  value={tenantName}
-                  onChange={(e) => setTenantName(e.target.value)}
-                  maxLength={120}
-                  invalid={!!fieldErrors.tenantName}
-                />
-              )}
-            </Field>
-          </div>
-          <Field
-            label="CPF ou CNPJ"
-            htmlFor="document"
-            required
-            error={fieldErrors.document}
-            hint={!fieldErrors.document ? "Usado para gerar a cobrança Pix da assinatura." : undefined}
-          >
-            {(fieldProps) => (
+        <Field label="E-mail da conta Google" htmlFor="google-email">
+          {(fieldProps) => (
+            <div className="relative">
               <AuthInput
                 {...fieldProps}
-                icon={IdCard}
-                name="document"
-                inputMode="numeric"
-                autoComplete="off"
-                value={maskCpfCnpj(document)}
-                onChange={(e) => setDocument(normalizeDocumentDigits(e.target.value))}
-                maxLength={18}
-                invalid={!!fieldErrors.document}
+                icon={Mail}
+                type="email"
+                name="googleEmail"
+                value={email}
+                readOnly
+                className="bg-bg pr-12 text-text-secondary"
               />
-            )}
-          </Field>
-        </FormSection>
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute right-3 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-white"
+              >
+                <GoogleLogo className="h-4 w-4" />
+              </span>
+            </div>
+          )}
+        </Field>
 
-        <FormSection step={2} title="Depois do teste" id="sec-cobranca">
-          <SignupBillingSection
-            pricing={pricing}
-            cycle={billingCycle}
-            onCycleChange={setBillingCycle}
-            couponCode={couponCode}
-            onCouponCodeChange={(code) => {
-              setCouponCode(code);
-              setCouponError(null);
-            }}
-            couponError={couponError}
-          />
-        </FormSection>
+        <Field label="Nome da empresa" htmlFor="tenantName" required error={fieldErrors.tenantName}>
+          {(fieldProps) => (
+            <AuthInput
+              {...fieldProps}
+              icon={Building2}
+              name="tenantName"
+              autoComplete="organization"
+              enterKeyHint="next"
+              value={tenantName}
+              onChange={(e) => setTenantName(e.target.value)}
+              maxLength={120}
+              invalid={!!fieldErrors.tenantName}
+            />
+          )}
+        </Field>
 
-        <section aria-labelledby="sec-termos" className="flex flex-col gap-4">
-          <h2 id="sec-termos" className="flex items-center gap-2.5 font-display text-sm font-bold text-text">
-            <span
-              aria-hidden="true"
-              className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-xs font-bold tabular-nums text-primary ring-1 ring-primary/25"
-            >
-              3
-            </span>
-            Termos
-            <span aria-hidden="true" className="h-px flex-1 bg-border" />
-          </h2>
-          <TermsCheckbox checked={acceptTerms} onChange={setAcceptTerms} error={fieldErrors.acceptedTerms} />
-        </section>
+        <Field
+          label="Seu WhatsApp"
+          htmlFor="phone"
+          required
+          error={fieldErrors.phone}
+          hint="É por onde avisamos sobre o teste e a mensalidade."
+        >
+          {(fieldProps) => (
+            <AuthInput
+              {...fieldProps}
+              icon={Phone}
+              name="phone"
+              type="tel"
+              inputMode="tel"
+              autoComplete="tel"
+              enterKeyHint="done"
+              placeholder="(84) 99999-8888"
+              value={phone}
+              onChange={(e) => setPhone(maskBrPhone(e.target.value))}
+              maxLength={16}
+              invalid={!!fieldErrors.phone}
+            />
+          )}
+        </Field>
+
+        <TermsCheckbox checked={acceptTerms} onChange={setAcceptTerms} error={fieldErrors.acceptedTerms} />
 
         <div>
           <Button

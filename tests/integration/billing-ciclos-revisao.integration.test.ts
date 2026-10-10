@@ -152,7 +152,7 @@ describe("I-2(a): changePlan não troca o ciclo em silêncio", () => {
 
     // Depois de escolher outro ciclo que os dois têm (o trimestral), a troca passa e o ciclo continua o escolhido.
     await changeBillingCycle(tenant.id, "QUARTERLY");
-    await expect(changePlan(tenant.id, big.id)).resolves.toEqual({ appliedImmediately: true });
+    await expect(changePlan(tenant.id, big.id)).resolves.toEqual({ appliedImmediately: true, trialInvoiceRepriced: false });
     expect(await prisma.subscription.findUniqueOrThrow({ where: { tenantId: tenant.id } })).toMatchObject({ planId: big.id, billingCycle: "QUARTERLY" });
   });
 
@@ -173,7 +173,7 @@ describe("I-2(a): changePlan não troca o ciclo em silêncio", () => {
     const b = await makePlan({ name: "B Rev", s: null, sortOrder: 996 });
     const tenant = await makeTenant("legado");
     await subscribe(tenant.id, a.id, "SEMIANNUAL", addDays(new Date(), 10));
-    await expect(changePlan(tenant.id, b.id)).resolves.toEqual({ appliedImmediately: true });
+    await expect(changePlan(tenant.id, b.id)).resolves.toEqual({ appliedImmediately: true, trialInvoiceRepriced: false });
   });
 });
 

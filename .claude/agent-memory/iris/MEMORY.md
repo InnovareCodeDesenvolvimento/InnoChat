@@ -24,3 +24,4 @@
 - [QA landing 2026-10-01](qa_landing_2026_10_01.md) — cópia isolada do HEAD p/ gates; prazo 24h falso na demo; armadilhas E2E_BASE_URL, publicBaseUrl 3700, limpeza .ps1
 - [QA final pacote 8 (2026-10-02)](qa_final_pacote8_2026_10_02.md) — 3 specs novas; flakes de toast duplicado/S:0/banner; sim WL só passa 8h-21h; login 20/IP divide a suíte
 - [QA 4 ciclos 2026-10-03](qa_ciclos_2026_10_03.md) — 2 testes velhos quebrados (backup exige senha, sino response.text), fatura do teste, cache 60 s da landing
+- [QA cadastro sem fricção 2026-10-10](qa_cadastro_sem_friccao_2026_10_10.md) — REPROVADO: UI da Assinatura ignora trialInvoiceRepriced; armadilhas de E2E/integração concorrente

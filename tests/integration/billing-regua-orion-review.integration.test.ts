@@ -204,6 +204,18 @@ describe("1. contato de cobrança sem confirmação de posse", () => {
     expect(rows.find((r) => r.skippedReason === "UNCONFIRMED_DAILY_LIMIT")).toBeTruthy();
   });
 
+  it("o mesmo número NÃO confirmado em duas empresas: no máximo 1 aviso por dia SOMANDO as empresas (teto global por número)", async () => {
+    const phone = `55849${String(Math.floor(Math.random() * 90_000_000) + 10_000_000)}`;
+    const a = await scenario("wa-glob-a", { unconfirmedPhone: true, billingWhatsappE164: phone });
+    const b = await scenario("wa-glob-b", { unconfirmedPhone: true, billingWhatsappE164: phone });
+    await tick(D1_NOON);
+    const sent = h.whatsapp.sent.filter((m) => m.tenantId === a.tenant.id || m.tenantId === b.tenant.id);
+    expect(new Set(sent.map((m) => m.noticeId)).size).toBe(1);
+    const rows = await prisma.billingNotice.findMany({ where: { subscriptionId: { in: [a.sub.id, b.sub.id] }, channel: "WHATSAPP" } });
+    expect(rows.filter((r) => r.status === "SENT")).toHaveLength(1);
+    expect(rows.some((r) => r.skippedReason === "UNCONFIRMED_DAILY_LIMIT")).toBe(true);
+  });
+
   it("número CONFIRMADO: sem limite diário e sem o convite", async () => {
     const s = await scenario("wa-conf", {});
     await tick(D1_NOON);

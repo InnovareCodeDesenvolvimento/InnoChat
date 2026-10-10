@@ -15,6 +15,7 @@ import {
 } from "./service";
 import { getMercadoPagoGateway, type MercadoPagoGateway } from "./mercadopago";
 import { reconcileInvoicePayment } from "./reconcile";
+import { retryPendingPixCancellations } from "./trial-reprice";
 import { persistCanceledTransition } from "./cancellation";
 import { runDunning } from "./dunning/run";
 import type { DispatchDeps } from "./dunning/dispatcher";
@@ -184,6 +185,8 @@ async function runBillingTickLocked(now: Date, gateway: MercadoPagoGateway | und
   await voidAbandonedReactivations(prisma, now, gateway, summary, budget);
   await generateUpcomingInvoices(prisma, now, resolvedGateway, summary, budget);
   await regenerateExpiredPix(prisma, now, resolvedGateway, summary, budget);
+  // Cancelamentos de Pix (troca de ciclo/cupom/plano no teste) que o Mercado Pago não aceitou na hora.
+  await retryPendingPixCancellations(now, resolvedGateway).catch((error) => logger.warn("billing.tick.pix_cancel_retry_failed", describeDbError(error)));
   await reconcileStatuses(prisma, now, summary, budget, gateway);
   // A régua roda DEPOIS das transições de status e da geração de fatura: planeja sobre o estado já persistido.
   await runDunningRound(now, summary, budget, resolvedGateway, dispatchDeps);
@@ -414,6 +417,12 @@ async function regenerateExpiredPix(
 
   for (const invoice of expired) {
     if (budget.isOver()) break;
+    // Cadastro enxuto: empresa sem CPF/CNPJ válido NÃO tem como gerar Pix (o MP exige `payer.identification`). Não é falha:
+    // é o estado normal até a pessoa informar o documento ao pagar (tela Assinatura). Pula calada, sem chamar o MP nem logar
+    // `warn` a cada rodada por empresa. Quando o documento entrar, a ação da tela gera o Pix e esta varredura passa a olhar a fatura.
+    const tenantDocument = invoice.subscription.tenant.document ? validateCpfCnpj(invoice.subscription.tenant.document) : { valid: false as const };
+    if (!tenantDocument.valid) continue;
+
     let payerEmail: string | null;
     try {
       payerEmail = await findBillingRecipientEmail(invoice.subscription.tenantId);
@@ -422,12 +431,6 @@ async function regenerateExpiredPix(
       continue;
     }
     if (!payerEmail) continue;
-
-    // O MP exige `payer.identification` para Pix (ver `mercadopago.ts#createPixPayment`) —
-    // `Tenant.document` ainda `null` (nenhuma tela pública coleta isso, PENDÊNCIAS no handoff)
-    // vira `createPixPayment` lançando `missing_payer_document`, capturado abaixo como qualquer
-    // outra falha: o tick nunca derruba por isso, só loga e tenta de novo na próxima rodada.
-    const tenantDocument = invoice.subscription.tenant.document ? validateCpfCnpj(invoice.subscription.tenant.document) : { valid: false as const };
 
     try {
       const pix = await gateway.createPixPayment({

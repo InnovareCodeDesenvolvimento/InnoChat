@@ -848,13 +848,27 @@ const HELP_ENTRIES = {
     ],
     tip: "Um resgate é a empresa adotar o cupom. As cobranças seguintes com desconto não criam outro resgate.",
   },
+  "assinatura.documento": {
+    title: "CPF ou CNPJ para gerar o Pix",
+    purpose: "O Mercado Pago, que processa o Pix, exige o CPF ou CNPJ de quem paga. Você não precisou informar no cadastro: pedimos só agora, na hora de pagar.",
+    steps: [
+      "Digite o CPF (11 números) ou o CNPJ (14 números) da empresa. Pode colar com ponto e traço.",
+      "Clique em \"Salvar e gerar Pix\". O código e o QR code aparecem neste mesmo cartão.",
+    ],
+    examples: [
+      "Salão de uma pessoa só: use o CPF do dono, como 123.456.789-09.",
+      "Clínica com empresa aberta: use o CNPJ, como 12.345.678/0001-95.",
+    ],
+    tip: "Informe uma vez e pronto: o documento fica salvo e os próximos Pix saem sozinhos. Para corrigir depois, use Configurações.",
+    warning: "Sem o CPF ou CNPJ não dá para gerar o Pix. A fatura continua em aberto e vale a mesma data de vencimento.",
+  },
   "assinatura.cobranca": {
     title: "Cobrança: a cada 1, 3, 6 ou 12 meses",
-    purpose: "Escolha de quanto em quanto tempo você paga. Quanto mais longo o período, menor o valor por mês. A troca vale a partir da próxima fatura, sem cálculo proporcional.",
+    purpose: "Escolha de quanto em quanto tempo você paga. Quanto mais longo o período, menor o valor por mês. A troca vale a partir da próxima fatura, sem cálculo proporcional. Se você ainda está no teste e nunca pagou, a fatura do fim do teste já sai com a cobrança escolhida.",
     steps: [
       "Escolha entre 1, 3, 6 ou 12 meses. Só aparecem os períodos que o seu plano oferece.",
       "Confira o valor do período, o equivalente por mês e a economia.",
-      "Clique em \"Salvar cobrança\". A fatura que já está em aberto continua como foi emitida. A troca vale na seguinte.",
+      "Clique em \"Salvar cobrança\". Se você já pagou antes, a fatura que está em aberto continua como foi emitida e a troca vale na seguinte. No teste, a fatura do fim do teste é refeita na hora.",
     ],
     examples: [
       "Você paga R$ 59,00 por mês. Trocando para 12 meses, a próxima fatura sai de R$ 590,00 e cobre o ano todo, o que dá R$ 49,17 por mês.",
@@ -865,7 +879,7 @@ const HELP_ENTRIES = {
   },
   "assinatura.cupom": {
     title: "Cupom de desconto",
-    purpose: "Se você recebeu um código de desconto, digite aqui. O desconto entra a partir da próxima fatura e vale pelo tempo que o cupom definir.",
+    purpose: "Se você recebeu um código de desconto, digite aqui. O desconto entra a partir da próxima fatura (no teste, a fatura do fim do teste já sai com ele) e vale pelo tempo que o cupom definir.",
     steps: [
       "Digite o código e clique em \"Conferir\" para ver o valor.",
       "Clique em \"Aplicar cupom\" para guardar.",

@@ -76,3 +76,4 @@
 - [Baixos do Órion 2026-10-03](baixos_orion_fixes_2026_10_03.md) — lookup S3, prova p/ trocar chave, audit→monitor, teto waitlist, autoreply com advisory lock; void do advisory.
 - [4 ciclos: núcleo, trava de preço, armadilha do Prisma solto no banco de DEV](four_cycles_design.md) — 2026-10-03; decisões e como não repetir o erro de banco.
 - [Correções da revisão do Órion aos 4 ciclos](four_cycles_review_fixes.md) — addMonths, recusa de plano sem ciclo, travas de linha, confirmLowPrice, armadilhas.
+- [Cadastro enxuto + reprecificação da fatura do teste](lean_signup_and_trial_reprice.md) — anular+criar, ordem de locks, hasDocument na régua, CRLF e vazamento de tenant em teste.

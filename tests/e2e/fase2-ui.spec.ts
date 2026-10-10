@@ -260,13 +260,12 @@ test.describe("Nome do usuário nos formulários públicos", () => {
     await expect(page.getByText("Este convite é inválido, já foi usado ou expirou. Peça um novo.")).toBeVisible();
   });
 
-  test("cadastro: 'Seu nome' fica na seção Você, é obrigatório e limitado a 80 caracteres", async ({ page }) => {
+  test("cadastro: 'Seu nome' é obrigatório e limitado a 80 caracteres", async ({ page }) => {
     await page.goto("/cadastro");
-    const voce = page.getByRole("region", { name: "Você" });
-    const name = voce.getByLabel("Seu nome");
+    const name = page.getByRole("main").getByLabel("Seu nome");
     await expect(name).toBeVisible();
     await expect(name).toHaveAttribute("maxlength", "80");
-    await page.getByRole("button", { name: "Criar conta" }).click();
+    await page.getByRole("main").getByRole("button", { name: "Criar conta grátis" }).click();
     await expect(page.getByText("Informe seu nome (pelo menos 2 letras).")).toBeVisible();
   });
 });

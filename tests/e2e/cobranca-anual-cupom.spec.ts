@@ -3,10 +3,11 @@ import { randomUUID } from "node:crypto";
 import { prisma, hashPassword } from "./fixtures/db";
 import { loginAndWaitForPanel } from "./fixtures/auth";
 import { E2E_RUN_PREFIX } from "./fixtures/test-data";
+import { cleanupSignup, expectLeftCadastro, fillCadastro, tenantOfEmail } from "./fixtures/cadastro";
 
 /**
- * Os 4 ciclos (1, 3, 6 e 12 meses) e cupons, do ponto de vista de quem paga: cadastro (escolha do ciclo, validação
- * ao vivo do cupom, resumo da 1ª fatura) e tela Assinatura (trocar ciclo, aplicar cupom). Os cupons
+ * Os 4 ciclos (1, 3, 6 e 12 meses) e cupons, do ponto de vista de quem paga: cadastro (cupom só por link
+ * `?cupom=`, sem escolha de ciclo) e tela Assinatura (trocar ciclo, aplicar cupom). Os cupons
  * ruins (vencido, de outro plano, esgotado, desativado) são montados no banco; a tela é que prova
  * que a pessoa vê uma recusa clara e que nada é gravado.
  *
@@ -70,152 +71,73 @@ test.afterAll(async () => {
   await prisma.user.deleteMany({ where: { email: { contains: `${RUN_LC}-anual-` } } });
 });
 
-test.describe.serial("Cadastro com ciclo e cupom", () => {
+test.describe.serial("Cadastro com cupom do link (?cupom=)", () => {
   test.use({ storageState: { cookies: [], origins: [] } });
+  const emails: string[] = [];
+  const dropCode = `E2EDRP${run}`;
 
-  test("mostra 1, 3, 6 e 12 meses com a economia, e o resumo da 1ª fatura acompanha a escolha", async ({ page }) => {
-    await page.goto("/cadastro");
-    const section = page.getByTestId("signup-cobranca");
-    const selector = section.getByTestId("ciclo-seletor");
-    await expect(selector.getByText("Pagar a cada (depois do teste)")).toBeVisible();
-    for (const cycle of ["MONTHLY", "QUARTERLY", "SEMIANNUAL", "ANNUAL"]) await expect(selector.getByTestId(`ciclo-${cycle}`)).toBeVisible();
-    await expect(selector.getByTestId("ciclo-ANNUAL")).toContainText("12 meses");
-    await expect(selector.getByTestId("ciclo-ANNUAL")).toContainText("−17%");
-    const summary = page.getByTestId("signup-resumo-cobranca");
-    await expect(summary).toContainText("primeira fatura");
-    await expect(summary).not.toContainText("cobre");
-
-    await selector.getByTestId("ciclo-QUARTERLY").click();
-    await expect(summary).toContainText("(cobre 3 meses)");
-    await expect(summary).toContainText(/R\$\s?170,00/);
-    await expect(selector.getByTestId("ciclo-detalhe")).toContainText(/R\$\s?170,00 a cada 3 meses, o que dá R\$\s?56,67 por mês/);
-    await expect(selector.getByTestId("ciclo-detalhe")).toContainText(/Você economiza R\$\s?9,70 \(5%\)/);
-    await selector.getByTestId("ciclo-SEMIANNUAL").click();
-    await expect(summary).toContainText("(cobre 6 meses)");
-    await expect(summary).toContainText(/R\$\s?320,00/);
-    await selector.getByTestId("ciclo-ANNUAL").click();
-    await expect(summary).toContainText("(cobre 12 meses)");
-    await expect(summary).toContainText(/R\$\s?599,00/);
-    await expect(selector.getByTestId("ciclo-detalhe")).toContainText("2 meses grátis");
-    await selector.getByTestId("ciclo-MONTHLY").click();
-    await expect(summary).toContainText(/R\$\s?59,90/);
-    await expect(summary).not.toContainText("cobre");
-    await expectNoOverflow(page, "cadastro 1280");
+  test.afterAll(async () => {
+    await cleanupSignup(emails);
+    await prisma.coupon.deleteMany({ where: { code: dropCode } });
   });
 
-  test("seletor se opera por teclado (setas) e o rádio escolhido é anunciado", async ({ page }) => {
-    await page.goto("/cadastro");
-    const selector = page.getByTestId("signup-cobranca").getByTestId("ciclo-seletor");
-    await selector.getByRole("radio", { name: /Mensal/ }).focus();
-    await page.keyboard.press("ArrowRight");
-    await expect(selector.getByRole("radio", { name: /Trimestral/ })).toBeChecked();
-    await page.keyboard.press("ArrowRight");
-    await expect(selector.getByRole("radio", { name: /Semestral/ })).toBeChecked();
-  });
-
-  test("cupom: validação ao vivo por ciclo, desconto no resumo, e a recusa certa para cada cupom ruim", async ({ page }) => {
-    await page.goto("/cadastro");
-    const section = page.getByTestId("signup-cobranca");
-    const summary = page.getByTestId("signup-resumo-cobranca");
-    await section.getByTestId("ciclo-QUARTERLY").click();
-    await section.getByRole("button", { name: "Tenho um cupom" }).click();
-    const input = section.getByLabel("Cupom de desconto");
-
-    // Cupom do trimestral, escolha trimestral: vale, e o resumo mostra o preço com desconto (170,00 -> 136,00).
-    await input.fill(C.trimOnly.toLowerCase());
-    await expect(input).toHaveValue(C.trimOnly);
-    await expect(section.getByText(/Cupom válido: /)).toBeVisible();
-    await expect(summary).toContainText(/R\$\s?136,00/);
-    await expect(summary).toContainText(/em vez de R\$\s?170,00/);
-
-    // Troca para mensal: o MESMO cupom deixa de valer (a validação refaz sozinha) e o resumo volta ao cheio.
-    await section.getByTestId("ciclo-MONTHLY").click();
-    await expect(section.getByRole("alert")).toBeVisible();
-    await expect(summary).toContainText(/R\$\s?59,90/);
-    await expect(summary).not.toContainText("em vez de");
-    // E no anual também não vale.
-    await section.getByTestId("ciclo-ANNUAL").click();
-    await expect(section.getByRole("alert")).toBeVisible();
-    await expect(summary).toContainText(/R\$\s?599,00/);
-
-    // Volta ao trimestral e testa cada cupom ruim: sempre uma recusa visível e o preço cheio.
-    await section.getByTestId("ciclo-QUARTERLY").click();
-    for (const bad of [C.expired, C.otherPlan, C.exhausted, C.inactive, C.futureStart, C.anualOnly, `NAOEXISTE${run}`]) {
-      await input.fill(bad);
-      await expect(section.getByRole("alert"), bad).toBeVisible();
-      await expect(section.getByText(/Cupom válido: /), bad).toHaveCount(0);
-      await expect(summary, bad).toContainText(/R\$\s?170,00/);
-      await expect(summary, bad).not.toContainText("em vez de");
+  test("cupom válido no link mostra o selo; cupom ruim ou inexistente não mostra selo nem erro", async ({ page }) => {
+    await page.goto(`/cadastro?cupom=${C.any20.toLowerCase()}`);
+    const main = page.getByRole("main");
+    await expect(main.getByTestId("cadastro-cupom")).toContainText(C.any20);
+    await expect(main.getByTestId("cadastro-cupom")).toContainText("Cupom");
+    // O formulário não tem campo de cupom: ele só entra por link.
+    await expect(main.getByLabel("Cupom de desconto")).toHaveCount(0);
+    for (const bad of [C.expired, C.otherPlan, C.exhausted, C.inactive, C.futureStart, `NAOEXISTE${run}`]) {
+      await page.goto(`/cadastro?cupom=${bad}`);
+      await expect(page.getByRole("main").getByLabel("Nome da empresa"), bad).toBeVisible();
+      await expect(page.getByRole("main").getByTestId("cadastro-cupom"), bad).toHaveCount(0);
+      await expect(page.getByRole("main").getByRole("alert"), bad).toHaveCount(0);
     }
-
-    // Um cupom bom depois dos ruins limpa o erro.
-    await input.fill(C.any20);
-    await expect(section.getByText(/Cupom válido: /)).toBeVisible();
-    await expect(section.getByRole("alert")).toHaveCount(0);
   });
 
-  test("criar a conta trimestral com cupom grava ciclo, cupom e resgate; a 1ª fatura (fim do teste) já sai trimestral com desconto", async ({ page }) => {
-    const slug = `${RUN_LC.replace(/_/g, "-")}-anual-ok`;
+  test("criar a conta pelo link com cupom grava o resgate e a fatura do teste (mensal) já sai com desconto", async ({ page }) => {
     const email = `${RUN_LC}-anual-ok@e2e.innochat.local`;
-    await page.goto("/cadastro");
-    await page.getByLabel("Nome da empresa").fill(`${E2E_RUN_PREFIX} Empresa Trimestral`);
-    await page.getByLabel("Endereço da empresa").fill(slug);
-    await page.getByLabel("Seu nome").fill("Dona Ciclo E2E");
-    await page.getByLabel("CPF ou CNPJ *", { exact: true }).fill("52998224725");
-    await page.getByLabel("E-mail *", { exact: true }).fill(email);
-    await page.getByLabel("Senha *", { exact: true }).fill(PASSWORD);
-    await page.getByLabel("Confirmar senha").fill(PASSWORD);
-    const section = page.getByTestId("signup-cobranca");
-    await section.getByTestId("ciclo-QUARTERLY").click();
-    await section.getByRole("button", { name: "Tenho um cupom" }).click();
-    await section.getByLabel("Cupom de desconto").fill(C.any20);
-    await expect(section.getByText(/Cupom válido: /)).toBeVisible();
-    await page.locator('input[type="checkbox"]').check();
-    await page.getByRole("button", { name: "Criar conta" }).click();
-    await expect(page.getByText("Confirme seu e-mail").first()).toBeVisible();
+    emails.push(email);
+    await fillCadastro(page, { email, companyName: `${E2E_RUN_PREFIX} Empresa Cupom`, path: `/cadastro?cupom=${C.any20}` });
+    await page.getByRole("main").getByRole("button", { name: "Criar conta grátis" }).click();
+    await expectLeftCadastro(page);
 
-    const tenant = await prisma.tenant.findUniqueOrThrow({ where: { slug }, include: { subscription: true } });
-    expect(tenant.subscription?.billingCycle).toBe("QUARTERLY");
-    // Cupom "só na 1ª fatura" já é gasto pela fatura do fim do teste: a assinatura não guarda mais o cupom,
-    // quem carrega a prova é a fatura (valor líquido, código e desconto) e o resgate.
-    const invoice = await prisma.invoice.findFirstOrThrow({ where: { subscriptionId: tenant.subscription!.id } });
-    expect(invoice).toMatchObject({ cycle: "QUARTERLY", couponCode: C.any20, amountCents: 13600, discountCents: 3400 });
+    const tenant = await tenantOfEmail(email);
+    const subscription = await prisma.subscription.findUniqueOrThrow({ where: { tenantId: tenant.id }, include: { plan: true } });
+    expect(subscription.billingCycle).toBe("MONTHLY"); // o ciclo saiu do cadastro: começa mensal
+    const invoice = await prisma.invoice.findFirstOrThrow({ where: { subscriptionId: subscription.id } });
+    expect(invoice).toMatchObject({ cycle: "MONTHLY", couponCode: C.any20 });
+    expect(invoice.discountCents).toBeGreaterThan(0);
+    expect(invoice.amountCents + invoice.discountCents).toBe(subscription.plan.priceCents);
     const redemption = await prisma.couponRedemption.findFirst({ where: { tenantId: tenant.id, coupon: { code: C.any20 } } });
     expect(redemption).not.toBeNull();
-    expect((await prisma.coupon.findUniqueOrThrow({ where: { code: C.any20 } })).redemptionsCount).toBe(1);
   });
 
-  test("cupom inválido no envio derruba o cadastro inteiro sem criar nada", async ({ page }) => {
-    const slug = `${RUN_LC.replace(/_/g, "-")}-anual-bad`;
+  test("cupom que deixa de valer entre abrir a página e enviar não derruba o cadastro: a conta nasce sem cupom", async ({ page }) => {
     const email = `${RUN_LC}-anual-bad@e2e.innochat.local`;
-    await page.goto("/cadastro");
-    await page.getByLabel("Nome da empresa").fill(`${E2E_RUN_PREFIX} Empresa Ciclo Ruim`);
-    await page.getByLabel("Endereço da empresa").fill(slug);
-    await page.getByLabel("Seu nome").fill("Dona Ciclo E2E");
-    await page.getByLabel("CPF ou CNPJ *", { exact: true }).fill("52998224725");
-    await page.getByLabel("E-mail *", { exact: true }).fill(email);
-    await page.getByLabel("Senha *", { exact: true }).fill(PASSWORD);
-    await page.getByLabel("Confirmar senha").fill(PASSWORD);
-    const section = page.getByTestId("signup-cobranca");
-    await section.getByRole("button", { name: "Tenho um cupom" }).click();
-    await section.getByLabel("Cupom de desconto").fill(C.futureStart);
-    await page.locator('input[type="checkbox"]').check();
-    await page.getByRole("button", { name: "Criar conta" }).click();
-    await expect(section.getByRole("alert")).toBeVisible();
-    await expect(page.getByText("Confirme seu e-mail")).toHaveCount(0);
-    expect(await prisma.tenant.count({ where: { slug } })).toBe(0);
-    expect(await prisma.user.count({ where: { email } })).toBe(0);
+    emails.push(email);
+    // Cupom próprio (o trimestral só vale no ciclo trimestral e o cadastro começa mensal).
+    await prisma.coupon.create({ data: { kind: "PERCENT", value: 15, duration: "ONCE", active: true, code: dropCode } });
+    await fillCadastro(page, { email, companyName: `${E2E_RUN_PREFIX} Empresa Cupom Caiu`, path: `/cadastro?cupom=${dropCode}` });
+    await expect(page.getByRole("main").getByTestId("cadastro-cupom")).toBeVisible();
+    // Entre o carregamento e o envio o cupom é desativado.
+    await prisma.coupon.update({ where: { code: dropCode }, data: { active: false } });
+    await page.getByRole("main").getByRole("button", { name: "Criar conta grátis" }).click();
+    await expectLeftCadastro(page);
+
+    const tenant = await tenantOfEmail(email);
+    const invoice = await prisma.invoice.findFirstOrThrow({ where: { subscription: { tenantId: tenant.id } } });
+    expect(invoice.couponCode).toBeNull();
+    expect(invoice.discountCents).toBe(0);
+    expect(await prisma.couponRedemption.count({ where: { tenantId: tenant.id } })).toBe(0);
   });
 
-  test("cadastro em 390px: os 4 ciclos, o detalhe e o cupom sem rolagem horizontal", async ({ page }) => {
+  test("cadastro com selo de cupom em 390px: sem rolagem lateral", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto("/cadastro");
-    const section = page.getByTestId("signup-cobranca");
-    await section.getByTestId("ciclo-ANNUAL").click();
-    for (const cycle of ["MONTHLY", "QUARTERLY", "SEMIANNUAL", "ANNUAL"]) await expect(section.getByTestId(`ciclo-${cycle}`)).toBeVisible();
-    await section.getByRole("button", { name: "Tenho um cupom" }).click();
-    await expect(section.getByLabel("Cupom de desconto")).toBeVisible();
-    await expectNoOverflow(page, "cadastro 390");
+    await page.goto(`/cadastro?cupom=${C.any20}`);
+    await expect(page.getByRole("main").getByTestId("cadastro-cupom")).toBeVisible();
+    await expectNoOverflow(page, "cadastro 390 com cupom");
   });
 });
 

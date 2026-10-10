@@ -119,6 +119,8 @@ export async function buildNoticeCopyContext(args: {
     firstPayment: Boolean(sub.firstPaidAt && invoice?.paidAt && sub.firstPaidAt.getTime() === invoice.paidAt.getTime()),
     trialNotConverted: neverPaid,
     firstWhatsapp: args.firstWhatsapp,
+    // Valor inicial; o despachante refina depois de garantir (ou não) um Pix vigente.
+    needsDocument: !subject.input.hasDocument,
   };
 
   const canceledAt = sub.canceledAt;

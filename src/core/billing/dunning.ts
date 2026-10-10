@@ -42,6 +42,11 @@ export type DunningInput = {
   manualSuspension: boolean;
   /** O teste tem um número de WhatsApp conectado (decide se o resumo do 1º dia também vai por WhatsApp). */
   whatsappConnected: boolean;
+  /**
+   * A empresa tem CPF/CNPJ válido salvo. Sem ele a fatura do teste não tem Pix, e "Sua fatura chegou" (que carrega o Pix)
+   * só é devida depois que o documento entrar (cadastro enxuto).
+   */
+  hasDocument: boolean;
 };
 
 export type DueStep = {
@@ -149,7 +154,8 @@ export function buildSteps(input: DunningInput, now: Date): DueStep[] {
     const key = `${sub.id}:trial`;
     // "Sua fatura chegou" do cadastro (já com o Pix): o cadastro envia na hora e grava a marca; se o SMTP
     // falhou, é esta etapa que reenvia. Só e-mail e fora do sino (o sino de teste fala de teste, não de fatura).
-    if (invoice && invoice.isTrialConversion) push(b, "INVOICE_CREATED", invoice.id, invoice.id, invoice.createdAt, trialEnd, ["EMAIL"], true);
+    // Cadastro enxuto: sem documento não há Pix, então o aviso espera o CPF/CNPJ entrar (a janela começa na criação da fatura).
+    if (invoice && invoice.isTrialConversion && input.hasDocument) push(b, "INVOICE_CREATED", invoice.id, invoice.id, invoice.createdAt, trialEnd, ["EMAIL"], true);
     const startDate = localDateOf(sub.createdAt, tz);
     const endDate = localDateOf(trialEnd, tz);
     const t1Date = addDaysToLocalDate(endDate, -1);

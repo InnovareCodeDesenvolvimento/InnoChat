@@ -1,6 +1,6 @@
 # Política de privacidade — InnoChat
 
-**Vigência:** 1º de outubro de 2026 · **Versão:** 2026-10-01
+**Vigência:** 10 de outubro de 2026 · **Versão:** 2026-10-10
 
 Esta Política explica quais dados pessoais o InnoChat trata, para quê, com quem são compartilhados, por quanto tempo são guardados e como você pode exercer seus direitos, de acordo com a Lei Geral de Proteção de Dados Pessoais (Lei nº 13.709/2018, "LGPD").
 
@@ -54,7 +54,7 @@ A LGPD distingue quem decide sobre o tratamento (controlador) de quem trata os d
 
 ### Dados da Empresa e dos Usuários
 
-- **Cadastro:** nome da empresa, endereço de acesso no painel, segmento de atuação, nome e e-mail dos Usuários e o papel de cada um.
+- **Cadastro:** nome da empresa, endereço de acesso no painel, nome e e-mail dos Usuários e o papel de cada um. Quem cria a conta informa também o **telefone (WhatsApp) do responsável**, que usamos para avisos de cobrança e da conta. Em contas criadas antes de outubro de 2026, pode constar ainda o segmento de atuação.
 - **Senha:** guardada apenas como hash (bcrypt). Nós nunca guardamos nem conseguimos ver a senha.
 - **Cobrança:** plano, faturas (valores, datas e situação) e o identificador do pagamento no Mercado Pago. Quando o Mercado Pago exige, tratamos também o **CPF ou CNPJ do pagador**. Não recebemos dados bancários.
 - **Aceite:** versão dos Termos e da Política aceita e a data do aceite.

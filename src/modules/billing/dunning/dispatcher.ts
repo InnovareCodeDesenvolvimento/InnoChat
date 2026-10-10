@@ -233,7 +233,14 @@ async function processNotice(notice: ClaimedBillingNotice, now: Date, summary: D
     if (!recipients.whatsappConfirmed) {
       const last = await getPrisma().billingNotice.findFirst({
         // `gt`: exatamente 24 h depois já pode (o adiamento marca justamente sentAt + 24 h; com `gte` esperaria para sempre).
-        where: { tenantId: subject.tenantId, channel: "WHATSAPP", status: "SENT", sentAt: { gt: subHours(now, UNCONFIRMED_INTERVAL_HOURS) } },
+        // Teto também GLOBAL por número: o mesmo telefone digitado em várias empresas (de propósito ou para assediar alguém) recebe
+        // no máximo 1 mensagem de cobrança por dia somando todas. Quantas empresas usam o mesmo número NÃO é limitado.
+        where: {
+          channel: "WHATSAPP",
+          status: "SENT",
+          sentAt: { gt: subHours(now, UNCONFIRMED_INTERVAL_HOURS) },
+          OR: [{ tenantId: subject.tenantId }, { recipient: recipients.whatsappE164 }],
+        },
         orderBy: { sentAt: "desc" },
         select: { sentAt: true },
       });
@@ -265,8 +272,12 @@ async function processNotice(notice: ClaimedBillingNotice, now: Date, summary: D
   // 4. Dados atuais + Pix vigente.
   const firstWhatsapp = channel === "WHATSAPP" ? (await getPrisma().billingNotice.count({ where: { tenantId: subject.tenantId, channel: "WHATSAPP", status: "SENT" } })) === 0 : false;
   const copy = await buildNoticeCopyContext({ step, invoiceId: notice.invoiceId, subject, ownerFirstName: recipients.ownerFirstName, now, firstWhatsapp });
+  // Sem CPF/CNPJ válido o Pix não nasce (o MP exige o documento): não tenta regerar, e o texto manda informar o documento
+  // na tela Assinatura. Um Pix que já existe e ainda vale continua indo no aviso.
   if (policy.carriesPix && copy.invoice?.status === "OPEN") {
-    copy.data.pixCopyPaste = await ensureFreshPix(copy.invoice, recipients.emails[0] ?? null, now, deps.gateway);
+    copy.data.pixCopyPaste = await ensureFreshPix(copy.invoice, recipients.emails[0] ?? null, now, deps.gateway, subject.input.hasDocument);
+    // Só manda "informe o CPF ou CNPJ" quem não tem documento E não tem Pix para mandar (Pix vigente já resolve o pagamento).
+    copy.data.needsDocument = !subject.input.hasDocument && !copy.data.pixCopyPaste;
   }
 
   if (channel === "EMAIL") return sendEmail(notice, step, copy, recipients.emails, recipients.emailKind, now, summary);
@@ -283,10 +294,11 @@ async function ensureFreshPix(
   payerEmail: string | null,
   now: Date,
   gateway: MercadoPagoGateway | undefined,
+  canRegenerate: boolean,
 ): Promise<string | null> {
   const enough = addMinutes(now, PIX_MIN_REMAINING_HOURS * 60);
   if (invoice.pixCopyPaste && invoice.pixExpiresAt && invoice.pixExpiresAt > enough) return invoice.pixCopyPaste;
-  if (payerEmail) {
+  if (payerEmail && canRegenerate) {
     try {
       const fresh = await regeneratePixForInvoice(invoice.id, payerEmail, gateway);
       if (fresh.pixCopyPaste) return fresh.pixCopyPaste;

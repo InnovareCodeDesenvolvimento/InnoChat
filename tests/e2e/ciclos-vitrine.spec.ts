@@ -47,7 +47,7 @@ test.describe.serial("Vitrine e cadastro seguem os ciclos do plano", () => {
   test.setTimeout(150_000);
 
   for (const size of [{ w: 1440, h: 900 }, { w: 390, h: 844 }]) {
-    test(`plano com os 4 ciclos: landing e cadastro mostram tudo sem rolagem lateral em ${size.w}px`, async ({ page }) => {
+    test(`plano com os 4 ciclos: a landing mostra tudo e o cadastro não rola para o lado em ${size.w}px`, async ({ page }) => {
       await page.setViewportSize({ width: size.w, height: size.h });
       await page.goto("/");
       const card = page.getByTestId("plano-card").filter({ hasText: PLAN_NAME });
@@ -64,27 +64,15 @@ test.describe.serial("Vitrine e cadastro seguem os ciclos do plano", () => {
       await expect(card.getByTestId("plano-periodo")).toContainText(/R\$\s?318,60/);
       await expect(card.getByTestId("plano-preco-mes")).toContainText(/R\$\s?53,10/);
 
+      // O cadastro não pede mais o ciclo: a escolha mora na tela Assinatura.
       await page.goto("/cadastro");
-      const section = page.getByTestId("signup-cobranca");
-      await expect(section.getByTestId("ciclo-seletor")).toBeVisible();
-      expect(await visibleCycles(page, section)).toEqual([...ALL]);
-      await section.getByTestId("ciclo-SEMIANNUAL").click();
-      await expect(page.getByTestId("signup-resumo-cobranca")).toContainText(/R\$\s?318,60/);
+      await expect(page.getByRole("main").getByTestId("signup-cobranca")).toHaveCount(0);
       await expectNoOverflow(page, `cadastro ${size.w}`);
     });
   }
 
-  test("plano só com mensal: cadastro e Assinatura não oferecem os outros ciclos; a landing também esconde", async ({ page }) => {
+  test("plano só com mensal: a Assinatura não oferece os outros ciclos; a landing também esconde", async ({ page }) => {
     await prisma.plan.update({ where: { id: planId }, data: { quarterlyPriceCents: null, semiannualPriceCents: null, annualPriceCents: null } });
-
-    // Cadastro lê o plano a cada pedido.
-    await page.goto("/cadastro");
-    const section = page.getByTestId("signup-cobranca");
-    await expect(section).toBeVisible();
-    // Com uma única opção o cadastro nem desenha a escolha (por desenho): nenhum rádio de ciclo, só o resumo mensal.
-    expect(await visibleCycles(page, section)).toEqual([]);
-    await expect(page.getByTestId("signup-resumo-cobranca")).toContainText(/R\$\s?59,00/);
-    await expect(page.getByTestId("signup-resumo-cobranca")).not.toContainText("cobre");
 
     // Assinatura de quem já está nesse plano.
     const slug = `${RUN_LC}-vitrine-assin`;
@@ -121,12 +109,8 @@ test.describe.serial("Vitrine e cadastro seguem os ciclos do plano", () => {
     expect(cardText).not.toMatch(/trimestral|semestral|anual/i);
   });
 
-  test("plano que perdeu semestral e anual (sem assinantes neles) mostra só mensal e trimestral no cadastro e na landing", async ({ page }) => {
+  test("plano que perdeu semestral e anual (sem assinantes neles) mostra só mensal e trimestral na landing", async ({ page }) => {
     await prisma.plan.update({ where: { id: planId }, data: { quarterlyPriceCents: 16800 } });
-    await page.goto("/cadastro");
-    const section = page.getByTestId("signup-cobranca");
-    expect(await visibleCycles(page, section)).toEqual(["MONTHLY", "QUARTERLY"]);
-    await expectNoOverflow(page, "cadastro 2 ciclos");
     await expect
       .poll(
         async () => {

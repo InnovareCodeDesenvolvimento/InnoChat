@@ -1,8 +1,10 @@
 import type { Prisma } from "@/lib/db/types";
 import { getPrisma } from "@/lib/db/prisma";
 import { claimCouponRedemption } from "@/lib/db/coupon-redeem";
+import { lockSubscriptionRow } from "@/lib/db/billing-row-locks";
 import { isUniqueViolation } from "@/lib/db/prisma-errors";
 import { DomainError } from "@/lib/errors";
+import type { MercadoPagoGateway } from "./mercadopago";
 import { logger } from "@/lib/logger";
 import {
   asBillingCycle,
@@ -199,16 +201,29 @@ export async function adoptCouponInTx(
   };
 }
 
-/** Aplica um cupom à assinatura da própria empresa (tela Assinatura). Vale a partir da próxima fatura. */
-export async function applyCouponToSubscription(tenantId: string, code: string, now: Date = new Date()): Promise<CouponPreview> {
+export type CouponApplication = CouponPreview & {
+  /** `true` se a fatura aberta do TESTE foi anulada e recriada já com o desconto (o Pix antigo foi cancelado). */
+  trialInvoiceRepriced: boolean;
+};
+
+/**
+ * Aplica um cupom à assinatura da própria empresa (tela Assinatura). Vale a partir da próxima fatura — exceto no TESTE que
+ * ainda não pagou: ali a fatura aberta do fim do teste é anulada e recriada com o desconto (`trial-reprice.ts`), na mesma
+ * transação, com a assinatura travada.
+ */
+export async function applyCouponToSubscription(tenantId: string, code: string, now: Date = new Date(), gateway?: MercadoPagoGateway): Promise<CouponApplication> {
   const prisma = getPrisma();
   const subscription = await prisma.subscription.findUnique({ where: { tenantId }, include: { plan: true } });
   if (!subscription) throw new DomainError("NOT_FOUND", "Assinatura não encontrada para esta empresa.");
   if (subscription.status === "CANCELED") throw new DomainError("INVALID_STATE", "Reative a assinatura antes de aplicar um cupom.");
   if (subscription.couponId) throw new DomainError("COUPON_ALREADY_APPLIED", "Esta empresa já tem um cupom em uso. Espere ele acabar para usar outro.");
 
+  // Import dinâmico: `trial-reprice` importa este módulo (ciclo coupons <-> trial-reprice).
+  const { afterTrialReprice, repriceTrialInvoiceInTx } = await import("./trial-reprice");
   const cycle = effectiveCycle(subscription.plan, asBillingCycle(subscription.billingCycle));
-  const adopted = await prisma.$transaction(async (tx) => {
+  const { adopted, reprice } = await prisma.$transaction(async (tx) => {
+    // Trava a assinatura: troca de ciclo, de plano e cupom não reprecificam a fatura do teste ao mesmo tempo.
+    await lockSubscriptionRow(tx, tenantId);
     const adoptedNow = await adoptCouponInTx(tx, { code, tenantId, planId: subscription.planId, cycle, now });
     // `updateMany` condicional: duas abas aplicando cupons ao mesmo tempo, só uma grava.
     const claimed = await tx.subscription.updateMany({
@@ -216,11 +231,12 @@ export async function applyCouponToSubscription(tenantId: string, code: string, 
       data: { couponId: adoptedNow.couponId, couponCyclesRemaining: adoptedNow.cyclesRemaining },
     });
     if (claimed.count !== 1) throw new DomainError("COUPON_ALREADY_APPLIED", "Esta empresa já tem um cupom em uso. Espere ele acabar para usar outro.");
-    return adoptedNow;
+    return { adopted: adoptedNow, reprice: await repriceTrialInvoiceInTx(tx, tenantId, now) };
   });
-  logger.info("billing.coupon.applied", { tenantId, couponId: adopted.couponId });
+  await afterTrialReprice(reprice, tenantId, gateway);
+  logger.info("billing.coupon.applied", { tenantId, couponId: adopted.couponId, trialInvoiceRepriced: reprice.repriced });
   const coupon = await prisma.coupon.findUniqueOrThrow({ where: { id: adopted.couponId }, include: { plans: { select: { planId: true } } } });
-  return { coupon: publicInfo(coupon), pricing: priceInvoice(subscription.plan, cycle, { kind: adopted.kind, value: adopted.value }) };
+  return { coupon: publicInfo(coupon), pricing: priceInvoice(subscription.plan, cycle, { kind: adopted.kind, value: adopted.value }), trialInvoiceRepriced: reprice.repriced };
 }
 
 // ---------------------------------------------------------------------------

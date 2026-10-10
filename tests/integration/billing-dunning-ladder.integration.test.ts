@@ -280,7 +280,10 @@ describe("sequência de conversão do teste grátis (§2.3.1): dados reais de us
     expect(h.whatsapp.sent.some((m) => m.tenantId === tenant.id && m.text.includes("será encerrada em 2 dias"))).toBe(true);
 
     const sentSteps = (await h.noticesOf(sub.id)).filter((r) => r.status === "SENT").map((r) => r.step);
-    expect(sentSteps).toEqual(expect.arrayContaining(["INVOICE_CREATED", "TRIAL_T1", "TRIAL_T0", "SUSPENDED", "TRIAL_SUSP_3", "TRIAL_CANCEL_WARN"]));
+    // Esta empresa de teste não tem CPF/CNPJ (cadastro enxuto): "Sua fatura chegou" do teste espera o documento entrar
+    // (coberto em billing-dunning-signup-contact), então não aparece aqui; o resto da sequência sai normalmente.
+    expect(sentSteps).toEqual(expect.arrayContaining(["TRIAL_T1", "TRIAL_T0", "SUSPENDED", "TRIAL_SUSP_3", "TRIAL_CANCEL_WARN"]));
+    expect(sentSteps).not.toContain("INVOICE_CREATED");
   });
 
   it("pagou no meio: a sequência para na hora e sai o 'Pagamento confirmado' (bem-vindo) por e-mail e WhatsApp", async () => {

@@ -59,8 +59,19 @@ export function MetaPixel({ pixelId, stripQuery = false }: { pixelId: string; st
 
   // Banner reaberto pelo rodapé leva o foco para dentro (quem pediu está no teclado ou no leitor de tela).
   useEffect(() => {
-    if (reopened && choice === null) firstActionRef.current?.focus();
-  }, [reopened, choice]);
+    if (ready && reopened && choice === null) firstActionRef.current?.focus();
+  }, [ready, reopened, choice]);
+
+  // Avisa a página que o banner (fixo na base da tela) está aberto: o cadastro ganha folga embaixo
+  // para o botão nunca ficar escondido atrás dele (`in-data-[consent-banner=open]` no AuthShell).
+  const bannerOpen = ready && choice === null;
+  useEffect(() => {
+    if (!bannerOpen) return;
+    document.documentElement.dataset.consentBanner = "open";
+    return () => {
+      delete document.documentElement.dataset.consentBanner;
+    };
+  }, [bannerOpen]);
 
   const decide = useCallback((next: ConsentChoice) => {
     writeConsent(next);

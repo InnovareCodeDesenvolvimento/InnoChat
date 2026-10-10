@@ -68,6 +68,7 @@ function signupInput(overrides: Record<string, unknown> = {}) {
     email: `${slug}@example.com`,
     password: "senha-forte-123",
     document: "529.982.247-25",
+    phone: "(84) 99999-0000", // WhatsApp é obrigatório no cadastro
     termsVersion: "v1",
     ...overrides,
   } as Parameters<typeof signUp>[0];
@@ -89,16 +90,25 @@ describe("telefone do dono salvo no cadastro", () => {
     expect(tenant.billingEmail).toBeNull();
   });
 
-  it("aceita +55 e DDI colado; sem telefone grava null; telefone inválido recusa o cadastro (INVALID_PHONE) sem criar nada", async () => {
+  it("aceita +55 e DDI colado; WhatsApp é OBRIGATÓRIO: vazio, mal formado ou com DDD que não existe recusa (INVALID_PHONE) sem criar nada", async () => {
     const withDdi = await signUp(signupInput({ phone: "+55 84 3113-2584" }), gateway);
     expect((await track(withDdi.tenantSlug, withDdi.userId)).billingWhatsappE164).toBe("558431132584");
 
-    const none = await signUp(signupInput({ phone: "   " }), gateway);
-    expect((await track(none.tenantSlug, none.userId)).billingWhatsappE164).toBeNull();
+    for (const phone of ["   ", "", "12345", "(20) 99999-8888", "(29) 3333-4444", "(84) 8888-7777"]) {
+      const bad = signupInput({ phone });
+      await expect(signUp(bad, gateway), phone).rejects.toMatchObject({ code: "INVALID_PHONE" });
+      expect(await prisma.user.findUnique({ where: { email: bad.email } }), phone).toBeNull();
+    }
+    // Campo ausente (aba antiga em cache) também é recusado, não vira null.
+    const missing = signupInput();
+    delete (missing as { phone?: string }).phone;
+    await expect(signUp(missing, gateway)).rejects.toMatchObject({ code: "INVALID_PHONE" });
+    expect(await prisma.user.findUnique({ where: { email: missing.email } })).toBeNull();
+  });
 
-    const bad = signupInput({ phone: "12345" });
-    await expect(signUp(bad, gateway)).rejects.toMatchObject({ code: "INVALID_PHONE" });
-    expect(await prisma.tenant.findUnique({ where: { slug: bad.slug } })).toBeNull();
+  it("e-mail descartável é recusado (DISPOSABLE_EMAIL) sem criar nada", async () => {
+    const bad = signupInput({ email: `it-dsc-${randomUUID().slice(0, 8)}@mailinator.com` });
+    await expect(signUp(bad, gateway)).rejects.toMatchObject({ code: "DISPOSABLE_EMAIL" });
     expect(await prisma.user.findUnique({ where: { email: bad.email } })).toBeNull();
   });
 
@@ -113,32 +123,75 @@ describe("telefone do dono salvo no cadastro", () => {
   });
 
   it("a fatura gerada do cadastro entra no outbox como SENT e o tick não a reenvia; se o SMTP falhou, a régua reenvia", async () => {
-    const ok = await signUp(signupInput({ phone: "84 99999-0001" }), gateway);
+    const okInput = signupInput({ phone: "84 99999-0001" });
+    const okEmail = `${okInput.slug}@example.com`; // o endereço (slug) agora é automático; o e-mail é o do input
+    const ok = await signUp(okInput, gateway);
     const okTenant = await track(ok.tenantSlug, ok.userId);
     const okSub = await prisma.subscription.findUniqueOrThrow({ where: { tenantId: okTenant.id } });
     const row = await prisma.billingNotice.findFirstOrThrow({ where: { subscriptionId: okSub.id, step: "INVOICE_CREATED", channel: "EMAIL" } });
     expect(row).toMatchObject({ status: "SENT" });
     expect(row.recipientMasked).toMatch(/\*\*\*@example\.com$/);
     expect(await prisma.billingEvent.count({ where: { subscriptionId: okSub.id, type: "INVOICE_CREATED" } })).toBe(1);
-    expect(mails(`${ok.tenantSlug}@example.com`).filter((m) => m.subject.includes("Fatura do InnoChat"))).toHaveLength(1);
+    expect(mails(okEmail).filter((m) => m.subject.includes("Fatura do InnoChat"))).toHaveLength(1);
 
     const tomorrow = new Date();
     tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
     tomorrow.setUTCHours(15, 0, 0, 0);
     await runBillingTick(tomorrow, gateway, { dispatch: h.tickDispatch });
-    expect(mails(`${ok.tenantSlug}@example.com`).filter((m) => m.subject.includes("Fatura do InnoChat"))).toHaveLength(1);
+    expect(mails(okEmail).filter((m) => m.subject.includes("Fatura do InnoChat"))).toHaveLength(1);
 
     // SMTP fora no cadastro: nenhuma linha, e o tick manda o aviso.
     h.mailControl.mode = "fail";
-    const failing = await signUp(signupInput(), gateway);
+    const failInput = signupInput();
+    const failing = await signUp(failInput, gateway);
     const failTenant = await track(failing.tenantSlug, failing.userId);
     const failSub = await prisma.subscription.findUniqueOrThrow({ where: { tenantId: failTenant.id } });
     expect(await prisma.billingNotice.count({ where: { subscriptionId: failSub.id, step: "INVOICE_CREATED" } })).toBe(0);
     h.mailControl.mode = "ok";
     h.sentEmails.length = 0;
     await runBillingTick(tomorrow, gateway, { dispatch: h.tickDispatch });
-    expect(mails(`${failing.tenantSlug}@example.com`).filter((m) => m.subject.includes("Fatura do InnoChat"))).toHaveLength(1);
+    expect(mails(`${failInput.slug}@example.com`).filter((m) => m.subject.includes("Fatura do InnoChat"))).toHaveLength(1);
     expect(await prisma.billingNotice.count({ where: { subscriptionId: failSub.id, step: "INVOICE_CREATED", channel: "EMAIL", status: "SENT" } })).toBe(1);
+  });
+});
+
+describe("cadastro sem CPF/CNPJ (cadastro enxuto): fatura do teste sem Pix e régua esperando o documento", () => {
+  it("fatura OPEN sem Pix, MP não é chamado, nenhum 'Sua fatura chegou' no dia 0; o tick não tenta Pix; com o documento o Pix nasce e o aviso sai COM o Pix", async () => {
+    const { gateway: mp } = createMockMercadoPagoGateway();
+    const createPix = vi.spyOn(mp, "createPixPayment");
+    const input = signupInput({ document: undefined });
+    const result = await signUp(input, mp);
+    const tenant = await track(result.tenantSlug, result.userId);
+    const email = `${input.slug}@example.com`;
+    expect(tenant.document).toBeNull();
+    expect(tenant.billingWhatsappE164).toBe("5584999990000");
+    expect(createPix).not.toHaveBeenCalled();
+
+    const sub = await prisma.subscription.findUniqueOrThrow({ where: { tenantId: tenant.id } });
+    const invoice = await prisma.invoice.findFirstOrThrow({ where: { subscriptionId: sub.id } });
+    expect(invoice).toMatchObject({ status: "OPEN", pixCopyPaste: null, isTrialConversion: true });
+    expect(mails(email).filter((m) => m.subject.includes("Fatura do InnoChat"))).toHaveLength(0);
+    expect(await prisma.billingNotice.count({ where: { subscriptionId: sub.id, step: "INVOICE_CREATED" } })).toBe(0);
+    // O histórico registra que a fatura nasceu, mas sem documento.
+    expect((await prisma.billingEvent.findFirstOrThrow({ where: { subscriptionId: sub.id, type: "INVOICE_CREATED" } })).metadata).toMatchObject({ trial: true, hasDocument: false });
+
+    // O tick (um dia depois, ainda dentro do teste) não tenta Pix de empresa sem documento e não manda o aviso da fatura.
+    const tomorrow = new Date();
+    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+    tomorrow.setUTCHours(15, 0, 0, 0);
+    await runBillingTick(tomorrow, mp, { dispatch: h.tickDispatch });
+    expect(createPix.mock.calls.filter(([arg]) => arg.externalReference === invoice.id)).toHaveLength(0);
+    expect(mails(email).filter((m) => m.subject.includes("Fatura do InnoChat"))).toHaveLength(0);
+    expect((await prisma.invoice.findUniqueOrThrow({ where: { id: invoice.id } })).pixCopyPaste).toBeNull();
+
+    // O documento entra (na prática: pela tela Assinatura): o Pix nasce e a régua manda "Sua fatura chegou" com ele.
+    await prisma.tenant.update({ where: { id: tenant.id }, data: { document: "52998224725" } });
+    await runBillingTick(tomorrow, mp, { dispatch: h.tickDispatch });
+    expect((await prisma.invoice.findUniqueOrThrow({ where: { id: invoice.id } })).pixCopyPaste).toBeTruthy();
+    const sent = mails(email).filter((m) => m.subject.includes("Fatura do InnoChat"));
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.text).toContain("00020126mock-pix");
+    expect(await prisma.billingNotice.count({ where: { subscriptionId: sub.id, step: "INVOICE_CREATED", channel: "EMAIL", status: "SENT" } })).toBe(1);
   });
 });
 

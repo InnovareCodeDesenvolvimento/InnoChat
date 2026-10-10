@@ -3,7 +3,7 @@ import { addMonths } from "date-fns";
 import type { Prisma } from "@/lib/db/types";
 import { getPrisma } from "@/lib/db/prisma";
 import { forTenant } from "@/lib/db/tenant-client";
-import { lockPlanRow, lockSubscriptionRow } from "@/lib/db/billing-row-locks";
+import { lockPlanRow, lockSubscriptionRow, lockSubscriptionRowById } from "@/lib/db/billing-row-locks";
 import { DomainError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
 import { sendMail, SmtpNotConfiguredError, loadEmailContext, invoiceGeneratedEmail, subscriptionSuspendedEmail, type SendMailInput, type SendMailResult } from "@/lib/email";
@@ -448,6 +448,9 @@ export async function applyInvoicePayment(
     if (!invoice) {
       throw new DomainError("NOT_FOUND", "Fatura não encontrada.");
     }
+    // Assinatura travada ANTES de mexer na fatura (mesma ordem da troca de ciclo/cupom/plano e do cancelamento): a baixa não
+    // trava uma reprecificação do teste que está anulando esta mesma fatura (deadlock), e uma espera a outra.
+    await lockSubscriptionRowById(tx, invoice.subscriptionId);
 
     // Baixa CONDICIONAL antes de mexer na assinatura: duas chamadas concorrentes (webhook +
     // baixa manual, ou duplo clique no admin) leem `OPEN` ao mesmo tempo em READ COMMITTED; só
@@ -466,6 +469,15 @@ export async function applyInvoicePayment(
       data: { status: "PAID", paidAt, paidByPaymentId: paidBy },
     });
     if (claimed.count === 0) {
+      // Anulada por uma corrida entre a leitura acima e a baixa (troca de ciclo/cupom no teste, cancelamento): o dinheiro
+      // entrou numa fatura VOID, então marca (uma vez) para o sino do admin decidir o estorno, igual ao ramo `VOID` acima.
+      if (paymentId) {
+        const raced = await tx.invoice.findUnique({ where: { id: invoice.id }, select: { status: true } });
+        if (raced?.status === "VOID") {
+          await tx.invoice.updateMany({ where: { id: invoice.id, paidWhileVoidAt: null }, data: { paidWhileVoidAt: paidAt } });
+          return { alreadyProcessed: false, voided: true };
+        }
+      }
       // Já `PAID` — ou anulada por uma corrida entre a leitura acima e a baixa.
       // Se foi OUTRO pagamento que a baixou (Pix antigo/regerado pago depois, ou Pix pago depois da baixa manual),
       // o cliente pagou duas vezes: marca (uma vez) para o sino do admin decidir o estorno (manual). O mesmo
@@ -587,7 +599,11 @@ type PaymentReceipt = {
 // Troca de plano pelo OWNER (docs/arquitetura.md §7.2)
 // ---------------------------------------------------------------------------
 
-export type ChangePlanResult = { appliedImmediately: boolean };
+export type ChangePlanResult = {
+  appliedImmediately: boolean;
+  /** `true` se a fatura aberta do TESTE foi anulada e recriada no preço do plano novo (o Pix antigo foi cancelado). */
+  trialInvoiceRepriced: boolean;
+};
 
 /**
  * Upgrade (novo plano com `sortOrder` maior) vale na hora — a diferença de preço só aparece na
@@ -596,8 +612,10 @@ export type ChangePlanResult = { appliedImmediately: boolean };
  * overrides da empresa, que continuam valendo depois da troca) — a `DomainError` traz `rule`/
  * `limit`/`current` para a tela dizer exatamente o que remover antes de tentar de novo.
  */
-export async function changePlan(tenantId: string, newPlanId: string): Promise<ChangePlanResult> {
+export async function changePlan(tenantId: string, newPlanId: string, gateway?: MercadoPagoGateway): Promise<ChangePlanResult> {
   const prisma = getPrisma();
+  // Import dinâmico: `trial-reprice` importa este módulo (ciclo service <-> trial-reprice).
+  const { afterTrialReprice, repriceTrialInvoiceInTx } = await import("./trial-reprice");
 
   // Trava a assinatura e o plano de destino numa transação: o Admin pode estar tirando o preço de um ciclo
   // deste plano agora (`updatePlan`, que trava a mesma linha), e a troca de ciclo da empresa também trava a
@@ -636,7 +654,9 @@ export async function changePlan(tenantId: string, newPlanId: string): Promise<C
 
     if (isUpgrade) {
       await tx.subscription.update({ where: { tenantId }, data: { planId: newPlan.id, pendingPlanId: null } });
-      return { subscriptionId: subscription.id, planCode: newPlan.code, appliedImmediately: true };
+      // Teste que nunca pagou: a fatura aberta do fim do teste acompanha o plano novo (mesma transação, assinatura travada).
+      const reprice = await repriceTrialInvoiceInTx(tx, tenantId);
+      return { subscriptionId: subscription.id, planCode: newPlan.code, appliedImmediately: true, reprice };
     }
 
     const profLimit = tenant.maxProfessionalsOverride ?? newPlan.maxProfessionals;
@@ -665,11 +685,13 @@ export async function changePlan(tenantId: string, newPlanId: string): Promise<C
     }
 
     await tx.subscription.update({ where: { tenantId }, data: { pendingPlanId: newPlan.id } });
-    return { subscriptionId: subscription.id, planCode: newPlan.code, appliedImmediately: false };
+    const reprice = await repriceTrialInvoiceInTx(tx, tenantId);
+    return { subscriptionId: subscription.id, planCode: newPlan.code, appliedImmediately: false, reprice };
   });
 
   await recordBillingEvent({ tenantId, subscriptionId: outcome.subscriptionId, type: "PLAN_CHANGED", actorType: "OWNER", metadata: { appliedImmediately: outcome.appliedImmediately, planCode: outcome.planCode } });
-  return { appliedImmediately: outcome.appliedImmediately };
+  await afterTrialReprice(outcome.reprice, tenantId, gateway);
+  return { appliedImmediately: outcome.appliedImmediately, trialInvoiceRepriced: outcome.reprice.repriced };
 }
 
 /** Planos visíveis para a empresa escolher (docs/arquitetura.md §7.2 — `active` controla o que aparece aqui). */

@@ -11,3 +11,4 @@ export * from "./dunning-labels";
 export * from "./pricing";
 export * from "./coupon-labels";
 export * from "./cycle-options";
+export * from "./document-notice";

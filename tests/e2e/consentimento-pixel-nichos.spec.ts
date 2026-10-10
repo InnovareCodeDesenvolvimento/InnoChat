@@ -88,6 +88,27 @@ test.describe.serial("Banner de cookies e Pixel do Meta", () => {
     expect(await page.evaluate(() => (window as unknown as { fbq?: unknown }).fbq)).toBeUndefined();
   });
 
+  test("cadastro no celular (390x844): o banner não esconde o botão de criar conta e a folga some depois da escolha", async ({ page }) => {
+    test.setTimeout(100_000);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await waitForBanner(page, "/cadastro");
+    const main = page.getByRole("main");
+    const banner = page.getByTestId("consent-banner");
+    // Primeira tela: o primeiro campo fica acima do banner.
+    const first = await main.getByLabel("Nome da empresa").boundingBox();
+    const bannerTop = (await banner.boundingBox())!.y;
+    expect(first!.y + first!.height).toBeLessThan(bannerTop);
+    // No fim da página, o botão fica inteiro acima do banner (a página ganha folga embaixo enquanto ele está aberto).
+    await main.getByRole("button", { name: "Criar conta grátis" }).scrollIntoViewIfNeeded();
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    const button = await main.getByRole("button", { name: "Criar conta grátis" }).boundingBox();
+    expect(button!.y + button!.height).toBeLessThanOrEqual((await banner.boundingBox())!.y);
+    // Escolheu: o banner e a folga somem.
+    await banner.getByRole("button", { name: "Recusar" }).click();
+    await expect(banner).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.dataset.consentBanner ?? null)).toBeNull();
+  });
+
   test("Recusar: banner some, escolha fica gravada, não volta ao recarregar e a Meta nunca é chamada", async ({ page }) => {
     const meta = await watchMeta(page);
     await page.goto("/");

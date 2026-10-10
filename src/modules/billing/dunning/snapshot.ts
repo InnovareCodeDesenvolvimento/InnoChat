@@ -2,7 +2,7 @@ import { subDays } from "date-fns";
 import { getPrisma } from "@/lib/db/prisma";
 import { logger } from "@/lib/logger";
 import type { Prisma } from "@/lib/db/types";
-import { asBillingCycle, effectiveCycle, grossCentsFor, PLAN_PRICES_SELECT, safeTimezone, usesTrialRules, type BillingCycle, type DunningInput } from "@/core/billing";
+import { asBillingCycle, effectiveCycle, grossCentsFor, PLAN_PRICES_SELECT, safeTimezone, usesTrialRules, validateCpfCnpj, type BillingCycle, type DunningInput } from "@/core/billing";
 import { manualSuspensionPeriodEnds } from "./events";
 
 /**
@@ -30,7 +30,7 @@ function loadRaw(where: Prisma.SubscriptionWhereInput, take?: number) {
   return getPrisma().subscription.findMany({
     where,
     include: {
-      tenant: { select: { id: true, name: true, slug: true, timezone: true } },
+      tenant: { select: { id: true, name: true, slug: true, timezone: true, document: true } },
       plan: { select: PLAN_PRICES_SELECT },
       invoices: { where: { status: "OPEN" }, orderBy: { periodStart: "desc" }, take: 1, select: { id: true, dueAt: true, createdAt: true, isTrialConversion: true } },
     },
@@ -80,6 +80,7 @@ async function toSubjects(rows: LoadedSubscription[], now: Date): Promise<Dunnin
         // Coluna é o marcador robusto; o evento MANUAL_SUSPEND do mesmo ciclo cobre quem o backfill não alcançou.
         manualSuspension: r.manualSuspendedAt !== null || (manual.get(r.id)?.has(r.currentPeriodEnd.toISOString()) ?? false),
         whatsappConnected: connected.has(r.tenantId),
+        hasDocument: Boolean(r.tenant.document && validateCpfCnpj(r.tenant.document).valid),
       },
     } satisfies DunningSubject;
   });

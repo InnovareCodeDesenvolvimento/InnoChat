@@ -9,6 +9,7 @@ import { reconcileInvoicePayment, type ReconcileOutcome } from "./reconcile";
 import { getPrisma } from "@/lib/db/prisma";
 import { memberActor, recordAudit } from "@/modules/audit/record";
 import { CANCEL_REASON_MAX_LENGTH, requestCancellation, startReactivation, undoCancellation, type CancelResult } from "./cancellation";
+import { updateTenantDocument } from "@/modules/tenant/service";
 import { changePlan, findBillingRecipientEmail, findOwnInvoiceOrThrow, listActivePlans, regeneratePixForInvoice, type ChangePlanResult } from "./service";
 
 /**
@@ -57,6 +58,11 @@ export async function changePlanAction(tenantSlug: string, input: unknown): Prom
   return runAction(async () => {
     const ctx = await requireTenantMember(tenantSlug, ["OWNER"]);
     const { tenant } = ctx;
+    // Troca de plano durante o teste anula e recria a fatura (cancela e gera Pix no Mercado Pago): mesmo limite da troca de ciclo.
+    const planLimit = checkRateLimit(`change-plan:${tenant.id}`, 10, 10 * 60 * 1000);
+    if (!planLimit.allowed) {
+      throw new DomainError("RATE_LIMITED", "Muitas tentativas. Tente de novo daqui a alguns minutos.", { retryAfterMs: planLimit.retryAfterMs });
+    }
     const data = changePlanSchema.parse(input);
     const prisma = getPrisma();
     const [current, target] = await Promise.all([
@@ -116,6 +122,74 @@ export async function regenerateMyInvoicePixAction(tenantSlug: string, invoiceId
 
     const invoice = await regeneratePixForInvoice(invoiceId, payerEmail);
     return { invoiceId: invoice.id, pixCopyPaste: invoice.pixCopyPaste };
+  });
+}
+
+const saveDocumentSchema = z.object({ document: z.string().trim().min(1, "Informe o CPF ou CNPJ.").max(40) });
+
+const SAVE_DOCUMENT_LIMIT = 8;
+const SAVE_DOCUMENT_WINDOW_MS = 10 * 60 * 1000; // chama o Mercado Pago de verdade
+
+export type SaveDocumentAndPixResult = {
+  /** Fatura aberta que recebeu (ou já tinha) o Pix; `null` = não há fatura aberta (o documento ficou salvo). */
+  invoiceId: string | null;
+  /** Pix copia e cola vigente da fatura, ou `null` quando não há fatura aberta. */
+  pixCopyPaste: string | null;
+};
+
+/**
+ * "Informe o CPF ou CNPJ e gere o Pix" (cartão do Pix na tela Assinatura, cadastro enxuto: o documento só é pedido na
+ * hora de pagar). Só OWNER. Sem `assertTenantCanWrite`, de propósito: a conta SUSPENSA precisa conseguir pagar.
+ *
+ * Ordem: valida e grava o documento (+ auditoria, que guarda só os 2 últimos dígitos) e SÓ DEPOIS tenta o Pix. Falha do
+ * Mercado Pago volta como erro `MERCADOPAGO_*`, mas o documento já ficou salvo (a tela avisa e oferece gerar de novo).
+ * Fatura aberta que já tem Pix vigente não ganha outro QR (evita dois Pix vivos para a mesma fatura).
+ * Erros: `INVALID_DOCUMENT`, `RATE_LIMITED`, `NOT_FOUND` (sem e-mail de cobrança), `MERCADOPAGO_*`.
+ */
+export async function saveDocumentAndGeneratePixAction(tenantSlug: string, input: unknown): Promise<Result<SaveDocumentAndPixResult>> {
+  return runAction(async () => {
+    const ctx = await requireTenantMember(tenantSlug, ["OWNER"]);
+    const { tenant } = ctx;
+
+    const rateLimit = checkRateLimit(`save-document:${tenant.id}`, SAVE_DOCUMENT_LIMIT, SAVE_DOCUMENT_WINDOW_MS);
+    if (!rateLimit.allowed) {
+      throw new DomainError("RATE_LIMITED", "Muitas tentativas. Aguarde alguns minutos antes de tentar de novo.", { retryAfterMs: rateLimit.retryAfterMs });
+    }
+
+    const data = saveDocumentSchema.parse(input);
+    const prisma = getPrisma();
+    const before = await prisma.tenant.findUnique({ where: { id: tenant.id }, select: { document: true } });
+    const updated = await updateTenantDocument(tenant.id, data.document);
+    if (before?.document !== updated.document) {
+      // CPF/CNPJ é dado pessoal: o histórico guarda só que mudou (e os 2 últimos dígitos), nunca o número.
+      await recordAudit({
+        tenantId: tenant.id,
+        actor: memberActor(ctx),
+        action: "settings.document_changed",
+        targetType: "tenant",
+        targetId: tenant.id,
+        summary: before?.document ? "Alterou o CPF ou CNPJ da empresa." : "Informou o CPF ou CNPJ da empresa.",
+        changes: { documento: { de: before?.document ? `final ${before.document.slice(-2)}` : null, para: `final ${updated.document!.slice(-2)}` } },
+      });
+    }
+
+    // Mesma escolha da conciliação da tela: a fatura aberta mais recente da assinatura DESTA empresa.
+    const invoice = await prisma.invoice.findFirst({
+      where: { status: "OPEN", subscription: { tenantId: tenant.id } },
+      orderBy: { periodStart: "desc" },
+      select: { id: true, pixCopyPaste: true, pixExpiresAt: true },
+    });
+    if (!invoice) return { invoiceId: null, pixCopyPaste: null };
+    if (invoice.pixCopyPaste && invoice.pixExpiresAt && invoice.pixExpiresAt > new Date()) {
+      return { invoiceId: invoice.id, pixCopyPaste: invoice.pixCopyPaste };
+    }
+
+    const payerEmail = await findBillingRecipientEmail(tenant.id);
+    if (!payerEmail) {
+      throw new DomainError("NOT_FOUND", "Nenhum e-mail de cobrança encontrado para esta empresa. Contate o suporte.");
+    }
+    const withPix = await regeneratePixForInvoice(invoice.id, payerEmail);
+    return { invoiceId: withPix.id, pixCopyPaste: withPix.pixCopyPaste };
   });
 }
 

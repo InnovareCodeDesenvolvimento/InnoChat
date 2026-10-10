@@ -4,7 +4,7 @@ import "@/app/globals.css";
 import { fontVariables } from "@/app/fonts";
 import { auth } from "@/lib/auth";
 import { getPrisma } from "@/lib/db/prisma";
-import { effectiveStatus } from "@/core/billing";
+import { effectiveStatus, shouldAskForDocument } from "@/core/billing";
 import { resolveBillingBanner } from "@/components/shell/billing-banner-state";
 import { updateBillingContactAction } from "@/modules/billing/contact-actions";
 import { getBillingWhatsappProblem } from "@/modules/billing/whatsapp-problem";
@@ -54,7 +54,7 @@ export default async function TenantLayout({
     select: {
       role: true,
       tenant: {
-        select: { id: true, name: true, theme: true, timezone: true, billingWhatsappE164: true, billingWhatsappOptOutAt: true },
+        select: { id: true, name: true, theme: true, timezone: true, billingWhatsappE164: true, billingWhatsappOptOutAt: true, document: true },
       },
     },
   });
@@ -92,6 +92,8 @@ export default async function TenantLayout({
   const billingBanner = snapshot
     ? resolveBillingBanner({ subscription: snapshot, openInvoice, lastPaidAt: lastPaidInvoice?.paidAt ?? null }, now)
     : null;
+  // Faixa do CPF/CNPJ (cadastro enxuto): só o dono, só no teste sem documento, só nas últimas 24 h.
+  const needsDocument = shouldAskForDocument({ role: membership.role, document: membership.tenant.document, subscription: snapshot, now });
   // Pedido do WhatsApp de cobrança: só o OWNER, só quem ainda não informou número e não desligou
   // os avisos, e nunca em cima de um aviso vermelho (atrasada, suspensa, cancelada).
   const askBillingPhone =
@@ -171,6 +173,7 @@ export default async function TenantLayout({
             billingBanner={billingBanner}
             billingNowMs={now.getTime()}
             askBillingPhone={askBillingPhone}
+            needsDocument={needsDocument}
             billingWhatsappProblem={billingWhatsappProblem}
             saveBillingContact={updateBillingContactAction}
             onboardingIncomplete={onboardingIncomplete}

@@ -28,7 +28,7 @@ const { completeGoogleSignUp, getGoogleSignUpPrefill } = await import("@/modules
 const { resolveGoogleSignIn } = await import("@/modules/google-auth/signin");
 const config = await import("@/modules/google-auth/config");
 const { verifyCredentials } = await import("@/modules/auth/service");
-const { inviteTeamMember, acceptInviteWithGoogle, requestPasswordReset, resetPassword, signUp } = await import("@/modules/signup/service");
+const { inviteTeamMember, acceptInviteWithGoogle, requestPasswordReset, resetPassword, signUp, acceptInvite } = await import("@/modules/signup/service");
 const { hashPassword } = await import("@/modules/auth/service");
 const { createMockMercadoPagoGateway } = await import("@/modules/billing/mercadopago.mock");
 
@@ -73,7 +73,7 @@ function token(email: string, sub: string, name = "Ana Google") {
 async function registerViaGoogle(label: string) {
   const email = `it-google-${label}-${run}@example.com`;
   const sub = `sub-${label}-${run}`;
-  const result = await completeGoogleSignUp({ token: token(email, sub), tenantName: `Clínica ${label} ${run}`, document: DOCUMENT, termsVersion: "v1" });
+  const result = await completeGoogleSignUp({ token: token(email, sub), tenantName: `Clínica ${label} ${run}`, document: DOCUMENT, phone: "(84) 99999-8888", termsVersion: "v1" });
   createdUserIds.push(result.userId);
   createdTenantIds.push((await prisma.tenant.findUniqueOrThrow({ where: { slug: result.tenantSlug } })).id);
   return { email, sub, ...result };
@@ -179,7 +179,7 @@ describe("completeGoogleSignUp — cadastro depois do Google", () => {
 
     await expect(getGoogleSignUpPrefill(again)).rejects.toMatchObject({ code: "ALREADY_REGISTERED" });
     await expect(
-      completeGoogleSignUp({ token: again, tenantName: "Outra Empresa", document: DOCUMENT, termsVersion: "v1" }),
+      completeGoogleSignUp({ token: again, tenantName: "Outra Empresa", document: DOCUMENT, phone: "(84) 99999-8888", termsVersion: "v1" }),
     ).rejects.toMatchObject({ code: "ALREADY_REGISTERED" });
     expect(await prisma.user.count({ where: { googleSub: r.sub } })).toBe(1);
   });
@@ -189,8 +189,8 @@ describe("completeGoogleSignUp — cadastro depois do Google", () => {
     const sub = `sub-race-${run}`;
     const t = token(email, sub);
     const results = await Promise.allSettled([
-      completeGoogleSignUp({ token: t, tenantName: `Corrida A ${run}`, document: DOCUMENT, termsVersion: "v1" }),
-      completeGoogleSignUp({ token: t, tenantName: `Corrida B ${run}`, document: DOCUMENT, termsVersion: "v1" }),
+      completeGoogleSignUp({ token: t, tenantName: `Corrida A ${run}`, document: DOCUMENT, phone: "(84) 99999-8888", termsVersion: "v1" }),
+      completeGoogleSignUp({ token: t, tenantName: `Corrida B ${run}`, document: DOCUMENT, phone: "(84) 99999-8888", termsVersion: "v1" }),
     ]);
     const users = await prisma.user.findMany({ where: { googleSub: sub }, include: { memberships: true } });
     for (const u of users) {
@@ -205,23 +205,23 @@ describe("completeGoogleSignUp — cadastro depois do Google", () => {
     const email = `it-google-pw-${run}@example.com`;
     const { gateway } = createMockMercadoPagoGateway();
     const signedUp = await signUp(
-      { companyName: `Com Senha ${run}`, slug: `it-google-pw-${run}`, segment: null, ownerName: "Dono", email, password: "senha-forte-123", document: DOCUMENT, termsVersion: "v1" },
+      { companyName: `Com Senha ${run}`, slug: `it-google-pw-${run}`, segment: null, ownerName: "Dono", email, password: "senha-forte-123", document: DOCUMENT, phone: "(84) 99999-8888", termsVersion: "v1" },
       gateway,
     );
     createdUserIds.push(signedUp.userId);
     createdTenantIds.push((await prisma.tenant.findUniqueOrThrow({ where: { slug: signedUp.tenantSlug } })).id);
 
     await expect(
-      completeGoogleSignUp({ token: token(email, `sub-pw-${run}`), tenantName: "X Empresa", document: DOCUMENT, termsVersion: "v1" }),
+      completeGoogleSignUp({ token: token(email, `sub-pw-${run}`), tenantName: "X Empresa", document: DOCUMENT, phone: "(84) 99999-8888", termsVersion: "v1" }),
     ).rejects.toMatchObject({ code: "ALREADY_REGISTERED" });
   });
 
   it("token expirado, adulterado e documento inválido são recusados sem criar nada", async () => {
     const email = `it-google-bad-${run}@example.com`;
     const expired = signGoogleToken("google-signup", { email, name: "X", sub: `sub-bad-${run}` }, 1_000, Date.now() - 60_000);
-    await expect(completeGoogleSignUp({ token: expired, tenantName: "Empresa X", document: DOCUMENT, termsVersion: "v1" })).rejects.toMatchObject({ code: "TOKEN_EXPIRED" });
-    await expect(completeGoogleSignUp({ token: `${token(email, "s")}x`, tenantName: "Empresa X", document: DOCUMENT, termsVersion: "v1" })).rejects.toMatchObject({ code: "TOKEN_INVALID" });
-    await expect(completeGoogleSignUp({ token: token(email, `sub-bad-${run}`), tenantName: "Empresa X", document: "111.111.111-11", termsVersion: "v1" })).rejects.toMatchObject({ code: "INVALID_DOCUMENT" });
+    await expect(completeGoogleSignUp({ token: expired, tenantName: "Empresa X", document: DOCUMENT, phone: "(84) 99999-8888", termsVersion: "v1" })).rejects.toMatchObject({ code: "TOKEN_EXPIRED" });
+    await expect(completeGoogleSignUp({ token: `${token(email, "s")}x`, tenantName: "Empresa X", document: DOCUMENT, phone: "(84) 99999-8888", termsVersion: "v1" })).rejects.toMatchObject({ code: "TOKEN_INVALID" });
+    await expect(completeGoogleSignUp({ token: token(email, `sub-bad-${run}`), tenantName: "Empresa X", document: "111.111.111-11", phone: "(84) 99999-8888", termsVersion: "v1" })).rejects.toMatchObject({ code: "INVALID_DOCUMENT" });
     expect(await prisma.user.count({ where: { email } })).toBe(0);
   });
 
@@ -234,10 +234,10 @@ describe("completeGoogleSignUp — cadastro depois do Google", () => {
     const sub = `sub-plan-${run}`;
 
     await expect(
-      completeGoogleSignUp({ token: token(email, sub), tenantName: "Empresa Plano", document: DOCUMENT, termsVersion: "v1", planCode: "nao-existe" }),
+      completeGoogleSignUp({ token: token(email, sub), tenantName: "Empresa Plano", document: DOCUMENT, phone: "(84) 99999-8888", termsVersion: "v1", planCode: "nao-existe" }),
     ).rejects.toMatchObject({ code: "INVALID_PLAN" });
 
-    const r = await completeGoogleSignUp({ token: token(email, sub), tenantName: `Empresa Plano ${run}`, document: DOCUMENT, termsVersion: "v1", planCode: plan.code });
+    const r = await completeGoogleSignUp({ token: token(email, sub), tenantName: `Empresa Plano ${run}`, document: DOCUMENT, phone: "(84) 99999-8888", termsVersion: "v1", planCode: plan.code });
     createdUserIds.push(r.userId);
     const tenant = await prisma.tenant.findUniqueOrThrow({ where: { slug: r.tenantSlug } });
     createdTenantIds.push(tenant.id);
@@ -248,10 +248,30 @@ describe("completeGoogleSignUp — cadastro depois do Google", () => {
   it("gera slug único quando o nome da empresa repete", async () => {
     const a = await registerViaGoogle("slugA");
     const email = `it-google-slugB-${run}@example.com`;
-    const b = await completeGoogleSignUp({ token: token(email, `sub-slugB-${run}`), tenantName: `Clínica slugA ${run}`, document: DOCUMENT, termsVersion: "v1" });
+    const b = await completeGoogleSignUp({ token: token(email, `sub-slugB-${run}`), tenantName: `Clínica slugA ${run}`, document: DOCUMENT, phone: "(84) 99999-8888", termsVersion: "v1" });
     createdUserIds.push(b.userId);
     createdTenantIds.push((await prisma.tenant.findUniqueOrThrow({ where: { slug: b.tenantSlug } })).id);
     expect(b.tenantSlug).not.toBe(a.tenantSlug);
+  });
+
+  it("cadastro enxuto: sem CPF/CNPJ a conta nasce (document nulo, fatura sem Pix); sem WhatsApp válido (DDD que existe) é INVALID_PHONE e nada é criado", async () => {
+    const email = `it-google-lean-${run}@example.com`;
+    const sub = `sub-lean-${run}`;
+    for (const phone of ["", "12345", "(20) 99999-8888"]) {
+      await expect(completeGoogleSignUp({ token: token(email, sub), tenantName: `Empresa Enxuta ${run}`, phone, termsVersion: "v1" }), phone).rejects.toMatchObject({ code: "INVALID_PHONE" });
+    }
+    expect(await prisma.user.count({ where: { email } })).toBe(0);
+
+    const r = await completeGoogleSignUp({ token: token(email, sub), tenantName: `Empresa Enxuta ${run}`, phone: "(84) 99999-8888", termsVersion: "v1" });
+    createdUserIds.push(r.userId);
+    const tenant = await prisma.tenant.findUniqueOrThrow({ where: { slug: r.tenantSlug } });
+    createdTenantIds.push(tenant.id);
+    expect(r.couponDropped).toBe(false);
+    expect(tenant).toMatchObject({ document: null, billingWhatsappE164: "5584999998888" });
+    const subscription = await prisma.subscription.findUniqueOrThrow({ where: { tenantId: tenant.id } });
+    const invoice = await prisma.invoice.findFirstOrThrow({ where: { subscriptionId: subscription.id } });
+    expect(invoice).toMatchObject({ status: "OPEN", isTrialConversion: true, pixCopyPaste: null });
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: r.userId } })).emailVerifiedAt).not.toBeNull();
   });
 });
 
@@ -279,7 +299,7 @@ describe("resolveGoogleSignIn contra o banco", () => {
     const email = `it-google-link-${run}@example.com`;
     const { gateway } = createMockMercadoPagoGateway();
     const su = await signUp(
-      { companyName: `Link ${run}`, slug: `it-google-link-${run}`, segment: null, ownerName: "Dono", email, password: "senha-do-atacante-123", document: DOCUMENT, termsVersion: "v1" },
+      { companyName: `Link ${run}`, slug: `it-google-link-${run}`, segment: null, ownerName: "Dono", email, password: "senha-do-atacante-123", document: DOCUMENT, phone: "(84) 99999-8888", termsVersion: "v1" },
       gateway,
     );
     createdUserIds.push(su.userId);
@@ -380,5 +400,51 @@ describe("convite de equipe com Google", () => {
     expect(await prisma.membership.count({ where: { userId: i.invitedId } })).toBe(1);
 
     await expect(acceptInviteWithGoogle(i.raw, { sub: `sub-inv-${run}`, email: i.email })).rejects.toMatchObject({ code: "TOKEN_INVALID" });
+  });
+});
+
+describe("convite a e-mail pré-registrado por terceiro (conta NÃO verificada)", () => {
+  it("o convite descarta a senha do pré-registro e derruba as sessões; aceitar o convite define a senha de quem recebeu o e-mail", async () => {
+    const owner = await registerViaGoogle("preinv-owner");
+    const tenant = await prisma.tenant.findUniqueOrThrow({ where: { slug: owner.tenantSlug } });
+    const victimEmail = `it-preinv-${run}@example.com`;
+    const { gateway } = createMockMercadoPagoGateway();
+    // O atacante cadastra o e-mail da vítima com uma senha que só ele conhece.
+    const attacker = await signUp(
+      { companyName: `Pre Registro ${run}`, ownerName: "Atacante", email: victimEmail, password: "senha-do-atacante-123", document: DOCUMENT, phone: "(84) 99999-8888", termsVersion: "v1" },
+      gateway,
+    );
+    createdUserIds.push(attacker.userId);
+    createdTenantIds.push((await prisma.tenant.findUniqueOrThrow({ where: { slug: attacker.tenantSlug } })).id);
+    const before = await prisma.user.findUniqueOrThrow({ where: { id: attacker.userId } });
+    expect(before.emailVerifiedAt).toBeNull();
+    expect(before.passwordHash).toBeTruthy();
+
+    // A empresa-alvo convida o e-mail: a senha do atacante não pode valer para entrar no tenant.
+    await inviteTeamMember({ tenantId: tenant.id, tenantName: tenant.name, email: victimEmail, role: "STAFF" });
+    const after = await prisma.user.findUniqueOrThrow({ where: { id: attacker.userId } });
+    expect(after.passwordHash).toBeNull();
+    expect(after.sessionVersion).toBe(before.sessionVersion + 1);
+    await expect(verifyCredentials({ email: victimEmail, password: "senha-do-atacante-123", ip: `it-${run}-preinv` })).rejects.toMatchObject({ code: "GOOGLE_ONLY_ACCOUNT" });
+
+    // Quem recebeu o e-mail aceita: define a senha dele, a conta fica verificada e as sessões antigas caem de novo.
+    const raw = sentEmails.find((e) => e.to === victimEmail && e.text.includes("/convite?token="))?.text.match(/token=([\w-]+)/)?.[1];
+    expect(raw).toBeTruthy();
+    await acceptInvite(raw!, "senha-da-vitima-123", "Vítima Legítima");
+    const accepted = await prisma.user.findUniqueOrThrow({ where: { id: attacker.userId } });
+    expect(accepted.emailVerifiedAt).not.toBeNull();
+    expect(accepted.sessionVersion).toBe(after.sessionVersion + 1);
+    expect(await verifyCredentials({ email: victimEmail, password: "senha-da-vitima-123", ip: `it-${run}-preinv2` })).toMatchObject({ id: attacker.userId });
+  });
+
+  it("convite a conta JÁ verificada não mexe na senha nem nas sessões", async () => {
+    const owner = await registerViaGoogle("preinv2-owner");
+    const tenant = await prisma.tenant.findUniqueOrThrow({ where: { slug: owner.tenantSlug } });
+    const other = await registerViaGoogle("preinv2-other");
+    const before = await prisma.user.findUniqueOrThrow({ where: { id: other.userId } });
+    await inviteTeamMember({ tenantId: tenant.id, tenantName: tenant.name, email: other.email, role: "STAFF" });
+    const after = await prisma.user.findUniqueOrThrow({ where: { id: other.userId } });
+    expect(after.sessionVersion).toBe(before.sessionVersion);
+    expect(after.passwordHash).toBe(before.passwordHash);
   });
 });

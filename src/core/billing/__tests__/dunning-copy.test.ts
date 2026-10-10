@@ -44,7 +44,7 @@ const data = (over: Partial<DunningCopyData> = {}): DunningCopyData => ({
 
 describe("textos da régua: guia de voz", () => {
   it("nenhum texto de nenhuma etapa tem travessão, 'prezado' ou fórmulas proibidas", () => {
-    const variants: DunningCopyData[] = [data(), data({ trial: almost, ownerName: null, pixCopyPaste: null, firstWhatsapp: true }), data({ trialNotConverted: true, firstPayment: true })];
+    const variants: DunningCopyData[] = [data(), data({ trial: almost, ownerName: null, pixCopyPaste: null, firstWhatsapp: true }), data({ trialNotConverted: true, firstPayment: true }), data({ needsDocument: true, pixCopyPaste: null })];
     for (const step of DUNNING_STEPS) {
       for (const d of variants) {
         const email = buildEmailCopy(step, d);
@@ -177,6 +177,27 @@ describe("régua com plano trimestral e semestral", () => {
       const text = `${buildWhatsappMessages(step, d).join(" ")} ${JSON.stringify(buildEmailCopy(step, d) ?? "")}`;
       expect(text.split(`${amount} ${label}`).length, `${step}: ${text}`).toBe(text.split(amount).length);
       expect(text).not.toContain("por mês");
+    }
+  });
+});
+
+describe("fim do teste sem CPF/CNPJ (cadastro enxuto)", () => {
+  const noDoc = data({ needsDocument: true, pixCopyPaste: null });
+
+  it("WhatsApp de T1 e T0 manda informar o documento na tela Assinatura e não leva Pix", () => {
+    for (const step of ["TRIAL_T1", "TRIAL_T0"] as const) {
+      const messages = buildWhatsappMessages(step, noDoc);
+      expect(messages, step).toHaveLength(1);
+      expect(messages[0], step).toContain("CPF ou CNPJ");
+      expect(messages[0], step).toContain("https://app.exemplo.com/salao/assinatura");
+    }
+  });
+
+  it("e-mail de T1 e T0 ganha o parágrafo do documento; com documento não ganha", () => {
+    for (const step of ["TRIAL_T1", "TRIAL_T0"] as const) {
+      expect(buildEmailCopy(step, noDoc)?.paragraphs.join(" "), step).toContain("CPF ou CNPJ");
+      expect(buildEmailCopy(step, data())?.paragraphs.join(" "), step).not.toContain("CPF ou CNPJ");
+      expect(buildWhatsappMessages(step, data())[0], step).not.toContain("CPF ou CNPJ");
     }
   });
 });

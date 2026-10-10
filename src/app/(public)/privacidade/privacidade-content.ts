@@ -52,7 +52,7 @@ export const PRIVACIDADE_SECTIONS: LegalSection[] = [
         blocks: [
           {
             list: [
-              "**Cadastro:** nome da empresa, endereço de acesso no painel, segmento de atuação, nome e e-mail dos Usuários e o papel de cada um.",
+              "**Cadastro:** nome da empresa, endereço de acesso no painel, nome e e-mail dos Usuários e o papel de cada um. Quem cria a conta informa também o **telefone (WhatsApp) do responsável**, que usamos para avisos de cobrança e da conta. Em contas criadas antes de outubro de 2026, pode constar ainda o segmento de atuação.",
               "**Senha:** guardada apenas como hash (bcrypt). Nós nunca guardamos nem conseguimos ver a senha.",
               "**Cobrança:** plano, faturas (valores, datas e situação) e o identificador do pagamento no Mercado Pago. Quando o Mercado Pago exige, tratamos também o **CPF ou CNPJ do pagador**. Não recebemos dados bancários.",
               "**Aceite:** versão dos Termos e da Política aceita e a data do aceite.",

@@ -17,6 +17,8 @@ import type { CouponPreview } from "@/modules/billing/coupons";
 export type CycleSnapshot = {
   /** Ciclo EFETIVO (o que a próxima fatura cobra). */
   billingCycle: BillingCycle;
+  /** Em teste e sem nunca ter pago: trocar o ciclo ou aplicar cupom já atualiza a fatura do teste. */
+  trialNeverPaid: boolean;
   /** Ciclos que o plano atual oferece, com valor do período, equivalente por mês e economia. O mensal vem sempre. */
   options: CycleOptionData[];
   /** Ciclo guardado na assinatura que o plano não oferece mais (a fatura sai mensal); `null` = tudo certo. */
@@ -71,7 +73,11 @@ export function CicloCard({ tenantSlug, cycle, isOwner }: { tenantSlug: string; 
       notify({
         variant: "success",
         title: `Cobrança ${cycleLabel(choice)} escolhida.`,
-        description: result.data.couponPaused ? "Seu cupom não vale nesse tipo de cobrança. Ele fica guardado." : "Vale a partir da próxima fatura.",
+        description: result.data.trialInvoiceRepriced
+          ? "A fatura do teste já foi atualizada com o novo valor."
+          : result.data.couponPaused
+            ? "Seu cupom não vale nesse tipo de cobrança. Ele fica guardado."
+            : "Vale a partir da próxima fatura.",
       });
       router.refresh();
     });
@@ -102,7 +108,9 @@ export function CicloCard({ tenantSlug, cycle, isOwner }: { tenantSlug: string; 
 
         {offersChoice ? (
           <p className="text-xs text-text-secondary">
-            A troca vale a partir da próxima fatura, sem cálculo proporcional. A fatura que já está em aberto e o período já pago continuam como estão.
+            {cycle.trialNeverPaid
+              ? "Como você ainda está no teste, a fatura do fim do teste já sai com a cobrança que você escolher. Não há cálculo proporcional."
+              : "A troca vale a partir da próxima fatura, sem cálculo proporcional. A fatura que já está em aberto e o período já pago continuam como estão."}
           </p>
         ) : null}
 
@@ -155,7 +163,11 @@ export function CupomCard({ tenantSlug, coupon, isOwner }: { tenantSlug: string;
         setError(result.error.message);
         return;
       }
-      notify({ variant: "success", title: "Cupom aplicado.", description: "O desconto entra a partir da próxima fatura." });
+      notify({
+        variant: "success",
+        title: "Cupom aplicado.",
+        description: result.data.trialInvoiceRepriced ? "A fatura do teste já foi atualizada com o desconto." : "O desconto entra a partir da próxima fatura.",
+      });
       setCode("");
       setPreview(null);
       router.refresh();

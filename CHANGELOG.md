@@ -7,6 +7,29 @@ Versão semântica (`MAJOR.MINOR.PATCH`), lida do `version` do `package.json` e 
 
 Toda publicação em produção sobe a versão e ganha uma entrada aqui.
 
+## v1.9.0 — 2026-10-10
+
+### Novidade: cadastro sem fricção
+- O cadastro cabe numa tela só: nome da empresa, seu nome, WhatsApp, e-mail, senha (com botão de mostrar) e o aceite dos termos. O endereço da página é criado sozinho e a pessoa entra direto no painel, sem parar na tela "confirme seu e-mail".
+- CPF/CNPJ, ciclo de cobrança e segmento saíram do cadastro. O documento é pedido no cartão do Pix, na Assinatura, e um aviso aparece no painel nas últimas 24 horas do teste. A fatura do fim do teste nasce normalmente; só o Pix espera o documento.
+- Cupom pelo link (`/cadastro?cupom=CODIGO`), com selo mostrando o desconto.
+- Cadastros válidos: WhatsApp obrigatório com DDD conferido, e-mail descartável recusado, sugestão quando o domínio do e-mail vem digitado errado e armadilha invisível contra robôs.
+- Quem chega pelo navegador do Instagram ou do Facebook vê "Continuar com Google", que abre o cadastro no Chrome (Android) ou no Safari (iPhone), onde o Google funciona, levando o cupom e a origem do anúncio.
+- No celular, o aviso de cookies não cobre mais o botão de criar conta.
+
+### Cobrança
+- Trocar de ciclo, aplicar cupom ou trocar de plano durante o teste refaz a fatura do teste com o valor certo (a antiga é anulada e o Pix antigo cancelado, com nova tentativa automática se o Mercado Pago falhar). As mensagens da Assinatura explicam isso.
+- O aviso "sua fatura chegou" do teste só sai quando há CPF/CNPJ, já com o Pix.
+
+### Segurança
+- Convite de equipe para um e-mail cadastrado e nunca confirmado derruba a senha e as sessões dessa conta antes de liberar o acesso.
+- Limite de tentativas no selo de cupom e na troca de plano, e teto diário por número de WhatsApp nos avisos de cobrança.
+- Termos de uso e política de privacidade na versão 2026-10-10 (inclui o WhatsApp do responsável).
+
+### Correções
+- Nomes de empresa muito longos podiam gerar endereço de página inválido.
+- Ao reabrir o aviso de cookies pelo rodapé, o foco às vezes não ia para o aviso.
+
 ## v1.8.1 — 2026-10-05
 
 ### Correções

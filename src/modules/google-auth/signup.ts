@@ -43,13 +43,15 @@ export async function getGoogleSignUpPrefill(token: string): Promise<{ email: st
 export async function completeGoogleSignUp(input: {
   token: string;
   tenantName: string;
-  document: string;
-  phone?: string | null;
+  /** LEGADO: opcional (o documento é pedido na hora de pagar). */
+  document?: string | null;
+  /** WhatsApp do dono: obrigatório. */
+  phone: string;
   planCode?: string;
   billingCycle?: BillingCycle;
   couponCode?: string;
   termsVersion: string;
-}): Promise<{ userId: string; tenantSlug: string }> {
+}): Promise<{ userId: string; tenantSlug: string; couponDropped: boolean }> {
   const claims = readClaims(input.token);
   await assertNotRegistered(claims);
 
@@ -68,7 +70,7 @@ export async function completeGoogleSignUp(input: {
       couponCode: input.couponCode,
     });
     logger.info("google_auth.signup.completed", { userId: result.userId });
-    return { userId: result.userId, tenantSlug: result.tenantSlug };
+    return { userId: result.userId, tenantSlug: result.tenantSlug, couponDropped: result.couponDropped };
   } catch (error) {
     // Corrida com outro cadastro do mesmo Google/e-mail: a unicidade do banco é a trava final.
     if (isUniqueViolation(error)) {

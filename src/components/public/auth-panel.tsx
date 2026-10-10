@@ -11,11 +11,14 @@ export function AuthPanel({
   description,
   children,
   className,
+  compact = false,
 }: {
   title?: string;
   description?: React.ReactNode;
   children: React.ReactNode;
   className?: string;
+  /** Cabeçalho mais junto do formulário (cadastro no celular: o primeiro campo precisa caber na primeira tela). */
+  compact?: boolean;
 }) {
   return (
     <div
@@ -25,7 +28,7 @@ export function AuthPanel({
       )}
     >
       {title ? (
-        <div className="mb-6">
+        <div className={compact ? "mb-4 sm:mb-6" : "mb-6"}>
           <h1 className="font-display text-2xl font-extrabold leading-tight tracking-tight text-text sm:text-3xl">
             {title}
           </h1>

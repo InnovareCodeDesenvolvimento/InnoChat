@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { formatInTimeZone } from "date-fns-tz";
-import { AlertTriangle, CalendarCheck, Clock, Lock, QrCode, X } from "lucide-react";
+import { AlertTriangle, CalendarCheck, Clock, IdCard, Lock, QrCode, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { HelpButton } from "@/components/help/help-button";
 import { cn } from "@/components/lib/cn";
@@ -80,7 +80,7 @@ type BannerShellProps = {
   icon: React.ReactNode;
   children: React.ReactNode;
   action?: React.ReactNode;
-  helpKey?: "assinatura.banner";
+  helpKey?: "assinatura.banner" | "assinatura.documento";
   testId: string;
   onDismiss?: () => void;
 };
@@ -255,6 +255,32 @@ export function SubscriptionBanner({
       onDismiss={dismissRenewed}
     >
       Assinatura renovada até {formatInTimeZone(new Date(state.until), timezone, "dd/MM")}. Obrigado!
+    </BannerShell>
+  );
+}
+
+/**
+ * Faixa das últimas 24 h do teste para quem ainda não informou o CPF ou CNPJ: sem ele o Pix não sai.
+ * O servidor decide quando mostrar (`needsDocument`: só o dono, só em teste, só nas últimas 24 h);
+ * aqui só desenha. Leva para o cartão do Pix, onde o campo já está pronto.
+ */
+export function NeedsDocumentBanner({ tenantSlug }: { tenantSlug: string }) {
+  const [dismissed, dismiss] = useSessionDismiss(`innochat:needs-document-dismissed:${tenantSlug}`);
+  if (dismissed) return null;
+  return (
+    <BannerShell
+      testId="billing-banner-needs-document"
+      tone="warning"
+      icon={<IdCard className="h-4 w-4" />}
+      helpKey="assinatura.documento"
+      onDismiss={dismiss}
+      action={
+        <Button asChild size="sm" variant="primary">
+          <Link href={payHref(tenantSlug)}>Informar CPF ou CNPJ</Link>
+        </Button>
+      }
+    >
+      Para pagar com Pix quando o teste acabar, informe o CPF ou CNPJ da empresa.
     </BannerShell>
   );
 }

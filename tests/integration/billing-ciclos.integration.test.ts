@@ -336,7 +336,7 @@ describe("cadastro com ciclo e cupom", () => {
     const slug = uniq("it-ciclos-signup");
     const { gateway } = createMockMercadoPagoGateway();
     const result = await signUp(
-      { companyName: "Cadastro Trimestral", slug, segment: null, ownerName: "Dona", email: `${slug}@example.com`, password: "senha-forte-123", document: "529.982.247-25", termsVersion: "v1", billingCycle: "QUARTERLY", couponCode: coupon.code.toLowerCase() },
+      { companyName: "Cadastro Trimestral", slug, segment: null, ownerName: "Dona", email: `${slug}@example.com`, password: "senha-forte-123", document: "529.982.247-25", phone: "(84) 99999-8888", termsVersion: "v1", billingCycle: "QUARTERLY", couponCode: coupon.code.toLowerCase() },
       gateway,
     );
     const tenant = await prisma.tenant.findUniqueOrThrow({ where: { slug: result.tenantSlug } });
@@ -353,16 +353,20 @@ describe("cadastro com ciclo e cupom", () => {
     expect(paid.currentPeriodEnd.getTime()).toBe(expected.getTime());
   });
 
-  it("recusa o ciclo que o plano não oferece (INVALID_CYCLE) e o cupom de outro ciclo (resposta pública única)", async () => {
+  it("recusa o ciclo que o plano não oferece (INVALID_CYCLE); o cupom de outro ciclo só é descartado (a conta nasce)", async () => {
     await makePlan({ sortOrder: -5101, active: true, semiannualPriceCents: null });
     const coupon = await makeCoupon({ appliesToCycles: ["ANNUAL"] });
     const { gateway } = createMockMercadoPagoGateway();
-    const base = { companyName: "Recusa", segment: null, ownerName: "Dona", password: "senha-forte-123", document: "529.982.247-25", termsVersion: "v1" };
+    const base = { companyName: "Recusa", segment: null, ownerName: "Dona", password: "senha-forte-123", document: "529.982.247-25", phone: "(84) 99999-8888", termsVersion: "v1" };
     const s1 = uniq("it-ciclos-rec1");
     await expect(signUp({ ...base, slug: s1, email: `${s1}@example.com`, billingCycle: "SEMIANNUAL" }, gateway)).rejects.toMatchObject({ code: "INVALID_CYCLE" });
     const s2 = uniq("it-ciclos-rec2");
-    await expect(signUp({ ...base, slug: s2, email: `${s2}@example.com`, billingCycle: "QUARTERLY", couponCode: coupon.code }, gateway)).rejects.toMatchObject({ code: "COUPON_INVALID" });
-    expect(await prisma.tenant.count({ where: { slug: { in: [s1, s2] } } })).toBe(0);
+    const dropped = await signUp({ ...base, slug: s2, email: `${s2}@example.com`, billingCycle: "QUARTERLY", couponCode: coupon.code }, gateway);
+    expect(dropped.couponDropped).toBe(true);
+    const droppedTenant = await prisma.tenant.findUniqueOrThrow({ where: { slug: dropped.tenantSlug } });
+    tenantIds.push(droppedTenant.id);
+    userIds.push(dropped.userId);
+    expect(await prisma.user.count({ where: { email: `${s1}@example.com` } })).toBe(0); // o INVALID_CYCLE não criou nada
     expect((await prisma.coupon.findUniqueOrThrow({ where: { id: coupon.id } })).redemptionsCount).toBe(0);
   });
 
@@ -372,7 +376,7 @@ describe("cadastro com ciclo e cupom", () => {
     const email = `${uniq("it-ciclos-google")}@example.com`;
     const { gateway } = createMockMercadoPagoGateway();
     const result = await signUpWithGoogle(
-      { email, googleSub: uniq("sub"), ownerName: "Dona Google", companyName: uniq("Empresa Google"), document: "529.982.247-25", termsVersion: "v1", billingCycle: "SEMIANNUAL", couponCode: coupon.code },
+      { email, googleSub: uniq("sub"), ownerName: "Dona Google", companyName: uniq("Empresa Google"), document: "529.982.247-25", phone: "(84) 99999-8888", termsVersion: "v1", billingCycle: "SEMIANNUAL", couponCode: coupon.code },
       gateway,
     );
     const tenant = await prisma.tenant.findUniqueOrThrow({ where: { slug: result.tenantSlug } });

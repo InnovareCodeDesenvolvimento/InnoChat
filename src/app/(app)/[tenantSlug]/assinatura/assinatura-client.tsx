@@ -23,6 +23,7 @@ import type { BillingContactData, SaveBillingContact } from "@/components/billin
 import { PaymentHistoryCard, type PaymentHistoryItem } from "@/components/billing/payment-history-card";
 import { AssinaturaCanceladaCard, CancelamentoAgendadoAviso, CancelarAssinaturaCard } from "./cancelamento";
 import { CicloCard, CupomCard, type CycleSnapshot } from "./ciclo-cupom";
+import { PixDocumentForm } from "./pix-document-form";
 import { changePlanAction, checkMyInvoicePaymentAction, regenerateMyInvoicePixAction, type PlanListItem } from "@/modules/billing/actions";
 
 export type BillingStatus = "TRIALING" | "ACTIVE" | "PAST_DUE" | "SUSPENDED" | "CANCELED";
@@ -160,12 +161,14 @@ function PixCard({
   timezone,
   tenantSlug,
   hasDocument,
+  isOwner,
   focusOnMount,
 }: {
   invoice: NonNullable<BillingSnapshot["invoice"]>;
   timezone: string;
   tenantSlug: string;
   hasDocument: boolean;
+  isOwner: boolean;
   focusOnMount: boolean;
 }) {
   const router = useRouter();
@@ -290,36 +293,34 @@ function PixCard({
           </>
         ) : (
           <div className="flex w-full flex-col gap-3">
-            {regenerateError ? (
-              <Alert variant="danger" title="Não foi possível gerar o Pix">
-                {regenerateError}
-                {regenerateError === REGENERATE_PIX_ERROR_MESSAGE.MERCADOPAGO_MISSING_DOCUMENT ? (
-                  <>
-                    {" "}
-                    <Link href={`/${tenantSlug}/configuracoes`} className="font-medium underline">
-                      Cadastrar em Configurações
-                    </Link>
-                    .
-                  </>
-                ) : null}
-              </Alert>
-            ) : !hasDocument ? (
-              <Alert variant="warning" title="Cadastre o CPF/CNPJ da empresa">
-                O Mercado Pago exige o CPF ou CNPJ da empresa para gerar o Pix desta fatura.{" "}
-                <Link href={`/${tenantSlug}/configuracoes`} className="font-medium underline">
-                  Cadastrar em Configurações
-                </Link>
-                .
-              </Alert>
+            {!hasDocument ? (
+              <PixDocumentForm tenantSlug={tenantSlug} isOwner={isOwner} />
             ) : (
-              <Alert variant="info">
-                O Pix desta fatura ainda não foi gerado. Gere agora ou espere um pouco: esta tela se atualiza sozinha.
-              </Alert>
+              <>
+                {regenerateError ? (
+                  <Alert variant="danger" title="Não foi possível gerar o Pix">
+                    {regenerateError}
+                    {regenerateError === REGENERATE_PIX_ERROR_MESSAGE.MERCADOPAGO_MISSING_DOCUMENT ? (
+                      <>
+                        {" "}
+                        <Link href={`/${tenantSlug}/configuracoes`} className="font-medium underline">
+                          Conferir em Configurações
+                        </Link>
+                        .
+                      </>
+                    ) : null}
+                  </Alert>
+                ) : (
+                  <Alert variant="info">
+                    O Pix desta fatura ainda não foi gerado. Gere agora ou espere um pouco: esta tela se atualiza sozinha.
+                  </Alert>
+                )}
+                <Button type="button" onClick={handleRegeneratePix} isLoading={isRegenerating} className="self-start">
+                  <QrCode className="h-4 w-4" aria-hidden="true" />
+                  {attempted ? "Tentar de novo" : "Gerar Pix agora"}
+                </Button>
+              </>
             )}
-            <Button type="button" onClick={handleRegeneratePix} isLoading={isRegenerating} className="self-start">
-              <QrCode className="h-4 w-4" aria-hidden="true" />
-              {attempted ? "Tentar de novo" : "Gerar Pix agora"}
-            </Button>
           </div>
         )}
       </CardContent>
@@ -379,9 +380,11 @@ function PlanosCard({
       notify({
         variant: "success",
         title: result.data.appliedImmediately ? "Plano trocado." : "Troca agendada.",
-        description: result.data.appliedImmediately
-          ? "O novo plano já está em vigor."
-          : "A mudança entra em vigor no próximo ciclo de cobrança.",
+        description: result.data.trialInvoiceRepriced
+          ? "A fatura do teste já foi atualizada com o valor do novo plano."
+          : result.data.appliedImmediately
+            ? "O novo plano já está em vigor."
+            : "A mudança entra em vigor no próximo ciclo de cobrança.",
       });
       router.refresh();
     });
@@ -488,7 +491,7 @@ function PlanosCard({
             <DialogTitle>Trocar de plano</DialogTitle>
             <DialogDescription>
               {pendingPlanTarget && pendingPlanTarget.sortOrder >= snapshot.planSortOrder
-                ? `Trocar agora para o plano "${pendingPlanTarget?.name}"? A diferença de preço aparece na próxima fatura.`
+                ? `Trocar agora para o plano "${pendingPlanTarget?.name}"? ${snapshot.cycle.trialNeverPaid ? "A fatura do teste já sai com o valor do novo plano." : "A diferença de preço aparece na próxima fatura."}`
                 : `Trocar para o plano "${pendingPlanTarget?.name}"? Se o uso atual couber, a troca vale a partir do próximo ciclo.`}
             </DialogDescription>
           </DialogHeader>
@@ -637,7 +640,7 @@ export function AssinaturaClient({
       ) : null}
 
       {snapshot.invoice && !paymentConfirmed ? (
-        <PixCard invoice={snapshot.invoice} timezone={snapshot.timezone} tenantSlug={tenantSlug} hasDocument={hasDocument} focusOnMount={focusPix} />
+        <PixCard invoice={snapshot.invoice} timezone={snapshot.timezone} tenantSlug={tenantSlug} hasDocument={hasDocument} isOwner={isOwner} focusOnMount={focusPix} />
       ) : null}
 
       {snapshot.status !== "CANCELED" && snapshot.priceCents > 0 ? (

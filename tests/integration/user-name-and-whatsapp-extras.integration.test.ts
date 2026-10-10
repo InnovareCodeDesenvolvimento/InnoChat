@@ -70,6 +70,7 @@ function signupPayload(overrides: Record<string, unknown> = {}) {
     email: `${slug}@example.com`,
     password: "senha-forte-123",
     document: "529.982.247-25",
+    phone: "(84) 99999-8888", // WhatsApp é obrigatório no cadastro
     termsVersion: TERMS_VERSION,
     acceptedTerms: true,
     name: "Maria Souza",

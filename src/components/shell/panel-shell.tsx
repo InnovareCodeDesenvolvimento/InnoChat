@@ -14,7 +14,7 @@ import { OnboardingTourProvider, TourReplayButton } from "@/components/onboardin
 import { InnovareCodeBadge } from "@/components/brand/innovarecode-badge";
 import { ResendVerificationButton } from "@/components/account/resend-verification-button";
 import type { SaveBillingContact } from "@/components/billing/billing-contact-types";
-import { SubscriptionBanner } from "./subscription-banner";
+import { NeedsDocumentBanner, SubscriptionBanner } from "./subscription-banner";
 import { BillingPhonePrompt } from "./billing-phone-prompt";
 import { BillingWhatsappProblemBanner } from "./billing-whatsapp-problem-banner";
 import type { BillingBannerState } from "./billing-banner-state";
@@ -32,6 +32,8 @@ type PanelShellProps = {
   subscriptionStatus?: SubscriptionStatus;
   /** Estado do banner de cobrança, já resolvido no servidor (`resolveBillingBanner`). */
   billingBanner?: BillingBannerState | null;
+  /** Dono em teste, sem CPF/CNPJ, nas últimas 24 h do teste: mostra a faixa que leva ao campo do Pix. */
+  needsDocument?: boolean;
   /** Instante (ms) em que o servidor calculou `billingBanner`: ponto de partida do contador. */
   billingNowMs?: number;
   /** OWNER sem WhatsApp de cobrança cadastrado: mostra o pedido discreto do número. */
@@ -103,6 +105,7 @@ export function PanelShell({
   userName = null,
   subscriptionStatus = null,
   billingBanner = null,
+  needsDocument = false,
   billingNowMs = 0,
   askBillingPhone = false,
   saveBillingContact,
@@ -171,6 +174,7 @@ export function PanelShell({
         </header>
 
         <SubscriptionBanner tenantSlug={tenantSlug} timezone={timezone} state={billingBanner} serverNowMs={billingNowMs} />
+        {needsDocument ? <NeedsDocumentBanner tenantSlug={tenantSlug} /> : null}
         {askBillingPhone && saveBillingContact ? <BillingPhonePrompt tenantSlug={tenantSlug} save={saveBillingContact} /> : null}
         {billingWhatsappProblem ? <BillingWhatsappProblemBanner tenantSlug={tenantSlug} phoneDisplay={billingWhatsappProblem.phoneDisplay} /> : null}
         {!emailVerified ? <EmailVerificationBanner /> : null}

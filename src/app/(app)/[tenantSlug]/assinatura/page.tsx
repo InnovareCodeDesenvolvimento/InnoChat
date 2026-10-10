@@ -119,6 +119,8 @@ export default async function AssinaturaPage({
   const cycleSnapshot: CycleSnapshot = {
     // Ciclo EFETIVO: plano que não oferece o ciclo guardado cobra mensal (troca de plano, preço retirado).
     billingCycle: charge.cycle,
+    // Teste que nunca pagou: a fatura do teste acompanha ciclo e cupom na hora (o servidor a refaz), então a tela não diz que ela "continua como está".
+    trialNeverPaid: status === "TRIALING" && !subscription.firstPaidAt,
     // Ciclos do plano que vale na próxima fatura: é contra ele que a troca de ciclo é validada.
     options: buildCycleOptions(billedPlan),
     // O plano não tem mais o ciclo guardado: a próxima fatura sai mensal (aviso na tela, sem e-mail).

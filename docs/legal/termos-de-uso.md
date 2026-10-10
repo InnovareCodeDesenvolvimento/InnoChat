@@ -1,6 +1,6 @@
 # Termos de uso — InnoChat
 
-**Vigência:** 1º de outubro de 2026 · **Versão:** 2026-10-01
+**Vigência:** 10 de outubro de 2026 · **Versão:** 2026-10-10
 
 Estes Termos de Uso explicam as regras para contratar e usar o InnoChat. Leia com atenção: ao criar uma conta, você declara que leu, entendeu e aceita estes Termos e a [Política de Privacidade](/privacidade).
 

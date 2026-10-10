@@ -153,7 +153,7 @@ describe("trimestral com cupom PERCENT só-trimestral, uso único", () => {
 });
 
 describe("cadastro", () => {
-  const base = { segment: null, ownerName: "Dona", password: "senha-forte-123", document: "529.982.247-25", termsVersion: "v1" };
+  const base = { segment: null, ownerName: "Dona", password: "senha-forte-123", document: "529.982.247-25", phone: "(84) 99999-8888", termsVersion: "v1" };
 
   it("anual sem cupom: fatura de 12 meses com o preço cheio e nenhum resgate", async () => {
     const plan = await makePlan({ active: true, sortOrder: -6100 });
@@ -174,19 +174,23 @@ describe("cadastro", () => {
     expect(await prisma.couponRedemption.count({ where: { tenantId: tenant.id } })).toBe(0);
   });
 
-  it("cupom só-anual no trimestral: mesma mensagem pública de um código que não existe, e nada é criado", async () => {
+  it("cupom só-anual no trimestral: é descartado como o código que não existe (a conta nasce sem cupom e nenhum uso é tomado)", async () => {
     await makePlan({ active: true, sortOrder: -6101 });
     const annualOnly = await makeCoupon({ appliesToCycles: ["ANNUAL"] });
     const { gateway } = createMockMercadoPagoGateway();
     const s1 = uniq("qa-ciclos-w1");
     const s2 = uniq("qa-ciclos-w2");
-    const wrong = await signUp({ ...base, companyName: "QA W1", slug: s1, email: `${s1}@example.com`, billingCycle: "QUARTERLY", couponCode: annualOnly.code }, gateway).catch((e) => e);
-    const ghost = await signUp({ ...base, companyName: "QA W2", slug: s2, email: `${s2}@example.com`, billingCycle: "QUARTERLY", couponCode: `NAOEXISTE${RUN}` }, gateway).catch((e) => e);
-    expect(wrong).toMatchObject({ code: "COUPON_INVALID" });
-    expect(ghost).toMatchObject({ code: "COUPON_INVALID" });
-    expect(wrong.message).toBe(ghost.message);
-    expect(wrong.message).not.toMatch(/anual/i); // não entrega qual cupom existe nem de que ciclo
-    expect(await prisma.tenant.count({ where: { slug: { in: [s1, s2] } } })).toBe(0);
+    const wrong = await signUp({ ...base, companyName: "QA W1", slug: s1, email: `${s1}@example.com`, billingCycle: "QUARTERLY", couponCode: annualOnly.code }, gateway);
+    const ghost = await signUp({ ...base, companyName: "QA W2", slug: s2, email: `${s2}@example.com`, billingCycle: "QUARTERLY", couponCode: `NAOEXISTE${RUN}` }, gateway);
+    for (const created of [wrong, ghost]) {
+      const tenant = await prisma.tenant.findUniqueOrThrow({ where: { slug: created.tenantSlug } });
+      tenantIds.push(tenant.id);
+      userIds.push(created.userId);
+      expect(created.couponDropped).toBe(true);
+      const sub = await prisma.subscription.findUniqueOrThrow({ where: { tenantId: tenant.id } });
+      expect(sub).toMatchObject({ billingCycle: "QUARTERLY", couponId: null }); // o ciclo escolhido segue; só o cupom cai
+      expect(await prisma.couponRedemption.count({ where: { tenantId: tenant.id } })).toBe(0);
+    }
     expect((await prisma.coupon.findUniqueOrThrow({ where: { id: annualOnly.id } })).redemptionsCount).toBe(0);
   });
 });

@@ -1,70 +1,73 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useRef, useState, useTransition } from "react";
-import { Building2, IdCard, Link2, Lock, Mail, MailCheck, Phone, RefreshCw, Tag, User, UserPlus } from "lucide-react";
+import { useRef, useState, useTransition } from "react";
+import { Building2, Lock, Mail, MailCheck, Phone, RefreshCw, Ticket, User, UserPlus } from "lucide-react";
 import { Field } from "@/components/ui/field";
 import { AuthInput } from "@/components/public/auth-input";
 import { AUTH_SUBMIT_CLASS, AuthPanel, AuthTrust } from "@/components/public/auth-panel";
-import { FormSection, TermsCheckbox } from "@/components/public/signup-shared";
-import { SignupBillingSection, type SignupPricing } from "@/components/public/signup-billing";
+import { TermsCheckbox } from "@/components/public/signup-shared";
+import { GoogleExternalButton } from "@/components/public/google-external-button";
+import { OrDivider } from "@/components/public/google-button";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
 import { EmptyState } from "@/components/ui/empty-state";
-import { slugify, validateSlug, type SlugValidationError } from "@/core/signup/slug";
-import { effectiveCycle, type BillingCycle } from "@/core/billing/pricing";
-import { normalizeDocumentDigits, validateCpfCnpj } from "@/core/billing/document";
-import { maskCpfCnpj } from "@/components/lib/document-mask";
+import { suggestEmail } from "@/core/signup/email-suggest";
 import { normalizeBrPhoneToE164 } from "@/core/contact/br-phone";
+import { maskBrPhone } from "@/components/lib/phone-mask";
 import { isPixelActive, newEventId, trackPixel } from "@/components/public/meta-events";
 import { signUpAction } from "@/modules/signup/actions";
 import { TERMS_VERSION } from "@/lib/legal";
 
-const SLUG_ERROR_MESSAGE: Record<SlugValidationError, string> = {
-  TOO_SHORT: "O endereço precisa ter pelo menos 3 letras.",
-  TOO_LONG: "O endereço pode ter no máximo 60 caracteres.",
-  INVALID_FORMAT: "Use só letras minúsculas, números e hífen, sem espaços, acentos ou símbolos.",
-  RESERVED: "Esse endereço já é reservado pelo sistema. Escolha outro.",
-};
+export type SignupCoupon = { code: string; summary: string };
 
 type FormState = {
   companyName: string;
-  slug: string;
-  slugTouched: boolean;
-  segment: string;
-  ownerName: string;
-  document: string;
+  name: string;
   phone: string;
   email: string;
   password: string;
-  confirmPassword: string;
   acceptedTerms: boolean;
+  /** Isca para robô: pessoa de verdade nunca vê nem preenche. */
+  website: string;
 };
 
 const EMPTY_FORM: FormState = {
   companyName: "",
-  slug: "",
-  slugTouched: false,
-  segment: "",
-  ownerName: "",
-  document: "",
+  name: "",
   phone: "",
   email: "",
   password: "",
-  confirmPassword: "",
   acceptedTerms: false,
+  website: "",
 };
 
-export function CadastroForm({ top, pricing = null }: { top?: React.ReactNode; pricing?: SignupPricing | null }) {
+const PHONE_ERROR = "Confira o WhatsApp: DDD e número, como (84) 99999-8888.";
+const GENERIC_ERROR = "Não deu para criar a conta agora. Confira os dados e tente de novo.";
+
+export function CadastroForm({
+  top,
+  coupon = null,
+  googleExternalHref = null,
+}: {
+  top?: React.ReactNode;
+  /** Cupom que veio no link (`?cupom=`), já conferido no servidor. Nunca é digitado aqui. */
+  coupon?: SignupCoupon | null;
+  /**
+   * Navegador embutido do Instagram/Facebook (o Google recusa o login ali): endereço que abre esta mesma
+   * página no navegador do sistema e inicia o Google lá. O formulário com e-mail e senha segue como caminho principal.
+   */
+  googleExternalHref?: string | null;
+}) {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
-  // Cobrança depois do teste (1, 3, 6 ou 12 meses) e cupom opcional: o servidor revalida os dois.
-  const [billingCycle, setBillingCycle] = useState<BillingCycle>("MONTHLY");
-  const [couponCode, setCouponCode] = useState("");
-  const [couponError, setCouponError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [termsOutdated, setTermsOutdated] = useState(false);
+  const [emailTaken, setEmailTaken] = useState(false);
+  const [emailSuggestion, setEmailSuggestion] = useState<string | null>(null);
   const [done, setDone] = useState<{ email: string } | null>(null);
+  // Conta criada e sessão aberta: o botão fica "criando" até a página trocar, para ninguém tocar duas vezes.
+  const [redirecting, setRedirecting] = useState(false);
   const [isPending, startTransition] = useTransition();
   const leadSentRef = useRef(false);
 
@@ -75,32 +78,19 @@ export function CadastroForm({ top, pricing = null }: { top?: React.ReactNode; p
     trackPixel("Lead");
   }
 
-  const slugValidation = useMemo(() => (form.slug ? validateSlug(form.slug) : null), [form.slug]);
-
-  function handleCompanyNameChange(value: string) {
-    setForm((f) => ({
-      ...f,
-      companyName: value,
-      slug: f.slugTouched ? f.slug : slugify(value),
-    }));
-  }
-
-  function handleSlugChange(value: string) {
-    setForm((f) => ({ ...f, slug: slugify(value), slugTouched: true }));
+  function set<K extends keyof FormState>(key: K, value: FormState[K]) {
+    setForm((f) => ({ ...f, [key]: value }));
   }
 
   function validateClientSide(): boolean {
     const errors: Record<string, string> = {};
     if (form.companyName.trim().length < 2) errors.companyName = "Informe o nome da empresa.";
-    if (slugValidation) errors.slug = SLUG_ERROR_MESSAGE[slugValidation];
-    if (!form.slug) errors.slug = "Escolha um endereço para a empresa.";
-    if (form.ownerName.trim().length < 2) errors.ownerName = "Informe seu nome (pelo menos 2 letras).";
-    else if (form.ownerName.trim().length > 80) errors.ownerName = "O nome pode ter no máximo 80 caracteres.";
-    if (!validateCpfCnpj(form.document).valid) errors.document = "Informe um CPF ou CNPJ válido.";
-    if (form.phone.trim() && !normalizeBrPhoneToE164(form.phone)) errors.phone = "Confira o WhatsApp: DDD e número, como (84) 99999-8888.";
-    if (!form.email.includes("@")) errors.email = "Informe um e-mail válido.";
+    if (form.name.trim().length < 2) errors.name = "Informe seu nome (pelo menos 2 letras).";
+    else if (form.name.trim().length > 80) errors.name = "O nome pode ter no máximo 80 caracteres.";
+    if (!form.phone.trim()) errors.phone = "Informe seu WhatsApp. É por ele que avisamos sobre o teste.";
+    else if (!normalizeBrPhoneToE164(form.phone)) errors.phone = PHONE_ERROR;
+    if (!/^\S+@\S+\.\S+$/.test(form.email.trim())) errors.email = "Informe um e-mail válido.";
     if (form.password.length < 8) errors.password = "A senha precisa ter pelo menos 8 caracteres.";
-    if (form.password !== form.confirmPassword) errors.confirmPassword = "As senhas não são iguais.";
     if (!form.acceptedTerms) errors.acceptedTerms = "É preciso aceitar os termos e a privacidade.";
     setFieldErrors(errors);
     return Object.keys(errors).length === 0;
@@ -109,67 +99,71 @@ export function CadastroForm({ top, pricing = null }: { top?: React.ReactNode; p
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setFormError(null);
-    setCouponError(null);
     setTermsOutdated(false);
+    setEmailTaken(false);
     if (!validateClientSide()) return;
 
     // Só existe id de evento se o visitante aceitou o Pixel: sem ele o servidor não manda nada à Meta.
     const metaEventId = isPixelActive() ? newEventId() : undefined;
+    const email = form.email.trim();
 
     startTransition(async () => {
       const result = await signUpAction({
         companyName: form.companyName.trim(),
-        slug: form.slug,
-        segment: form.segment.trim() || undefined,
-        ownerName: form.ownerName.trim(),
-        // `document` ainda não está no contrato de `signUpAction` (a Vega está adicionando) —
-        // manda de qualquer forma: quando o servidor aceitar, funciona sem mudança nenhuma aqui.
-        document: normalizeDocumentDigits(form.document),
-        phone: form.phone.trim() || undefined,
-        email: form.email.trim(),
+        name: form.name.trim(),
+        phone: form.phone.trim(),
+        email,
         password: form.password,
         termsVersion: TERMS_VERSION,
         acceptedTerms: form.acceptedTerms,
-        billingCycle: pricing ? effectiveCycle(pricing, billingCycle) : "MONTHLY",
-        couponCode: couponCode.trim() || undefined,
+        couponCode: coupon?.code,
         metaEventId,
+        hp_confirm_field: form.website,
       });
 
       if (!result.ok) {
-        if (result.error.code === "SLUG_TAKEN") {
-          setFieldErrors((prev) => ({ ...prev, slug: "Esse endereço já está em uso. Escolha outro." }));
-          return;
-        }
-        if (result.error.code === "EMAIL_TAKEN") {
+        const code = result.error.code;
+        if (code === "EMAIL_TAKEN") {
           setFieldErrors((prev) => ({ ...prev, email: "Já existe uma conta com este e-mail." }));
+          setEmailTaken(true);
           return;
         }
-        if (result.error.code === "INVALID_SLUG") {
-          setFieldErrors((prev) => ({ ...prev, slug: "Endereço inválido. Ajuste e tente de novo." }));
+        if (code === "DISPOSABLE_EMAIL") {
+          setFieldErrors((prev) => ({
+            ...prev,
+            email: "Use um e-mail que você acessa sempre: é por ele que chegam os avisos da conta.",
+          }));
           return;
         }
-        if (result.error.code === "INVALID_DOCUMENT") {
-          setFieldErrors((prev) => ({ ...prev, document: "Informe um CPF ou CNPJ válido." }));
+        if (code === "INVALID_PHONE") {
+          setFieldErrors((prev) => ({ ...prev, phone: PHONE_ERROR }));
           return;
         }
-        if (result.error.code === "INVALID_PHONE") {
-          setFieldErrors((prev) => ({ ...prev, phone: "Confira o WhatsApp: DDD e número, como (84) 99999-8888." }));
-          return;
-        }
-        if (result.error.code.startsWith("COUPON_") || result.error.code === "INVALID_CYCLE") {
-          setCouponError(result.error.message);
-          return;
-        }
-        if (result.error.code === "TERMS_VERSION_OUTDATED") {
+        if (code === "TERMS_VERSION_OUTDATED") {
           setTermsOutdated(true);
           return;
         }
-        setFormError(result.error.message);
+        if (code === "RATE_LIMITED") {
+          setFormError(result.error.message);
+          return;
+        }
+        // Qualquer outro código (validação técnica, endereço, legado) vira uma frase que a pessoa entende.
+        setFormError(GENERIC_ERROR);
+        return;
+      }
+
+      if (result.data.sessionStarted) {
+        // Conta criada e já logada: conta a conversão e segue direto para o painel (sem passar por "confirme seu e-mail").
+        if (metaEventId) trackPixel("CompleteRegistration", metaEventId);
+        setRedirecting(true);
+        // Navegação completa de propósito: o cookie de sessão acabou de nascer e a página seguinte precisa lê-lo do zero (router.push poderia reaproveitar um retorno em cache feito sem sessão).
+        // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+        window.location.assign("/pos-login");
         return;
       }
 
       if (metaEventId) trackPixel("CompleteRegistration", metaEventId);
-      setDone({ email: form.email.trim() });
+      setDone({ email });
     });
   }
 
@@ -191,13 +185,21 @@ export function CadastroForm({ top, pricing = null }: { top?: React.ReactNode; p
   }
 
   return (
-    <AuthPanel
-      title="Crie sua conta em 2 minutos"
-      description="3 dias de teste grátis. Sem cartão de crédito para começar."
-    >
+    <AuthPanel title="Crie sua conta grátis" description="3 dias de teste. Sem cartão." className="p-5 sm:p-8" compact>
       <div onFocusCapture={handleStart} onClickCapture={handleStart}>
-        {top ? <div className="mb-6 flex flex-col gap-4">{top}</div> : null}
-        <form onSubmit={handleSubmit} className="flex flex-col gap-6" noValidate>
+        {top ? <div className="mb-4 flex flex-col gap-4">{top}</div> : null}
+        {coupon ? (
+          <p
+            data-testid="cadastro-cupom"
+            className="mb-4 flex items-start gap-2 rounded-card bg-primary/10 px-3 py-2 text-sm text-text ring-1 ring-primary/25"
+          >
+            <Ticket className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+            <span>
+              Cupom <strong className="font-semibold">{coupon.code}</strong> aplicado: {coupon.summary}.
+            </span>
+          </p>
+        ) : null}
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
           {termsOutdated ? (
             <Alert variant="warning" title="Os termos foram atualizados">
               <div className="flex flex-col gap-2">
@@ -210,7 +212,6 @@ export function CadastroForm({ top, pricing = null }: { top?: React.ReactNode; p
           ) : null}
           {formError ? <Alert variant="danger">{formError}</Alert> : null}
 
-          <FormSection step={1} title="Sua empresa" id="sec-empresa">
           <Field label="Nome da empresa" htmlFor="companyName" required error={fieldErrors.companyName}>
             {(fieldProps) => (
               <AuthInput
@@ -218,84 +219,27 @@ export function CadastroForm({ top, pricing = null }: { top?: React.ReactNode; p
                 icon={Building2}
                 name="companyName"
                 autoComplete="organization"
+                enterKeyHint="next"
                 value={form.companyName}
-                onChange={(e) => handleCompanyNameChange(e.target.value)}
+                onChange={(e) => set("companyName", e.target.value)}
                 maxLength={120}
                 invalid={!!fieldErrors.companyName}
               />
             )}
           </Field>
 
-          <Field
-            label="Endereço da empresa"
-            htmlFor="slug"
-            required
-            hint="Vai aparecer como innochat.app/SEU-ENDEREÇO."
-            error={fieldErrors.slug}
-          >
-            {(fieldProps) => (
-              <AuthInput
-                {...fieldProps}
-                icon={Link2}
-                name="slug"
-                value={form.slug}
-                onChange={(e) => handleSlugChange(e.target.value)}
-                maxLength={60}
-                invalid={!!fieldErrors.slug}
-              />
-            )}
-          </Field>
-
-          <div className="md:col-span-2 lg:col-span-1 xl:col-span-2">
-          <Field label="Segmento (opcional)" htmlFor="segment" hint="Ex.: salão, barbearia, clínica.">
-            {(fieldProps) => (
-              <AuthInput
-                {...fieldProps}
-                icon={Tag}
-                name="segment"
-                value={form.segment}
-                onChange={(e) => setForm((f) => ({ ...f, segment: e.target.value }))}
-                maxLength={80}
-              />
-            )}
-          </Field>
-          </div>
-          </FormSection>
-
-          <FormSection step={2} title="Você" id="sec-voce">
-          <Field label="Seu nome" htmlFor="ownerName" required error={fieldErrors.ownerName}>
+          <Field label="Seu nome" htmlFor="name" required error={fieldErrors.name}>
             {(fieldProps) => (
               <AuthInput
                 {...fieldProps}
                 icon={User}
-                name="ownerName"
+                name="name"
                 autoComplete="name"
-                value={form.ownerName}
-                onChange={(e) => setForm((f) => ({ ...f, ownerName: e.target.value }))}
+                enterKeyHint="next"
+                value={form.name}
+                onChange={(e) => set("name", e.target.value)}
                 maxLength={80}
-                invalid={!!fieldErrors.ownerName}
-              />
-            )}
-          </Field>
-
-          <Field
-            label="CPF ou CNPJ"
-            htmlFor="document"
-            required
-            error={fieldErrors.document}
-            hint={!fieldErrors.document ? "Usado para gerar a cobrança Pix da assinatura." : undefined}
-          >
-            {(fieldProps) => (
-              <AuthInput
-                {...fieldProps}
-                icon={IdCard}
-                name="document"
-                inputMode="numeric"
-                autoComplete="off"
-                value={maskCpfCnpj(form.document)}
-                onChange={(e) => setForm((f) => ({ ...f, document: normalizeDocumentDigits(e.target.value) }))}
-                maxLength={18}
-                invalid={!!fieldErrors.document}
+                invalid={!!fieldErrors.name}
               />
             )}
           </Field>
@@ -303,8 +247,9 @@ export function CadastroForm({ top, pricing = null }: { top?: React.ReactNode; p
           <Field
             label="Seu WhatsApp"
             htmlFor="phone"
+            required
             error={fieldErrors.phone}
-            hint={!fieldErrors.phone ? "Opcional. É por onde avisamos sobre o teste e a mensalidade." : undefined}
+            hint="É por onde avisamos sobre o teste e a mensalidade."
           >
             {(fieldProps) => (
               <AuthInput
@@ -314,91 +259,124 @@ export function CadastroForm({ top, pricing = null }: { top?: React.ReactNode; p
                 type="tel"
                 inputMode="tel"
                 autoComplete="tel"
+                enterKeyHint="next"
                 placeholder="(84) 99999-8888"
                 value={form.phone}
-                onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
-                maxLength={20}
+                onChange={(e) => set("phone", maskBrPhone(e.target.value))}
+                maxLength={16}
                 invalid={!!fieldErrors.phone}
               />
             )}
           </Field>
 
-          <div className="md:col-span-2 lg:col-span-1 xl:col-span-2">
-          <Field label="E-mail" htmlFor="email" required error={fieldErrors.email}>
+          <div>
+            <Field label="E-mail" htmlFor="email" required error={fieldErrors.email}>
+              {(fieldProps) => (
+                <AuthInput
+                  {...fieldProps}
+                  icon={Mail}
+                  type="email"
+                  name="email"
+                  inputMode="email"
+                  autoComplete="email"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  enterKeyHint="next"
+                  value={form.email}
+                  onChange={(e) => {
+                    set("email", e.target.value);
+                    setEmailSuggestion(null);
+                    setEmailTaken(false);
+                  }}
+                  onBlur={() => setEmailSuggestion(suggestEmail(form.email))}
+                  invalid={!!fieldErrors.email}
+                />
+              )}
+            </Field>
+            {emailSuggestion ? (
+              <p className="mt-1.5 text-sm text-text-secondary" data-testid="cadastro-sugestao-email">
+                Você quis dizer{" "}
+                <button
+                  type="button"
+                  onClick={() => {
+                    set("email", emailSuggestion);
+                    setEmailSuggestion(null);
+                    setFieldErrors((prev) => ({ ...prev, email: "" }));
+                  }}
+                  className="-my-3 inline-flex min-h-11 items-center font-semibold text-primary underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                >
+                  {emailSuggestion}
+                </button>
+                ?
+              </p>
+            ) : null}
+            {emailTaken ? (
+              <p className="mt-1 text-sm text-text-secondary" data-testid="cadastro-email-existente">
+                <Link href="/login" className="inline-flex min-h-11 items-center font-semibold text-primary underline underline-offset-4">
+                  Entrar
+                </Link>
+                <span aria-hidden="true"> · </span>
+                <Link href="/recuperar-senha" className="inline-flex min-h-11 items-center font-semibold text-primary underline underline-offset-4">
+                  Esqueci a senha
+                </Link>
+              </p>
+            ) : null}
+          </div>
+
+          <Field label="Senha" htmlFor="password" required error={fieldErrors.password} hint="Pelo menos 8 caracteres.">
             {(fieldProps) => (
               <AuthInput
                 {...fieldProps}
-                icon={Mail}
-                type="email"
-                name="email"
-                autoComplete="email"
-                value={form.email}
-                onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-                invalid={!!fieldErrors.email}
+                icon={Lock}
+                type="password"
+                name="password"
+                autoComplete="new-password"
+                enterKeyHint="done"
+                value={form.password}
+                onChange={(e) => set("password", e.target.value)}
+                invalid={!!fieldErrors.password}
               />
             )}
           </Field>
-          </div>
-          </FormSection>
 
-          <FormSection step={3} title="Acesso" id="sec-acesso">
-            <Field label="Senha" htmlFor="password" required error={fieldErrors.password}>
-              {(fieldProps) => (
-                <AuthInput
-                  {...fieldProps}
-                  icon={Lock}
-                  type="password"
-                  name="password"
-                  autoComplete="new-password"
-                  value={form.password}
-                  onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
-                  invalid={!!fieldErrors.password}
-                />
-              )}
-            </Field>
-            <Field label="Confirmar senha" htmlFor="confirmPassword" required error={fieldErrors.confirmPassword}>
-              {(fieldProps) => (
-                <AuthInput
-                  {...fieldProps}
-                  icon={Lock}
-                  type="password"
-                  name="confirmPassword"
-                  autoComplete="new-password"
-                  value={form.confirmPassword}
-                  onChange={(e) => setForm((f) => ({ ...f, confirmPassword: e.target.value }))}
-                  invalid={!!fieldErrors.confirmPassword}
-                />
-              )}
-            </Field>
-          </FormSection>
-
-          <FormSection step={4} title="Depois do teste" id="sec-cobranca">
-            <SignupBillingSection
-              pricing={pricing}
-              cycle={billingCycle}
-              onCycleChange={setBillingCycle}
-              couponCode={couponCode}
-              onCouponCodeChange={(code) => {
-                setCouponCode(code);
-                setCouponError(null);
-              }}
-              couponError={couponError}
+          {/* Isca para robô. `inert` tira do teclado e do leitor de tela sem precisar de tabindex; fora da tela, sem display:none (robô simples ignora campo display:none). */}
+          <div aria-hidden="true" inert className="pointer-events-none absolute -left-[10000px] top-auto h-px w-px overflow-hidden">
+            <input
+              type="text"
+              name="hp_confirm_field"
+              autoComplete="off"
+              value={form.website}
+              onChange={(e) => set("website", e.target.value)}
             />
-          </FormSection>
+          </div>
 
           <TermsCheckbox
             checked={form.acceptedTerms}
-            onChange={(checked) => setForm((f) => ({ ...f, acceptedTerms: checked }))}
+            onChange={(checked) => set("acceptedTerms", checked)}
             error={fieldErrors.acceptedTerms}
           />
 
           <div>
-            <Button icon={UserPlus} type="submit" size="lg" isLoading={isPending} className={AUTH_SUBMIT_CLASS} loadingText="Criando conta…">
-              Criar conta
+            <Button
+              icon={UserPlus}
+              type="submit"
+              size="lg"
+              isLoading={isPending || redirecting}
+              className={AUTH_SUBMIT_CLASS}
+              loadingText={redirecting ? "Abrindo seu painel…" : "Criando conta…"}
+            >
+              Criar conta grátis
             </Button>
-            <AuthTrust trial />
+            <AuthTrust />
           </div>
         </form>
+        {googleExternalHref ? (
+          <div className="mt-5 flex flex-col gap-4">
+            <OrDivider />
+            <GoogleExternalButton href={googleExternalHref} />
+          </div>
+        ) : null}
       </div>
     </AuthPanel>
   );

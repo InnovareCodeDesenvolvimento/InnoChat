@@ -55,9 +55,17 @@ export type DunningCopyData = {
   trialNotConverted: boolean;
   /** Primeira mensagem de WhatsApp da cobrança para esta empresa: leva o aviso de como parar de receber. */
   firstWhatsapp: boolean;
+  /**
+   * A empresa ainda não informou CPF/CNPJ válido (cadastro enxuto): sem ele o Pix não nasce. Os avisos do fim do teste
+   * mandam informar o documento na tela Assinatura. Ausente = tem documento.
+   */
+  needsDocument?: boolean;
 };
 
-const OPT_OUT_FOOTER = "Não quer receber estes avisos por aqui? Responda SAIR.";
+/** E-mail do fim do teste de quem ainda não informou o CPF/CNPJ: o Pix só aparece depois disso. */
+const DOCUMENT_FOR_PIX_PARAGRAPH = "Para gerar o Pix, informe o CPF ou CNPJ da empresa na tela Assinatura. É só uma vez e leva um minuto.";
+
+const OPT_OUT_FOOTER ="Não quer receber estes avisos por aqui? Responda SAIR.";
 
 function hello(d: DunningCopyData): string {
   return d.ownerName ? `Oi, ${d.ownerName}!` : "Oi!";
@@ -176,9 +184,15 @@ export function buildWhatsappMessages(step: DunningStep, d: DunningCopyData): st
     case "TRIAL_T1": {
       const done = results(d);
       const lead = done ? `Até agora o Inno ${done}. ` : "";
+      if (d.needsDocument) {
+        return first([`${hello(d)} Seu teste do InnoChat termina amanhã às ${d.trialEndsTime}. ${lead}Pro bot de ${d.tenantName} continuar atendendo, informe o CPF ou CNPJ da empresa na tela Assinatura e pague com Pix (${amt(d)}): ${link}`]);
+      }
       return first(withPix(`${hello(d)} Seu teste do InnoChat termina amanhã às ${d.trialEndsTime}. ${lead}Pro bot de ${d.tenantName} continuar atendendo, é só assinar com Pix (${amt(d)}): ${link}`));
     }
     case "TRIAL_T0":
+      if (d.needsDocument) {
+        return first([`${addressed(d, "hoje é o último dia do teste.")} Pro bot de ${d.tenantName} não parar amanhã, informe o CPF ou CNPJ da empresa na tela Assinatura e pague ${amt(d)} no Pix: ${link}`]);
+      }
       return first(withPix(`${addressed(d, "hoje é o último dia do teste.")} Assine pro bot de ${d.tenantName} não parar amanhã: ${amt(d)} no Pix, ${link}`));
     case "TRIAL_CANCEL_WARN": {
       const left = d.daysToCancel ?? 2;
@@ -334,6 +348,7 @@ export function buildEmailCopy(step: DunningStep, d: DunningCopyData): EmailCopy
         paragraphs: [
           ...(done ? [done] : []),
           `Seu teste termina amanhã, às ${d.trialEndsTime}. Para o bot de "${t}" seguir atendendo, assine com Pix: ${amt(d)}${perPeriod(d)}.`,
+          ...(d.needsDocument ? [DOCUMENT_FOR_PIX_PARAGRAPH] : []),
         ],
         card: { dateLabel: "Teste termina", dateValue: `${d.trialEndsDate ?? ""} às ${d.trialEndsTime ?? ""}`.trim() },
         showPix: true,
@@ -348,7 +363,11 @@ export function buildEmailCopy(step: DunningStep, d: DunningCopyData): EmailCopy
         subject: `Seu teste termina hoje às ${d.trialEndsTime} (${t})`,
         preheader: "Assine para o bot não parar amanhã.",
         heading: "Hoje é o último dia do teste",
-        paragraphs: [...(done ? [done] : []), `Assine para o bot de "${t}" não parar amanhã. O valor é ${amt(d)}${perPeriod(d)}, no Pix.`],
+        paragraphs: [
+          ...(done ? [done] : []),
+          `Assine para o bot de "${t}" não parar amanhã. O valor é ${amt(d)}${perPeriod(d)}, no Pix.`,
+          ...(d.needsDocument ? [DOCUMENT_FOR_PIX_PARAGRAPH] : []),
+        ],
         card: { dateLabel: "Teste termina", dateValue: `hoje, ${d.trialEndsTime ?? ""}`.trim() },
         showPix: true,
         cta: "Assinar com Pix",

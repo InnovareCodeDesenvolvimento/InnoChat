@@ -1,5 +1,6 @@
 import { getPrisma } from "@/lib/db/prisma";
 import { logger } from "@/lib/logger";
+import type { Prisma } from "@/lib/db/types";
 import { retryDelayMinutes, type PlannedNotice } from "@/core/billing";
 
 /**
@@ -262,6 +263,36 @@ export async function recordInlineInvoiceNotice(args: { tenantId: string; subscr
         recipientMasked: args.recipientMasked,
         recipient: args.recipient ?? null,
         recipientKind: args.recipient ? "OWNER" : null,
+      },
+    ],
+    skipDuplicates: true,
+  });
+}
+
+/**
+ * Fatura do teste REPRECIFICADA (troca de ciclo, cupom ou plano durante o teste): a empresa já recebeu "Sua fatura chegou"
+ * da fatura anulada, então a nova nasce com o aviso tratado (`SKIPPED/STATUS_CHANGED`, chave `invoiceId + INVOICE_CREATED +
+ * EMAIL`) para a régua não mandar o mesmo e-mail a cada clique. Roda na transação da troca. Idempotente.
+ */
+export async function suppressInvoiceCreatedNotice(
+  db: Pick<Prisma.TransactionClient, "billingNotice">,
+  args: { tenantId: string; subscriptionId: string; invoiceId: string; expiresAt: Date },
+): Promise<void> {
+  const now = new Date();
+  await db.billingNotice.createMany({
+    data: [
+      {
+        tenantId: args.tenantId,
+        subscriptionId: args.subscriptionId,
+        invoiceId: args.invoiceId,
+        step: "INVOICE_CREATED",
+        channel: "EMAIL",
+        cycleKey: args.invoiceId,
+        status: "SKIPPED",
+        skippedReason: "STATUS_CHANGED",
+        notBefore: now,
+        expiresAt: args.expiresAt,
+        nextAttemptAt: now,
       },
     ],
     skipDuplicates: true,

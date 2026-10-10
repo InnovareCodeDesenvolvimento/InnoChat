@@ -442,7 +442,7 @@ describe("cadastro com plano anual e cupom", () => {
     const slug = uniq("it-anual-signup");
     const { gateway } = createMockMercadoPagoGateway();
     const result = await signUp(
-      { companyName: "Cadastro Anual", slug, segment: null, ownerName: "Dona", email: `${slug}@example.com`, password: "senha-forte-123", document: "529.982.247-25", termsVersion: "v1", billingCycle: "ANNUAL", couponCode: coupon.code.toLowerCase() },
+      { companyName: "Cadastro Anual", slug, segment: null, ownerName: "Dona", email: `${slug}@example.com`, password: "senha-forte-123", document: "529.982.247-25", phone: "(84) 99999-8888", termsVersion: "v1", billingCycle: "ANNUAL", couponCode: coupon.code.toLowerCase() },
       gateway,
     );
     const tenant = await prisma.tenant.findUniqueOrThrow({ where: { slug: result.tenantSlug } });
@@ -470,18 +470,26 @@ describe("cadastro com plano anual e cupom", () => {
     expect(paid.currentPeriodEnd.getTime()).toBe(expected.getTime());
   });
 
-  it("cupom inválido derruba o cadastro inteiro (nada fica pela metade)", async () => {
+  it("cupom inválido NÃO derruba o cadastro: a conta nasce sem cupom e o resultado avisa (couponDropped)", async () => {
     await makePlan({ sortOrder: -5001, active: true });
     const slug = uniq("it-anual-signup-bad");
     const { gateway } = createMockMercadoPagoGateway();
-    await expect(
-      signUp({ companyName: "Cadastro Ruim", slug, segment: null, ownerName: "Dona", email: `${slug}@example.com`, password: "senha-forte-123", document: "529.982.247-25", termsVersion: "v1", couponCode: "NAO-EXISTE-ABC" }, gateway),
-    ).rejects.toMatchObject({ code: "COUPON_INVALID" });
-    expect(await prisma.tenant.count({ where: { slug } })).toBe(0);
-    expect(await prisma.user.count({ where: { email: `${slug}@example.com` } })).toBe(0);
+    const result = await signUp(
+      { companyName: "Cadastro Ruim", slug, segment: null, ownerName: "Dona", email: `${slug}@example.com`, password: "senha-forte-123", document: "529.982.247-25", phone: "(84) 99999-8888", termsVersion: "v1", couponCode: "NAO-EXISTE-ABC" },
+      gateway,
+    );
+    const tenant = await prisma.tenant.findUniqueOrThrow({ where: { slug: result.tenantSlug } });
+    tenantIds.push(tenant.id);
+    userIds.push(result.userId);
+    expect(result.couponDropped).toBe(true);
+    const sub = await prisma.subscription.findUniqueOrThrow({ where: { tenantId: tenant.id } });
+    expect(sub.couponId).toBeNull();
+    const invoice = await prisma.invoice.findFirstOrThrow({ where: { subscriptionId: sub.id } });
+    expect(invoice).toMatchObject({ discountCents: 0, couponCode: null, isTrialConversion: true });
+    expect(await prisma.couponRedemption.count({ where: { tenantId: tenant.id } })).toBe(0);
   });
 
-  it("no cadastro, QUALQUER recusa de cupom vira COUPON_INVALID com a mesma mensagem (não serve para minerar códigos)", async () => {
+  it("no cadastro, QUALQUER recusa de cupom (vencido, futuro, outro plano, outro ciclo, esgotado, desligado, inexistente) só descarta o cupom e a conta nasce", async () => {
     // Usa o plano padrão que os testes anteriores deixaram ativo; `other` é inativo e nunca vira o padrão.
     const other = await makePlan();
     const expired = await makeCoupon({ validFrom: new Date("2020-01-01T00:00:00Z"), validUntil: new Date("2020-02-01T00:00:00Z") });
@@ -492,16 +500,40 @@ describe("cadastro com plano anual e cupom", () => {
     await prisma.coupon.update({ where: { id: exhausted.id }, data: { redemptionsCount: 1 } });
     const off = await makeCoupon({ active: false });
 
-    const messages = new Set<string>();
     for (const code of [expired.code, future.code, onlyOther.code, annualOnly.code, exhausted.code, off.code, "NAO-EXISTE-QQQ"]) {
       const slug = uniq("it-anual-signup-refusal");
       const { gateway } = createMockMercadoPagoGateway();
-      const error = await signUp({ companyName: "Cupom Ruim", slug, segment: null, ownerName: "Dona", email: `${slug}@example.com`, password: "senha-forte-123", document: "529.982.247-25", termsVersion: "v1", couponCode: code }, gateway).catch((e) => e);
-      expect(error).toMatchObject({ code: "COUPON_INVALID" });
-      messages.add((error as Error).message);
-      expect(await prisma.tenant.count({ where: { slug } })).toBe(0);
+      const result = await signUp({ companyName: "Cupom Ruim", slug, segment: null, ownerName: "Dona", email: `${slug}@example.com`, password: "senha-forte-123", document: "529.982.247-25", phone: "(84) 99999-8888", termsVersion: "v1", couponCode: code }, gateway);
+      const tenant = await prisma.tenant.findUniqueOrThrow({ where: { slug: result.tenantSlug } });
+      tenantIds.push(tenant.id);
+      userIds.push(result.userId);
+      expect(result.couponDropped, code).toBe(true);
+      expect(await prisma.couponRedemption.count({ where: { tenantId: tenant.id } }), code).toBe(0);
     }
-    expect(messages.size).toBe(1);
+    // Nenhum uso foi tomado dos cupons recusados.
+    expect((await prisma.coupon.findUniqueOrThrow({ where: { id: annualOnly.id } })).redemptionsCount).toBe(0);
+  });
+
+  it("corrida: o último uso do cupom some entre a prévia e a transação, e o cadastro refaz sem cupom (a conta nasce)", async () => {
+    await makePlan({ sortOrder: -4990, active: true }); // nunca o padrão: só existe se nenhum outro ativo
+    const coupon = await makeCoupon({ maxRedemptions: 1 });
+    const slug = uniq("it-anual-signup-race");
+    const { gateway } = createMockMercadoPagoGateway();
+    // Esgota depois da prévia: a prévia roda `previewCoupon` (lê `redemptionsCount`), então simulamos o outro cadastro
+    // tomando o uso no instante exato com um espião na leitura do cupom dentro da transação.
+    const redeem = await import("@/lib/db/coupon-redeem");
+    const spy = vi.spyOn(redeem, "claimCouponRedemption").mockResolvedValueOnce(false);
+    try {
+      const result = await signUp({ companyName: "Corrida Cupom", slug, segment: null, ownerName: "Dona", email: `${slug}@example.com`, password: "senha-forte-123", document: "529.982.247-25", phone: "(84) 99999-8888", termsVersion: "v1", couponCode: coupon.code }, gateway);
+      const tenant = await prisma.tenant.findUniqueOrThrow({ where: { slug: result.tenantSlug } });
+      tenantIds.push(tenant.id);
+      userIds.push(result.userId);
+      expect(result.couponDropped).toBe(true);
+      expect(await prisma.couponRedemption.count({ where: { tenantId: tenant.id } })).toBe(0);
+      expect((await prisma.coupon.findUniqueOrThrow({ where: { id: coupon.id } })).redemptionsCount).toBe(0);
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it("ciclo anual num plano sem preço anual é recusado", async () => {
@@ -509,7 +541,7 @@ describe("cadastro com plano anual e cupom", () => {
     const slug = uniq("it-anual-signup-noannual");
     const { gateway } = createMockMercadoPagoGateway();
     await expect(
-      signUp({ companyName: "Sem Anual", slug, segment: null, ownerName: "Dona", email: `${slug}@example.com`, password: "senha-forte-123", document: "529.982.247-25", termsVersion: "v1", billingCycle: "ANNUAL" }, gateway),
+      signUp({ companyName: "Sem Anual", slug, segment: null, ownerName: "Dona", email: `${slug}@example.com`, password: "senha-forte-123", document: "529.982.247-25", phone: "(84) 99999-8888", termsVersion: "v1", billingCycle: "ANNUAL" }, gateway),
     ).rejects.toMatchObject({ code: "INVALID_CYCLE" });
   });
 });

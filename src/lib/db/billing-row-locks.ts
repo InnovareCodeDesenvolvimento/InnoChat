@@ -18,3 +18,12 @@ export async function lockPlanRow(db: Db, planId: string): Promise<void> {
 export async function lockSubscriptionRow(db: Db, tenantId: string): Promise<void> {
   await db.$queryRaw(Prisma.sql`SELECT "id" FROM "subscriptions" WHERE "tenantId" = ${tenantId} FOR UPDATE`);
 }
+
+/**
+ * Trava a linha da assinatura pelo id (quem só conhece a fatura, como a baixa de pagamento). Mesma ordem combinada:
+ * assinatura primeiro, depois fatura. Sem isto, a baixa (fatura, depois assinatura) e a reprecificação do teste ou o
+ * cancelamento (assinatura, depois fatura) podiam travar uma na outra.
+ */
+export async function lockSubscriptionRowById(db: Db, subscriptionId: string): Promise<void> {
+  await db.$queryRaw(Prisma.sql`SELECT "id" FROM "subscriptions" WHERE "id" = ${subscriptionId} FOR UPDATE`);
+}

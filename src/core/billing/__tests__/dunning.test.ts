@@ -25,6 +25,7 @@ function paying(overrides: Partial<DunningSubscription> = {}, input: Partial<Dun
     openInvoice: { id: "inv1", dueAt: new Date("2026-10-28T10:00:00.000Z"), createdAt: new Date("2026-10-23T10:00:00.000Z"), isTrialConversion: false },
     manualSuspension: false,
     whatsappConnected: true,
+    hasDocument: true,
     ...input,
   };
 }
@@ -202,6 +203,7 @@ describe("planNotices: sequência de conversão do teste grátis (§2.3.1)", () 
     openInvoice: { id: "tinv", dueAt: at("2026-10-04T15:00:00Z"), createdAt: at("2026-10-01T15:00:00Z"), isTrialConversion: true },
     manualSuspension: false,
     whatsappConnected: true,
+    hasDocument: true,
     ...input,
   });
 
@@ -209,6 +211,20 @@ describe("planNotices: sequência de conversão do teste grátis (§2.3.1)", () 
     expect(stepsOf(trial(), at("2026-10-01T18:00:00Z"))).toEqual(["INVOICE_CREATED/EMAIL"]);
     expect(currentBellStep(trial(), at("2026-10-01T18:00:00Z"))).toBeNull();
     expect(planNotices(trial({}, { openInvoice: null }), at("2026-10-01T18:00:00Z"))).toEqual([]);
+  });
+
+  it("sem CPF/CNPJ (cadastro enxuto): a fatura gerada do teste NÃO é devida; os demais avisos do teste seguem", () => {
+    const noDoc = { hasDocument: false };
+    expect(stepsOf(trial({}, noDoc), at("2026-10-01T18:00:00Z"))).toEqual([]);
+    expect(stepsOf(trial({}, noDoc), at("2026-10-02T12:00:00Z"))).toEqual(["TRIAL_DAY1/EMAIL", "TRIAL_DAY1/WHATSAPP"]);
+    expect(stepsOf(trial({}, noDoc), at("2026-10-03T12:00:00Z"))).toEqual(["TRIAL_T1/EMAIL", "TRIAL_T1/WHATSAPP"]);
+    expect(stepsOf(trial({}, noDoc), at("2026-10-04T12:00:00Z"))).toEqual(["TRIAL_T0/EMAIL", "TRIAL_T0/WHATSAPP"]);
+  });
+
+  it("quando o CPF/CNPJ entra no meio do teste, a fatura gerada passa a ser devida (a janela começa na criação da fatura)", () => {
+    const now = at("2026-10-02T09:00:00Z");
+    expect(stepsOf(trial({}, { hasDocument: false }), now)).not.toContain("INVOICE_CREATED/EMAIL");
+    expect(stepsOf(trial({}, { hasDocument: true }), now)).toContain("INVOICE_CREATED/EMAIL");
   });
 
   it("dia seguinte ao cadastro: resumo do 1º dia por e-mail e WhatsApp (só se conectou)", () => {

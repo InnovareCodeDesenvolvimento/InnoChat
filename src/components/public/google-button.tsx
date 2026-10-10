@@ -1,8 +1,11 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { useFormStatus } from "react-dom";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/components/lib/cn";
+
+const AUTO_START_KEY = "innochat:google-autostart";
 
 /** Logo "G" multicolorido do Google (SVG inline, cores fixas exigidas pela marca). */
 export function GoogleLogo({ className }: { className?: string }) {
@@ -59,9 +62,37 @@ export function GoogleSubmitButton({ label }: { label: string }) {
  * Action dispara `signIn("google")` e o Auth.js redireciona para o Google. Só renderize quando
  * `getPublicAuthOptions().google === true`.
  */
-export function GoogleButton({ label, action }: { label: string; action: () => Promise<void> }) {
+export function GoogleButton({
+  label,
+  action,
+  coupon,
+  autoStart = false,
+}: {
+  label: string;
+  action: (formData: FormData) => Promise<void>;
+  /** Cupom que veio no link do anúncio: viaja no formulário e o servidor guarda num cookie até a volta do Google. */
+  coupon?: string;
+  /**
+   * Inicia o Google sozinho ao abrir a página (quem veio do navegador embutido do Instagram e tocou em
+   * "Continuar com Google"). Uma vez por aba: sem isso, voltar do Google com erro reabriria o Google em laço.
+   */
+  autoStart?: boolean;
+}) {
+  const formRef = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    if (!autoStart) return;
+    try {
+      if (window.sessionStorage.getItem(AUTO_START_KEY)) return;
+      window.sessionStorage.setItem(AUTO_START_KEY, "1");
+    } catch {
+      return; // sem sessionStorage não dá para garantir "uma vez só": não inicia sozinho, o botão continua ali.
+    }
+    // Sem cleanup de propósito: o StrictMode do dev roda o efeito duas vezes e o segundo passo já vê a marca.
+    setTimeout(() => formRef.current?.requestSubmit(), 0);
+  }, [autoStart]);
   return (
-    <form action={action}>
+    <form action={action} ref={formRef}>
+      {coupon ? <input type="hidden" name="coupon" value={coupon} /> : null}
       <GoogleSubmitButton label={label} />
     </form>
   );

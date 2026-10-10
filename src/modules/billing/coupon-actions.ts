@@ -20,6 +20,7 @@ import {
   PUBLIC_COUPON_REFUSAL,
   setCouponActive,
   updateCoupon,
+  type CouponApplication,
   type CouponInput,
   type CouponListItem,
   type CouponPreview,
@@ -90,8 +91,8 @@ export async function previewMyCouponAction(tenantSlug: string, input: unknown):
   });
 }
 
-/** Aplica o cupom à assinatura: vale a partir da próxima fatura a ser gerada. */
-export async function applyMyCouponAction(tenantSlug: string, input: unknown): Promise<Result<CouponPreview>> {
+/** Aplica o cupom à assinatura: vale a partir da próxima fatura a ser gerada; no teste que ainda não pagou, a fatura aberta é recriada com o desconto (`trialInvoiceRepriced`). */
+export async function applyMyCouponAction(tenantSlug: string, input: unknown): Promise<Result<CouponApplication>> {
   return runAction(async () => {
     const ctx = await requireTenantMember(tenantSlug, ["OWNER"]);
     const { tenant } = ctx;

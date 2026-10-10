@@ -21,9 +21,14 @@ test.use({ storageState: OWNER_STORAGE_STATE });
 
 test.describe("Assinatura: Gerar Pix agora", () => {
   let invoiceId: string;
+  let originalDocument: string | null = null;
 
   test.beforeAll(async () => {
     const tenant = await prisma.tenant.findUniqueOrThrow({ where: { slug: SEED_TENANT_SLUG } });
+    // Sem CPF/CNPJ a tela mostra o campo do documento no lugar do botão (cadastro sem fricção): este teste é do botão,
+    // então a empresa de seed ganha um CPF válido durante o teste e volta ao que era no fim.
+    originalDocument = tenant.document;
+    await prisma.tenant.update({ where: { id: tenant.id }, data: { document: "52998224725" } });
     const subscription = await prisma.subscription.findFirstOrThrow({ where: { tenantId: tenant.id } });
     const invoice = await prisma.invoice.create({
       data: {
@@ -40,12 +45,21 @@ test.describe("Assinatura: Gerar Pix agora", () => {
 
   test.afterAll(async () => {
     await prisma.invoice.deleteMany({ where: { id: invoiceId } });
+    await prisma.tenant.update({ where: { slug: SEED_TENANT_SLUG }, data: { document: originalDocument } });
   });
 
   test("6ª tentativa em menos de 10min devolve RATE_LIMITED (independe do Mercado Pago estar configurado)", async ({ page }) => {
     await page.goto(`/${SEED_TENANT_SLUG}/assinatura`);
     const button = page.getByRole("button", { name: /Gerar Pix agora|Tentar de novo/ });
     await expect(button).toBeVisible();
+    // O botão vem do servidor antes de hidratar: um clique nesse intervalo se perde. O React marca o nó com `__reactProps$` ao hidratar.
+    await button.evaluate(
+      (el) => new Promise<void>((resolve) => {
+        const ready = () => Object.keys(el).some((k) => k.startsWith("__reactProps$"));
+        if (ready()) return resolve();
+        const timer = setInterval(() => { if (ready()) { clearInterval(timer); resolve(); } }, 50);
+      }),
+    );
 
     // 5 primeiras tentativas: dentro do teto, mas ainda assim falham (MP não configurado neste
     // ambiente) — o que importa aqui é que NENHUMA delas mostra a mensagem de rate limit.

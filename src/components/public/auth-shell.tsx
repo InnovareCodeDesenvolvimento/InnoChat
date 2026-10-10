@@ -54,12 +54,18 @@ export function AuthShell({
   children,
   formMaxWidth = "max-w-md",
   topLink = DEFAULT_TOP_LINK,
+  compactMobileBrand = false,
 }: {
   children: React.ReactNode;
   /** Largura do bloco central — o cadastro (mais campos, 2 colunas) usa `max-w-2xl`. */
   formMaxWidth?: "max-w-md" | "max-w-2xl";
   /** Link alternativo no canto superior direito (padrão SaaS: "Não tem conta? Criar conta"). */
   topLink?: AuthTopLink;
+  /**
+   * Celular: troca o banner do mascote (~8 rem) por um wordmark pequeno na mesma linha do link
+   * "Já tem conta? Entrar", para o primeiro campo aparecer sem rolar. Desktop não muda.
+   */
+  compactMobileBrand?: boolean;
 }) {
   return (
     <main className="flex min-h-screen flex-col lg:grid lg:grid-cols-[48fr_52fr]">
@@ -111,7 +117,7 @@ export function AuthShell({
       </aside>
 
       {/* Faixa de marca — tablet/mobile */}
-      <header className="auth-brand-bg-compact flex justify-center bg-sidebar px-4 pt-4 pb-2 lg:hidden">
+      <header className={`auth-brand-bg-compact justify-center bg-sidebar px-4 pt-4 pb-2 lg:hidden ${compactMobileBrand ? "hidden md:flex" : "flex"}`}>
         <Image
           src="/marca/inno-banner.webp"
           alt={ART_ALT}
@@ -122,9 +128,9 @@ export function AuthShell({
         />
       </header>
 
-      <section className="auth-form-bg flex flex-1 flex-col px-4 pb-6 pt-2 sm:px-8 lg:min-h-screen lg:px-10 lg:py-8 xl:px-14">
+      <section className="auth-form-bg flex flex-1 flex-col px-4 pb-6 pt-2 in-data-[consent-banner=open]:pb-52 sm:px-8 sm:in-data-[consent-banner=open]:pb-6 lg:min-h-screen lg:px-10 lg:py-8 xl:px-14">
         <div className="mx-auto flex w-full max-w-2xl items-center justify-between gap-4">
-          <div className="hidden lg:block">
+          <div className={compactMobileBrand ? "md:hidden lg:block" : "hidden lg:block"}>
             <AuthWordmark />
           </div>
           <p className="ml-auto text-sm text-text-secondary">
