@@ -189,6 +189,8 @@ model Tenant {
   waitlistEntries    WaitlistEntry[]
   supportSessions    SupportSession[]
   rescueLeads        RescueLead[]
+  serviceBundles     ServiceBundle[]
+  pricingRules       PricingRule[]
 
   @@map("tenants")
 }
@@ -413,6 +415,9 @@ model Service {
   professionalServices ProfessionalService[]
   appointments         Appointment[]
   waitlistEntries      WaitlistEntry[]
+  addons               ServiceAddon[]
+  bundleItems          ServiceBundleItem[]
+  pricingRules         PricingRule[]
 
   @@index([tenantId, active, sortOrder])
   @@map("services")
@@ -457,6 +462,84 @@ model ProfessionalService {
   @@unique([professionalId, serviceId])
   @@index([serviceId])
   @@map("professional_services")
+}
+
+// ---------------------------------------------------------------------------
+// Onda 3 — Catálogo avançado: adicionais, combos/bundles e precificação dinâmica
+// ---------------------------------------------------------------------------
+
+model ServiceAddon {
+  id         String   @id @default(cuid())
+  serviceId  String
+  name       String   @db.VarChar(80)
+  priceCents Int      @default(0)
+  isRequired Boolean  @default(false)
+  order      Int      @default(0)
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  service Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@index([serviceId, order])
+  @@map("service_addons")
+}
+
+model ServiceBundle {
+  id         String   @id @default(cuid())
+  tenantId   String
+  name       String   @db.VarChar(120)
+  priceCents Int
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  tenant Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  items  ServiceBundleItem[]
+
+  @@index([tenantId])
+  @@map("service_bundles")
+}
+
+model ServiceBundleItem {
+  id        String @id @default(cuid())
+  bundleId  String
+  serviceId String
+  order     Int    @default(0)
+  quantity  Int    @default(1)
+
+  bundle  ServiceBundle @relation(fields: [bundleId], references: [id], onDelete: Cascade)
+  service Service       @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+
+  @@unique([bundleId, serviceId])
+  @@index([serviceId])
+  @@map("service_bundle_items")
+}
+
+enum PricingRuleKind {
+  WEEKDAY_OVERRIDE // preço diferente por dia da semana
+  HOUR_OVERRIDE // preço diferente por hora
+  DURATION_OVERRIDE // preço por duração customizada
+  TIER // tiers: "ate 30 min = X, 30-60 min = Y, 60+ = Z"
+}
+
+model PricingRule {
+  id        String          @id @default(cuid())
+  tenantId  String
+  serviceId String? // null = vale para todos os serviços do tenant
+  kind      PricingRuleKind
+  // Critério + valor guardado como JSONB (flexível, validado no app).
+  config    Json
+  isActive  Boolean         @default(true)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  service Service? @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, isActive])
+  @@index([serviceId])
+  @@map("pricing_rules")
 }
 
 // Hora local ("HH:mm") — o cálculo de slots converte para o fuso do Tenant (core/agenda).

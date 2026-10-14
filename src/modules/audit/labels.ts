@@ -81,6 +81,19 @@ export const ACTION_LABELS: Record<string, string> = {
   "backup.key_generated": "Chave do backup gerada",
   "support.session_started": "Sessão de suporte iniciada",
   "support.session_closed": "Sessão de suporte encerrada",
+  "service_addon.created": "Adicional de serviço criado",
+  "service_addon.updated": "Adicional de serviço alterado",
+  "service_addon.price_changed": "Preço de adicional alterado",
+  "service_addon.deleted": "Adicional de serviço excluído",
+  "service_bundle.created": "Combo de serviços criado",
+  "service_bundle.updated": "Combo de serviços alterado",
+  "service_bundle.price_changed": "Preço de combo alterado",
+  "service_bundle.deleted": "Combo de serviços excluído",
+  "service_bundle.item_added": "Item adicionado ao combo",
+  "service_bundle.item_removed": "Item removido do combo",
+  "pricing_rule.created": "Regra de preço criada",
+  "pricing_rule.updated": "Regra de preço alterada",
+  "pricing_rule.deleted": "Regra de preço excluída",
 };
 
 export function actionLabel(action: string): string {
@@ -92,7 +105,7 @@ export type AuditArea = { id: string; label: string; prefixes: readonly string[]
 /** Grupos do filtro "O que mudou": cada um cobre um ou mais prefixos de ação (`area.`). */
 export const AUDIT_AREAS: readonly AuditArea[] = [
   { id: "agenda", label: "Agenda e agendamentos", prefixes: ["appointment.", "schedule_block.", "waitlist."] },
-  { id: "catalogo", label: "Serviços e preços", prefixes: ["service."] },
+  { id: "catalogo", label: "Serviços e preços", prefixes: ["service.", "service_addon.", "service_bundle.", "pricing_rule."] },
   { id: "profissionais", label: "Profissionais e horários", prefixes: ["professional.", "working_hours."] },
   { id: "equipe", label: "Equipe", prefixes: ["team."] },
   { id: "empresa", label: "Configurações da empresa", prefixes: ["settings."] },
@@ -153,6 +166,11 @@ export const FIELD_LABELS: Record<string, string> = {
   maxProfessionals: "Profissionais",
   description: "Descrição",
   kind: "Tipo",
+  isRequired: "Obrigatório",
+  order: "Ordem",
+  isActive: "Ativo",
+  quantity: "Quantidade",
+  config: "Configuração",
   value: "Valor",
   validFrom: "Vale a partir de",
   validUntil: "Vale até",

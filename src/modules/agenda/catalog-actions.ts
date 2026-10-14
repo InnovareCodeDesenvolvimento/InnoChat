@@ -3,6 +3,7 @@
 import { z } from "zod";
 import { requireTenantMember } from "@/lib/auth/guards";
 import { runAction, type Result } from "@/lib/result";
+import { DomainError } from "@/lib/errors";
 import { forTenant } from "@/lib/db/tenant-client";
 import { getPrisma } from "@/lib/db/prisma";
 import { formatBrl, formatDateTimeBr, formatWorkingHours } from "@/modules/audit/describe";
@@ -39,6 +40,9 @@ const serviceSchema = z.object({
   sortOrder: z.coerce.number().int().default(0),
 });
 
+const serviceUpdateSchema = serviceSchema.partial().extend({
+  priceChangeReason: z.string().trim().min(15, "O motivo da alteração de preço deve ter pelo menos 15 caracteres.").max(500, "O motivo da alteração de preço não pode ultrapassar 500 caracteres.").optional(),
+});
 const SERVICE_FIELDS = ["name", "durationMin", "bufferAfterMin", "priceCents", "active", "sortOrder"] as const;
 const PROFESSIONAL_FIELDS = ["name", "active", "sortOrder"] as const;
 
@@ -74,13 +78,23 @@ export async function updateServiceAction(tenantSlug: string, serviceId: string,
     const ctx = await requireTenantMember(tenantSlug);
     const { tenant } = ctx;
     await assertTenantCanWrite(tenant.id);
-    const data = serviceSchema.partial().parse(input);
+    const data = serviceUpdateSchema.parse(input);
     const before = await forTenant(tenant.id).service.findFirst({ where: { id: serviceId } });
-    const updated = await updateService(tenant.id, serviceId, data);
+    if (!before) throw new DomainError("NOT_FOUND", "Serviço não encontrado.");
+
+    if (data.priceCents !== undefined && data.priceCents !== before.priceCents) {
+      if (!data.priceChangeReason || data.priceChangeReason.trim().length < 15) {
+        throw new DomainError("PRICE_CHANGE_REASON_REQUIRED", "Alteração de preço exige justificativa com pelo menos 15 caracteres.");
+      }
+    }
+
+    const { priceChangeReason, ...serviceData } = data;
+    const updated = await updateService(tenant.id, serviceId, serviceData);
     if (before) {
       const changes = diffChanges(before, updated, SERVICE_FIELDS);
       if (Object.keys(changes).length > 0) {
         const priceChanged = "priceCents" in changes;
+        const reasonSuffix = priceChanged && priceChangeReason ? ` Motivo: ${priceChangeReason.trim()}` : "";
         await recordAudit({
           tenantId: tenant.id,
           actor: memberActor(ctx),
@@ -88,7 +102,7 @@ export async function updateServiceAction(tenantSlug: string, serviceId: string,
           targetType: "service",
           targetId: serviceId,
           summary: priceChanged
-            ? `Mudou o preço do serviço ${updated.name} de ${formatBrl(before.priceCents)} para ${formatBrl(updated.priceCents)}.`
+            ? `Alterou preço do serviço '${updated.name}' de ${formatBrl(before.priceCents)} para ${formatBrl(updated.priceCents)}.${reasonSuffix}`
             : `Alterou o serviço ${updated.name}.`,
           changes,
           supportSessionId: ctx.supportSessionId ?? null,

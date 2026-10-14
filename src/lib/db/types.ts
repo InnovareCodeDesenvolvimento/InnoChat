@@ -27,5 +27,6 @@ export type {
   RescueLeadStatus,
   RescueLead,
   PlatformWhatsappConnection,
+  PricingRuleKind,
   Prisma,
 } from "@prisma/client";

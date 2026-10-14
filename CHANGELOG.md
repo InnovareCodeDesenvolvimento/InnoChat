@@ -7,6 +7,11 @@ Versão semântica (`MAJOR.MINOR.PATCH`), lida do `version` do `package.json` e 
 
 Toda publicação em produção sobe a versão e ganha uma entrada aqui.
 
+## v1.13.0 — 2026-10-14
+
+### Novidade
+- **Suporte do admin no catálogo avançado (Onda 3):** o admin em modo de suporte pode editar adicionais (ServiceAddon), criar e organizar serviços compostos/pacotes (ServiceBundle + ServiceBundleItem) e configurar regras de preço dinâmico por dia da semana, horário, duração ou faixa de tempo (PricingRule). Toda alteração de preço — em serviço, adicional, pacote ou regra — pede justificativa obrigatória (15 a 500 letras) e fica registrada no histórico com o nome do admin e o ID da sessão de suporte. Exclusões são lógicas (o item deixa de aparecer, mas o histórico de agendamentos passados continua intacto).
+
 ## v1.12.0 — 2026-10-14
 
 ### Novidade
