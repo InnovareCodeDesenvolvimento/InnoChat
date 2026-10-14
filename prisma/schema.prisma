@@ -38,6 +38,9 @@ model User {
   // Notificações da plataforma (admin): "marcar todas como lidas" = tudo com data <= este instante.
   platformNotificationsReadAllAt DateTime?
 
+  // Resgate de leads: último acesso registrado do usuário ao sistema (sessão/login/navegação).
+  lastSeenAt DateTime?
+
   // 2FA por TOTP (Onda 0, item 3). `totpSecretEnc` = segredo base32 cifrado (`enc:v1:`). Com
   // `totpEnabledAt` NULO e segredo preenchido = cadastro iniciado, ainda NÃO confirmado (não vale
   // no login). `totpEnabledAt` preenchido = 2FA ligada (CHECK: exige segredo). `totpLastUsedStep` =
@@ -59,7 +62,9 @@ model User {
   chatMessagesAuthored      ChatMessage[]              @relation("ChatMessageAuthor")
   platformSettingsUpdates   PlatformSettings[]         @relation("PlatformSettingsUpdatedBy")
   supportSessions           SupportSession[]
+  rescueLeads               RescueLead[]
 
+  @@index([lastSeenAt])
   @@map("users")
 }
 
@@ -183,6 +188,7 @@ model Tenant {
   couponRedemptions  CouponRedemption[]
   waitlistEntries    WaitlistEntry[]
   supportSessions    SupportSession[]
+  rescueLeads        RescueLead[]
 
   @@map("tenants")
 }
@@ -350,8 +356,13 @@ model PlatformSettings {
   salesWhatsappE164 String?
 
   // Chave geral da régua por WhatsApp (docs/regua-de-cobranca.md §2.4). Desligada = a régua roda só por
-  // e-mail e sino. O número em si mora em `PlatformWhatsappConnection` (conexão ACTIVE), nunca aqui.
+  // e-mail e sino. O número em si mora em `PlatformWhatsappConnection` (conexão ACTIVE com purpose=BILLING), nunca aqui.
   platformWhatsappEnabled Boolean @default(false)
+
+  // Resgate de leads por WhatsApp da plataforma (purpose=RESCUE ou conexão dedicada).
+  rescueWhatsappEnabled Boolean @default(false)
+  rescueQuietHoursStart Int     @default(20)
+  rescueQuietHoursEnd   Int     @default(8)
 
   // Última execução dos jobs periódicos (`billing/tick`/`maintenance/tick`, chamados por cron
   // externo) — para a tela admin "Saúde" mostrar quando rodou e o resultado, e alertar se um tick
@@ -1297,6 +1308,8 @@ model PlatformWhatsappConnection {
   label            String
   status           String  @default("QRCODE") // QRCODE | CONNECTED | DISCONNECTED (CHECK)
   role             String  @default("PENDING") // PENDING | ACTIVE | RETIRED (CHECK)
+  // Propósito da conexão: BILLING (régua de cobrança) ou RESCUE (resgate de leads).
+  purpose          String  @default("BILLING")
   // Só dígitos com DDI, preenchido ao conectar (ownerJid).
   phoneE164        String?
 
@@ -1312,9 +1325,11 @@ model PlatformWhatsappConnection {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  notices BillingNotice[]
+  notices     BillingNotice[]
+  rescueLeads RescueLead[]
 
   @@index([role])
+  @@index([purpose, role])
   // Trava anti-loop do claim: "este remetente é número da plataforma (de qualquer papel)?".
   @@index([phoneE164])
   @@map("platform_whatsapp_connections")
@@ -1717,4 +1732,59 @@ model SupportSession {
   @@index([tenantId, closedAt])
   @@index([adminUserId, closedAt])
   @@map("support_sessions")
+}
+
+// ---------------------------------------------------------------------------
+// Resgate de Leads — Meta Ads / Abandono de Funil (Fase 1)
+// ---------------------------------------------------------------------------
+
+enum RescueLeadStatus {
+  PENDING
+  MESSAGE_1_SENDING
+  MESSAGE_1_SENT
+  MESSAGE_2_SENDING
+  MESSAGE_2_SENT
+  RESPONDED
+  CONVERTED
+  OPTED_OUT
+  EXPIRED
+  SKIPPED
+}
+
+model RescueLead {
+  id        String           @id @default(cuid())
+  userId    String           @unique
+  tenantId  String
+  phoneE164 String
+  status    RescueLeadStatus @default(PENDING)
+
+  step1ScheduledAt DateTime
+  step1SentAt      DateTime?
+  step2ScheduledAt DateTime?
+  step2SentAt      DateTime?
+
+  nextRunAt     DateTime?
+  attempts      Int       @default(0)
+  lastErrorCode String?
+
+  optedOutAt  DateTime?
+  convertedAt DateTime?
+  respondedAt DateTime?
+
+  platformConnectionId String?
+  senderPhoneE164      String?
+  providerMessageId1   String?
+  providerMessageId2   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user               User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant             Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  platformConnection PlatformWhatsappConnection? @relation(fields: [platformConnectionId], references: [id], onDelete: SetNull)
+
+  @@index([status, nextRunAt])
+  @@index([phoneE164])
+  @@index([tenantId])
+  @@map("rescue_leads")
 }

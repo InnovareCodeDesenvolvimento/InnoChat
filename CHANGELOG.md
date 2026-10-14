@@ -7,6 +7,11 @@ Versão semântica (`MAJOR.MINOR.PATCH`), lida do `version` do `package.json` e 
 
 Toda publicação em produção sobe a versão e ganha uma entrada aqui.
 
+## v1.10.1 — 2026-10-14
+
+### Correções
+- O suporte do admin agora deixa rastro de auditoria também nas ações do catálogo (serviços, profissionais, agendamentos). O ID da sessão de suporte é gravado junto com o evento para ficar fácil de seguir o que foi feito em nome de quem.
+
 ## v1.10.0 — 2026-10-14
 
 ### Novidade: Suporte do admin com impersonação

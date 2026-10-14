@@ -63,6 +63,7 @@ export async function createServiceAction(tenantSlug: string, input: unknown): P
       targetType: "service",
       targetId: created.id,
       summary: `Criou o serviço ${created.name} (${created.durationMin} min, ${formatBrl(created.priceCents)}).`,
+      supportSessionId: ctx.supportSessionId ?? null,
     });
     return created;
   });
@@ -90,6 +91,7 @@ export async function updateServiceAction(tenantSlug: string, serviceId: string,
             ? `Mudou o preço do serviço ${updated.name} de ${formatBrl(before.priceCents)} para ${formatBrl(updated.priceCents)}.`
             : `Alterou o serviço ${updated.name}.`,
           changes,
+          supportSessionId: ctx.supportSessionId ?? null,
         });
       }
     }
@@ -111,6 +113,7 @@ export async function deleteServiceAction(tenantSlug: string, serviceId: string)
       targetType: "service",
       targetId: serviceId,
       summary: `Excluiu o serviço ${before?.name ?? serviceId}.`,
+      supportSessionId: ctx.supportSessionId ?? null,
     });
     return { id: serviceId };
   });
@@ -147,6 +150,7 @@ export async function createProfessionalAction(tenantSlug: string, input: unknow
       targetType: "professional",
       targetId: created.id,
       summary: `Cadastrou o profissional ${created.name}.`,
+      supportSessionId: ctx.supportSessionId ?? null,
     });
     return created;
   });
@@ -171,6 +175,7 @@ export async function updateProfessionalAction(tenantSlug: string, professionalI
           targetId: professionalId,
           summary: `Alterou o profissional ${updated.name}.`,
           changes,
+          supportSessionId: ctx.supportSessionId ?? null,
         });
       }
     }
@@ -192,6 +197,7 @@ export async function deleteProfessionalAction(tenantSlug: string, professionalI
       targetType: "professional",
       targetId: professionalId,
       summary: `Excluiu o profissional ${before?.name ?? professionalId}.`,
+      supportSessionId: ctx.supportSessionId ?? null,
     });
     return { id: professionalId };
   });
@@ -220,6 +226,7 @@ export async function setProfessionalServicesAction(tenantSlug: string, professi
         targetId: professionalId,
         summary: `Mudou os serviços que ${updated.name} atende.`,
         changes: { servicos: { de: text(beforeIds), para: text(linkedAfter) } },
+        supportSessionId: ctx.supportSessionId ?? null,
       });
     }
     return updated;
@@ -255,6 +262,7 @@ export async function setProfessionalWorkingHoursAction(tenantSlug: string, prof
         targetId: professionalId,
         summary: `Mudou o horário de funcionamento de ${professional?.name ?? "um profissional"}.`,
         changes: { horarios: { de: textBefore, para: textAfter } },
+        supportSessionId: ctx.supportSessionId ?? null,
       });
     }
     return saved;
@@ -299,6 +307,7 @@ export async function createScheduleExceptionAction(tenantSlug: string, input: u
       targetId: created.id,
       summary: `Criou ${created.type === "HOLIDAY" ? "um feriado" : "um bloqueio"} na agenda (${formatDateTimeBr(created.startsAt, tenant.timezone)} até ${formatDateTimeBr(created.endsAt, tenant.timezone)}).`,
       changes: { motivo: { de: null, para: created.reason }, abrangencia: { de: null, para: created.professionalId ? "um profissional" : "toda a empresa" } },
+      supportSessionId: ctx.supportSessionId ?? null,
     });
     return created;
   });
@@ -320,6 +329,7 @@ export async function deleteScheduleExceptionAction(tenantSlug: string, exceptio
       summary: before
         ? `Removeu ${before.type === "HOLIDAY" ? "o feriado" : "o bloqueio"} de ${formatDateTimeBr(before.startsAt, tenant.timezone)}.`
         : "Removeu um bloqueio da agenda.",
+      supportSessionId: ctx.supportSessionId ?? null,
     });
     return { id: exceptionId };
   });
@@ -393,5 +403,6 @@ async function auditCommissionChange(
     targetId: professionalId,
     summary: `Mudou a comissão de ${professional?.name ?? "um profissional"}.`,
     changes,
+    supportSessionId: ctx.supportSessionId ?? null,
   });
 }

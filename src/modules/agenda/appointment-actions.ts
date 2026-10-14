@@ -51,7 +51,14 @@ export async function createAppointmentAction(tenantSlug: string, input: unknown
     const data = createAppointmentSchema.parse(input);
     const result = await createAppointmentManual(tenant.id, data, user.id);
     if (!result.alreadyExisted) {
-      await auditAppointmentAction({ tenantId: tenant.id, timezone: tenant.timezone, actor: memberActor(ctx), appointmentId: (result.appointment as { id: string }).id, action: "appointment.created" });
+      await auditAppointmentAction({
+        tenantId: tenant.id,
+        timezone: tenant.timezone,
+        actor: memberActor(ctx),
+        appointmentId: (result.appointment as { id: string }).id,
+        action: "appointment.created",
+        supportSessionId: ctx.supportSessionId ?? null,
+      });
     }
     // Aviso ao cliente (aditivo): só quando esta chamada CRIOU (repetição idempotente não reavisa).
     const clientNotification = result.alreadyExisted
@@ -71,7 +78,14 @@ export async function cancelAppointmentAction(tenantSlug: string, appointmentId:
     const data = cancelSchema.parse(input ?? {});
     const { appointment, changed } = await cancelAppointmentDetailed(tenant.id, appointmentId, user.id, data.note);
     if (changed) {
-      await auditAppointmentAction({ tenantId: tenant.id, timezone: tenant.timezone, actor: memberActor(ctx), appointmentId, action: "appointment.canceled" });
+      await auditAppointmentAction({
+        tenantId: tenant.id,
+        timezone: tenant.timezone,
+        actor: memberActor(ctx),
+        appointmentId,
+        action: "appointment.canceled",
+        supportSessionId: ctx.supportSessionId ?? null,
+      });
     }
     const clientNotification = changed ? await notifyClientOfStaffChange({ tenantId: tenant.id, appointmentId, kind: "CANCELED" }) : "DISABLED";
     return { ...appointment, clientNotification };
@@ -98,6 +112,7 @@ export async function rescheduleAppointmentAction(tenantSlug: string, appointmen
         appointmentId,
         action: "appointment.rescheduled",
         changes: { startsAt: { de: before?.startsAt ?? null, para: updated.startsAt } },
+        supportSessionId: ctx.supportSessionId ?? null,
       });
     }
     const clientNotification = moved ? await notifyClientOfStaffChange({ tenantId: tenant.id, appointmentId, kind: "RESCHEDULED" }) : "DISABLED";
@@ -120,7 +135,15 @@ export async function completeAppointmentAction(input: { tenantSlug: string; app
     const before = await forTenant(tenant.id).appointment.findFirst({ where: { id: data.appointmentId }, select: { status: true } });
     const result = await finishAppointment(tenant.id, data.appointmentId, user.id, "COMPLETED");
     if (before && before.status !== result.status) {
-      await auditAppointmentAction({ tenantId: tenant.id, timezone: tenant.timezone, actor: memberActor(ctx), appointmentId: data.appointmentId, action: "appointment.completed", changes: { status: { de: before.status, para: result.status } } });
+      await auditAppointmentAction({
+        tenantId: tenant.id,
+        timezone: tenant.timezone,
+        actor: memberActor(ctx),
+        appointmentId: data.appointmentId,
+        action: "appointment.completed",
+        changes: { status: { de: before.status, para: result.status } },
+        supportSessionId: ctx.supportSessionId ?? null,
+      });
     }
     return result;
   });
@@ -135,7 +158,15 @@ export async function markNoShowAppointmentAction(input: { tenantSlug: string; a
     const before = await forTenant(tenant.id).appointment.findFirst({ where: { id: data.appointmentId }, select: { status: true } });
     const result = await finishAppointment(tenant.id, data.appointmentId, user.id, "NO_SHOW");
     if (before && before.status !== result.status) {
-      await auditAppointmentAction({ tenantId: tenant.id, timezone: tenant.timezone, actor: memberActor(ctx), appointmentId: data.appointmentId, action: "appointment.no_show", changes: { status: { de: before.status, para: result.status } } });
+      await auditAppointmentAction({
+        tenantId: tenant.id,
+        timezone: tenant.timezone,
+        actor: memberActor(ctx),
+        appointmentId: data.appointmentId,
+        action: "appointment.no_show",
+        changes: { status: { de: before.status, para: result.status } },
+        supportSessionId: ctx.supportSessionId ?? null,
+      });
     }
     return result;
   });
@@ -150,7 +181,15 @@ export async function reopenAppointmentAction(input: { tenantSlug: string; appoi
     const before = await forTenant(tenant.id).appointment.findFirst({ where: { id: data.appointmentId }, select: { status: true } });
     const result = await reopenAppointment(tenant.id, data.appointmentId, user.id);
     if (before && before.status !== result.status) {
-      await auditAppointmentAction({ tenantId: tenant.id, timezone: tenant.timezone, actor: memberActor(ctx), appointmentId: data.appointmentId, action: "appointment.reopened", changes: { status: { de: before.status, para: result.status } } });
+      await auditAppointmentAction({
+        tenantId: tenant.id,
+        timezone: tenant.timezone,
+        actor: memberActor(ctx),
+        appointmentId: data.appointmentId,
+        action: "appointment.reopened",
+        changes: { status: { de: before.status, para: result.status } },
+        supportSessionId: ctx.supportSessionId ?? null,
+      });
     }
     return result;
   });

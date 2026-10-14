@@ -67,6 +67,7 @@ export async function auditAppointmentAction(params: {
   appointmentId: string;
   action: AppointmentAuditAction;
   changes?: AuditChanges | null;
+  supportSessionId?: string | null;
 }): Promise<void> {
   let detail = "";
   try {
@@ -88,5 +89,6 @@ export async function auditAppointmentAction(params: {
     targetId: params.appointmentId,
     summary: `${APPOINTMENT_VERB[params.action]}${detail}.`,
     changes: params.changes ?? null,
+    supportSessionId: params.supportSessionId ?? null,
   });
 }

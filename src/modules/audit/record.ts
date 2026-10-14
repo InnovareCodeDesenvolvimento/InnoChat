@@ -78,8 +78,15 @@ export async function recordAudit(input: AuditInput, db?: AuditDb): Promise<void
   }
 }
 
-/** Ator de uma ação feita por membro da empresa (papel vem do `Membership` já validado pelo guard). */
-export function memberActor(ctx: { user: { id: string }; membership: { role: "OWNER" | "STAFF" } }): AuditActor {
+/** Ator de uma ação feita por membro da empresa (ou admin da plataforma impersonando suporte). */
+export function memberActor(ctx: {
+  user: { id: string };
+  membership: { role: "OWNER" | "STAFF" };
+  isSupportImpersonation?: boolean;
+}): AuditActor {
+  if (ctx.isSupportImpersonation) {
+    return { userId: ctx.user.id, role: "PLATFORM_ADMIN" };
+  }
   return { userId: ctx.user.id, role: ctx.membership.role };
 }
 
