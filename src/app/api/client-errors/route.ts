@@ -45,10 +45,12 @@ export async function POST(request: Request) {
   }
 
   const ip = await clientIp();
+  const host = request.headers.get("host");
   const outcome = await handleClientErrorReport({
     rawBody,
     contentLength: Number.isFinite(declared) ? declared : null,
     ip,
+    appHost: host,
     resolveUserId: sessionUserId,
   });
 

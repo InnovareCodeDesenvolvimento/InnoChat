@@ -7,6 +7,11 @@ Versão semântica (`MAJOR.MINOR.PATCH`), lida do `version` do `package.json` e 
 
 Toda publicação em produção sobe a versão e ganha uma entrada aqui.
 
+## v1.9.2 — 2026-10-14
+
+### Correções
+- Painel `/admin/erros`: o monitor parou de registrar ruído de navegador. WebView do Chrome Android (`iabjs://`, "Java object is gone") e o `TypeError: Load failed` que aparecia toda vez que alguém terminava o cadastro (a navegação imediata abortava o `fetch` do relato) agora são descartados em duas camadas — antes de enviar, no cliente, e antes de gravar, no servidor. Os 6 registros antigos de `iabjs` continuam lá para você investigar caso a caso.
+
 ## v1.9.1 — 2026-10-10
 
 ### Correções

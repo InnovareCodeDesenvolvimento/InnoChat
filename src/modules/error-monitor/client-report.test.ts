@@ -47,6 +47,22 @@ describe("relato do navegador", () => {
     expect(record).toHaveBeenCalledTimes(1);
   });
 
+  it("descarta sem gravar erro de ruído de navegador (iabjs:// e Load failed de navegação)", async () => {
+    // Caso (a) iabjs
+    const iabjsStack = "Error: Error invoking postMessage: Java object is gone\n    at iabjs://navigation_performance_logger_android:1:1234";
+    expect((await call(JSON.stringify({ message: "Error invoking postMessage: Java object is gone", stack: iabjsStack }))).status).toBe(202);
+    expect(record).not.toHaveBeenCalled();
+
+    // Caso (b) Load failed sem stack do nosso app
+    expect((await call(JSON.stringify({ message: "Load failed", type: "TypeError", route: "/cadastro" }))).status).toBe(202);
+    expect(record).not.toHaveBeenCalled();
+
+    // Caso (b) com stack do nosso app é gravado normalmente
+    const nextStack = "TypeError: Load failed\n    at f (https://innochat.innovarecode.com.br/_next/static/chunks/app.js:1:1)";
+    await call(JSON.stringify({ message: "Load failed", type: "TypeError", stack: nextStack }));
+    expect(record).toHaveBeenCalledTimes(1);
+  });
+
   it("falha ao gravar não vira erro para o navegador", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     record.mockRejectedValueOnce(new Error("db fora"));

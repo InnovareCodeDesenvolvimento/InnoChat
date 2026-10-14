@@ -1,4 +1,5 @@
 import { APP_VERSION } from "@/lib/app-info";
+import { isBrowserNoiseError } from "@/core/error-monitor/browser-noise";
 import { isBrowserExtensionOnlyStack } from "@/core/error-monitor/extension-noise";
 import { isStaleBuildError } from "@/core/error-monitor/stale-build";
 
@@ -60,18 +61,33 @@ export function reportClientError(error: unknown, kind: ClientErrorKind): void {
     // pouco e continua, aí sim relata (pode ser outra causa, como rede ou CDN).
     if (isStaleBuildError(type, message) && reloadForNewVersion()) return;
     const stack = e && typeof e.stack === "string" ? e.stack.slice(0, 8000) : undefined;
+    // Ruído de WebView quebrada (iabjs://) ou fetch abortado pela navegação (Load failed).
+    if (isBrowserNoiseError(type, message, stack)) return;
     // Extensão do navegador (stack só com chrome-extension://, moz-extension://...): não é erro nosso.
     if (isBrowserExtensionOnlyStack(stack)) return;
     const key = `${type}|${message}|${(stack ?? "").slice(0, 200)}`;
     if (sent.has(key)) return;
     sent.add(key);
 
-    void fetch("/api/client-errors", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type, message, stack, route: window.location.pathname, version: APP_VERSION, kind }),
-      keepalive: true,
-    }).catch(() => undefined);
+    void (async () => {
+      const controller = new AbortController();
+      const onHide = () => controller.abort();
+      window.addEventListener("pagehide", onHide, { once: true });
+      document.addEventListener("visibilitychange", onHide, { once: true, capture: true });
+      try {
+        await fetch("/api/client-errors", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ type, message, stack, route: window.location.pathname, version: APP_VERSION, kind }),
+          signal: controller.signal,
+        });
+      } catch {
+        // AbortError em pagehide é esperado — não vira log nem relato.
+      } finally {
+        window.removeEventListener("pagehide", onHide);
+        document.removeEventListener("visibilitychange", onHide, { capture: true });
+      }
+    })();
   } catch {
     // Silêncio de propósito.
   }

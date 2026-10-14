@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isBrowserNoiseError } from "@/core/error-monitor/browser-noise";
 import { isBrowserExtensionOnlyStack } from "@/core/error-monitor/extension-noise";
 import { isStaleBuildError } from "@/core/error-monitor/stale-build";
 import { checkRateLimit } from "@/lib/rate-limit";
@@ -70,6 +71,7 @@ export async function handleClientErrorReport(input: {
   rawBody: string;
   contentLength: number | null;
   ip: string;
+  appHost?: string | null;
   /** Resolvido só depois de o relato passar nos limites e na validação (não gasta consulta com lixo). */
   resolveUserId: () => Promise<string | null>;
 }): Promise<ClientErrorOutcome> {
@@ -89,6 +91,9 @@ export async function handleClientErrorReport(input: {
   } catch {
     return { status: 400, code: "INVALID_PAYLOAD", message: "Relato inválido." };
   }
+
+  // Ruído de WebView quebrada (iabjs://) ou fetch abortado pela navegação (Load failed): descarta sem gravar.
+  if (isBrowserNoiseError(parsed.type, parsed.message, parsed.stack, { appHost: input.appHost ?? undefined })) return { status: 202 };
 
   // Erro de extensão do navegador: aceita (o navegador não precisa saber) e descarta sem gravar.
   if (isBrowserExtensionOnlyStack(parsed.stack)) return { status: 202 };
