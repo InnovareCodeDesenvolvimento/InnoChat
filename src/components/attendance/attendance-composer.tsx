@@ -4,6 +4,8 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffec
 import { AlertCircle, Send } from "lucide-react";
 import { cn } from "@/components/lib/cn";
 import { Button } from "@/components/ui/button";
+import { HelpButton } from "@/components/help/help-button";
+import { SupportChatBadge } from "@/components/support/SupportChatBadge";
 import { canSend, counterState, MAX_MESSAGE_LENGTH } from "./attendance-utils";
 
 export type ComposerHandle = { focus: () => void };
@@ -32,8 +34,26 @@ export const AttendanceComposer = forwardRef<
     restoreText: { value: string; nonce: number } | null;
     /** Texto para leitores de tela (aria-live): "Enviando…", "Mensagem enviada.". */
     liveMessage: string;
+    /** Se a sessão é uma impersonação de suporte */
+    isSupportImpersonation?: boolean;
+    /** Nome do admin em suporte */
+    supportAdminName?: string | null;
   }
->(function AttendanceComposer({ contactName, onSend, blockedReason, sending, error, onDismissError, restoreText, liveMessage }, ref) {
+>(function AttendanceComposer(
+  {
+    contactName,
+    onSend,
+    blockedReason,
+    sending,
+    error,
+    onDismissError,
+    restoreText,
+    liveMessage,
+    isSupportImpersonation = false,
+    supportAdminName = null,
+  },
+  ref,
+) {
   const [text, setText] = useState("");
   const areaRef = useRef<HTMLTextAreaElement>(null);
   const lastRestore = useRef(0);
@@ -91,6 +111,12 @@ export const AttendanceComposer = forwardRef<
         <p className="mb-2 rounded-card border border-border bg-bg px-3 py-2 text-sm text-text-secondary">{blockedReason}</p>
       ) : null}
 
+      {isSupportImpersonation ? (
+        <div className="mb-2">
+          <SupportChatBadge isSupportImpersonation={isSupportImpersonation} adminName={supportAdminName} />
+        </div>
+      ) : null}
+
       <div className="flex items-end gap-2">
         <div
           className={cn(
@@ -134,9 +160,12 @@ export const AttendanceComposer = forwardRef<
       </div>
 
       <div className="mt-1.5 flex items-center justify-between gap-3 text-xs text-text-secondary">
-        <p id="att-composer-hint" className="max-md:hidden">
-          Enter envia · Shift+Enter quebra a linha
-        </p>
+        <div className="flex items-center gap-1.5">
+          <p id="att-composer-hint" className="max-md:hidden">
+            Enter envia · Shift+Enter quebra a linha
+          </p>
+          <HelpButton helpKey="atendimento.responder" placement="inline" />
+        </div>
         {counter.visible ? (
           <p className={cn("ml-auto tabular-nums", counter.over ? "font-semibold text-danger" : "")} aria-label={`${text.length} de ${MAX_MESSAGE_LENGTH} caracteres`}>
             {counter.text}

@@ -5,6 +5,7 @@ import { AlertCircle, Moon, RefreshCw } from "lucide-react";
 import { cn } from "@/components/lib/cn";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { HelpButton } from "@/components/help/help-button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { InnoAnimated } from "@/components/onboarding/inno-animated";
 import { formatRelativeTime } from "@/components/notifications/notification-utils";
@@ -80,7 +81,7 @@ export function AttendanceQueue({
 
   return (
     <section aria-label="Fila de atendimento" className="flex min-h-0 flex-1 flex-col" data-testid="attendance-queue">
-      <div role="tablist" aria-label="Filtrar a fila" className="flex shrink-0 gap-1 border-b border-border p-2">
+      <div role="tablist" aria-label="Filtrar a fila" className="flex shrink-0 items-center gap-1 border-b border-border p-2">
         {ATTENDANCE_TABS.map((t, index) => {
           const selected = t.id === tab;
           return (
@@ -110,6 +111,7 @@ export function AttendanceQueue({
             </button>
           );
         })}
+        <HelpButton helpKey="atendimento.assumir" placement="inline" className="ml-1 shrink-0" />
       </div>
 
       <div

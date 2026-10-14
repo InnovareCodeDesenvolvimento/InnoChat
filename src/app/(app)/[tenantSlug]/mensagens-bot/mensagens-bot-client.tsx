@@ -128,7 +128,10 @@ export function MensagensBotClient({
       />
 
       <div className="mb-5 flex flex-wrap items-center gap-x-3 gap-y-2" data-testid="flow-version">
-        <Badge variant={flowVersion === 2 ? "primary" : "neutral"}>{flowVersion === 2 ? "Fluxo publicado: v2" : "Fluxo publicado: v1"}</Badge>
+        <div className="flex items-center gap-1.5">
+          <Badge variant={flowVersion === 2 ? "primary" : "neutral"}>{flowVersion === 2 ? "Fluxo publicado: v2" : "Fluxo publicado: v1"}</Badge>
+          <HelpButton helpKey="whatsapp.fluxoVersao" placement="inline" />
+        </div>
         <p className="min-w-0 text-sm text-text-secondary">
           {flowVersion === 2
             ? "Os textos abaixo valem para o atendimento atual."

@@ -7,6 +7,11 @@ Versão semântica (`MAJOR.MINOR.PATCH`), lida do `version` do `package.json` e 
 
 Toda publicação em produção sobe a versão e ganha uma entrada aqui.
 
+## v1.13.2 — 2026-10-14
+
+### Ajustes
+- **Polimento visual da Onda 4 (WhatsApp, atendimento e bot):** badge "Modo suporte" e selo persistente no campo de enviar mensagem quando o admin está impersonando a empresa. Ajustes pontuais nas telas de WhatsApp, Atendimento e Mensagens do bot para deixar o contexto de suporte claro sem poluir a interface da empresa.
+
 ## v1.13.1 — 2026-10-14
 
 ### Ajustes

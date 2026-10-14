@@ -6,6 +6,7 @@ import { Smartphone, Trash2, Unplug, X } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { navIconFor } from "@/components/shell/nav-items";
 import { EmptyState } from "@/components/ui/empty-state";
+import { SupportModeBadge } from "@/components/support/SupportModeBadge";
 import { WhatsappEmptyIllustration } from "@/components/ui/empty-illustration";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -38,6 +39,7 @@ export function WhatsappClient({
   initialInstances,
   isOwner,
   writeBlocked = false,
+  isSupportImpersonation = false,
   extras = null,
 }: {
   tenantSlug: string;
@@ -45,6 +47,7 @@ export function WhatsappClient({
   initialInstances: WhatsappInstanceView[];
   isOwner: boolean;
   writeBlocked?: boolean;
+  isSupportImpersonation?: boolean;
   extras?: WhatsappPageExtras | null;
 }) {
   const { notify } = useToast();
@@ -138,6 +141,7 @@ export function WhatsappClient({
       <PageHeader help="pagina.whatsapp" icon={navIconFor("whatsapp")}
         title="WhatsApp"
         description="Números conectados, QR code e status da conexão."
+        badge={<SupportModeBadge isSupportImpersonation={isSupportImpersonation} />}
         action={isOwner && hasInstances && !limitReached ? renderConnectTrigger() : undefined}
       />
 

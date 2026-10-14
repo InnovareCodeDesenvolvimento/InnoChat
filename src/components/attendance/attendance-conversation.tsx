@@ -13,6 +13,7 @@ import { ChatDoodle, WA_TOKENS } from "@/components/whatsapp/phone-mockup";
 import { groupConversationByDay, mergeConversation } from "@/components/contacts/conversation-utils";
 import { getAttendanceConversationAction, sendAgentMessageAction } from "@/modules/attendance/actions";
 import { AttendanceComposer, type ComposerHandle } from "./attendance-composer";
+import { HelpButton } from "@/components/help/help-button";
 import {
   attendanceBubbleLabel,
   canClose,
@@ -48,6 +49,8 @@ export function AttendanceConversation({
   onSchedule,
   onClose,
   onMessageSent,
+  isSupportImpersonation = false,
+  supportAdminName = null,
 }: {
   tenantSlug: string;
   contact: ConversationContact;
@@ -58,6 +61,8 @@ export function AttendanceConversation({
   onSchedule: () => void;
   onClose: () => void;
   onMessageSent: () => void;
+  isSupportImpersonation?: boolean;
+  supportAdminName?: string | null;
 }) {
   const contactId = contact.id;
   const [items, setItems] = useState<AttendanceMessage[]>([]);
@@ -293,10 +298,13 @@ export function AttendanceConversation({
             <span className="hidden md:inline">Agendar para este cliente</span>
           </Button>
           {closable ? (
-            <Button type="button" variant="secondary" icon={Bot} onClick={onClose} disabled={writeBlocked} aria-label="Encerrar e devolver ao bot" className="max-md:gap-1.5 max-md:px-2.5">
-              <span className="md:hidden">Encerrar</span>
-              <span className="hidden md:inline">Encerrar e devolver ao bot</span>
-            </Button>
+            <div className="flex items-center gap-1">
+              <Button type="button" variant="secondary" icon={Bot} onClick={onClose} disabled={writeBlocked} aria-label="Encerrar e devolver ao bot" className="max-md:gap-1.5 max-md:px-2.5">
+                <span className="md:hidden">Encerrar</span>
+                <span className="hidden md:inline">Encerrar e devolver ao bot</span>
+              </Button>
+              <HelpButton helpKey="atendimento.devolver" placement="inline" />
+            </div>
           ) : null}
           <Button asChild variant="ghost" className="max-md:gap-1.5 max-md:px-2.5 md:ml-auto">
             <Link href={`/${tenantSlug}/clientes?contato=${contact.id}`}>
@@ -387,6 +395,8 @@ export function AttendanceConversation({
         onDismissError={() => setSendError(null)}
         restoreText={restore}
         liveMessage={liveMessage}
+        isSupportImpersonation={isSupportImpersonation}
+        supportAdminName={supportAdminName}
       />
     </div>
   );

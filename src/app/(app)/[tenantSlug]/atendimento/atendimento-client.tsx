@@ -7,6 +7,8 @@ import { cn } from "@/components/lib/cn";
 import { useToast } from "@/components/ui/toast";
 import { InnoAnimated } from "@/components/onboarding/inno-animated";
 import { navIconFor } from "@/components/shell/nav-items";
+import { SupportModeBadge } from "@/components/support/SupportModeBadge";
+import { SupportAttentionBanner } from "@/components/support/SupportAttentionBanner";
 import { useSetAttendanceWaitingCount } from "@/components/notifications/notification-center-provider";
 import { NovoAgendamentoDialog, type AgendaProfessional, type AgendaService } from "@/components/agenda/novo-agendamento-dialog";
 import { AttendanceQueue, type QueueStatus } from "@/components/attendance/attendance-queue";
@@ -32,6 +34,8 @@ export function AtendimentoClient({
   professionals,
   services,
   notifyClient = false,
+  isSupportImpersonation = false,
+  supportAdminName = null,
 }: {
   tenantSlug: string;
   timezone: string;
@@ -39,6 +43,8 @@ export function AtendimentoClient({
   writeBlocked: boolean;
   professionals: AgendaProfessional[];
   services: AgendaService[];
+  isSupportImpersonation?: boolean;
+  supportAdminName?: string | null;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -174,12 +180,16 @@ export function AtendimentoClient({
   return (
     <div>
       <div className={cn(selectedId && "max-md:hidden")}>
-        <PageHeader help="pagina.atendimento"
+        <PageHeader
+          help="pagina.atendimento"
           icon={navIconFor("atendimento")}
           title="Atendimento"
           description="Responda pelo painel os clientes que pediram atendente."
+          badge={<SupportModeBadge isSupportImpersonation={isSupportImpersonation} />}
         />
       </div>
+
+      <SupportAttentionBanner isSupportImpersonation={isSupportImpersonation} />
 
       <div
         className={cn(
@@ -218,6 +228,8 @@ export function AtendimentoClient({
               onSchedule={() => setScheduleOpen(true)}
               onClose={() => setCloseOpen(true)}
               onMessageSent={() => void loadQueue(true)}
+              isSupportImpersonation={isSupportImpersonation}
+              supportAdminName={supportAdminName}
             />
           ) : (
             <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center" data-testid="attendance-no-selection">

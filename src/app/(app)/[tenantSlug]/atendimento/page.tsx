@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { getPrisma } from "@/lib/db/prisma";
+import { requireTenantMember } from "@/lib/auth/guards";
 import { listProfessionalsAction, listServicesAction } from "@/modules/agenda/catalog-actions";
 import { isTenantWriteBlocked } from "../_lib/write-blocked";
 import { AtendimentoClient } from "./atendimento-client";
@@ -13,11 +14,22 @@ export default async function AtendimentoPage({ params }: { params: Promise<{ te
   if (!tenant) notFound();
 
   // Serviços e profissionais só alimentam o diálogo "Agendar para este cliente".
-  const [professionalsResult, servicesResult, writeBlocked] = await Promise.all([
+  const [professionalsResult, servicesResult, writeBlocked, memberCtx] = await Promise.all([
     listProfessionalsAction(tenantSlug),
     listServicesAction(tenantSlug),
     isTenantWriteBlocked(tenant.id),
+    requireTenantMember(tenantSlug).catch(() => null),
   ]);
+
+  const isSupportImpersonation = Boolean(memberCtx?.isSupportImpersonation);
+  let supportAdminName: string | null = null;
+  if (isSupportImpersonation && memberCtx?.user?.id) {
+    const adminUser = await getPrisma().user.findUnique({
+      where: { id: memberCtx.user.id },
+      select: { name: true, email: true },
+    });
+    supportAdminName = adminUser?.name || adminUser?.email || "Suporte InnoChat";
+  }
 
   return (
     <AtendimentoClient
@@ -27,6 +39,8 @@ export default async function AtendimentoPage({ params }: { params: Promise<{ te
       writeBlocked={writeBlocked}
       professionals={professionalsResult.ok ? (professionalsResult.data as ProfessionalRow[]) : []}
       services={servicesResult.ok ? (servicesResult.data as ServiceRow[]) : []}
+      isSupportImpersonation={isSupportImpersonation}
+      supportAdminName={supportAdminName}
     />
   );
 }
