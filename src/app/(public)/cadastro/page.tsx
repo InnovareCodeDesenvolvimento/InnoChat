@@ -4,7 +4,7 @@ import { AuthShell } from "@/components/public/auth-shell";
 import { Alert } from "@/components/ui/alert";
 import { GoogleEntry } from "@/components/public/google-entry";
 import { authErrorMessage } from "@/components/public/google-auth-errors";
-import { MetaTracking } from "@/components/public/meta-tracking";
+import { MetaAutoTracking } from "@/components/public/meta-auto";
 import { couponSummary, normalizeCouponCode } from "@/core/billing";
 import { carriedQuery, detectInAppBrowser, externalBrowserHref } from "@/core/signup/in-app-browser";
 import { getPublicAuthOptions } from "@/modules/auth/public-options";
@@ -94,7 +94,7 @@ export default async function CadastroPage({ searchParams }: { searchParams: Pro
           ) : undefined
         }
       />
-      <MetaTracking stripQuery />
+      <MetaAutoTracking stripQuery />
     </AuthShell>
   );
 }

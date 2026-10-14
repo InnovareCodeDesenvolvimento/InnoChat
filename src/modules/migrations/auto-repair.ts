@@ -250,7 +250,7 @@ async function ensureForeignKey(
   await prisma.$executeRawUnsafe(`ALTER TABLE "${table}" ADD CONSTRAINT "${fkName}" ${body};`);
 }
 
-async function recordMigrationApplied(prisma: ReturnType<typeof getPrisma>, version: string, description: string): Promise<void> {
+async function recordMigrationApplied(prisma: ReturnType<typeof getPrisma>, version: string): Promise<void> {
   // O Prisma registra cada migration aplicada em _prisma_migrations. Se esta tabela
   // existir e a migration não estiver lá, insere a linha para o `migrate status`
   // não reclamar. Se a tabela não existir, não cria — a migration Prisma
@@ -263,7 +263,8 @@ async function recordMigrationApplied(prisma: ReturnType<typeof getPrisma>, vers
       version,
     );
     if (applied.length > 0) return;
-    const checksum = `auto-repair:${version}:${description.slice(0, 32)}`;
+    // A coluna `checksum` é VARCHAR(64). Mantemos só o `version` (timestamp + nome = ≤ 50 chars).
+    const checksum = `auto-repair:${version}`.slice(0, 64);
     await prisma.$executeRawUnsafe(
       `INSERT INTO "_prisma_migrations" (id, checksum, finished_at, migration_name, logs, rolled_back_at, started_at, applied_steps_count) VALUES (gen_random_uuid()::text, $1, NOW(), $2, NULL, NULL, NOW(), 1);`,
       checksum,
@@ -286,7 +287,7 @@ export async function autoRepairMigrations(): Promise<{ checked: number; applied
       if (alreadyApplied) continue;
       logger.warn("migrations.auto_repair.applying", { version: migration.version, description: migration.description });
       await migration.apply(prisma);
-      await recordMigrationApplied(prisma, migration.version, migration.description);
+      await recordMigrationApplied(prisma, migration.version);
       applied.push(migration.version);
       logger.warn("migrations.auto_repair.applied", { version: migration.version });
     } catch (error) {

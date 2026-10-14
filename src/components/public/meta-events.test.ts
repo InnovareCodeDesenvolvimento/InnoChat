@@ -68,7 +68,9 @@ describe("páginas que levam dado pessoal na URL", () => {
     expect(form).not.toMatch(/trackPixel|isPixelActive|metaEventId/);
   });
 
-  it("/cadastro monta o Pixel com a query removida da URL", () => {
-    expect(read("../../app/(public)/cadastro/page.tsx")).toMatch(/<MetaTracking stripQuery \/>/);
+  it("/cadastro monta o Pixel com a query removida da URL (sem banner de consentimento, decisao 2026-10-14)", () => {
+    const page = read("../../app/(public)/cadastro/page.tsx");
+    expect(page).toMatch(/<MetaAutoTracking stripQuery \/>/);
+    expect(page).not.toMatch(/<MetaTracking stripQuery \/>/);
   });
 });

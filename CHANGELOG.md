@@ -7,6 +7,12 @@ Versão semântica (`MAJOR.MINOR.PATCH`), lida do `version` do `package.json` e 
 
 Toda publicação em produção sobe a versão e ganha uma entrada aqui.
 
+## v1.11.2 — 2026-10-14
+
+### Correções
+- Pixel do Meta na tela de cadastro agora carrega direto, sem banner de consentimento. A pergunta "Posso medir de onde você chegou?" travava novos cadastros — o Pixel continua contando PageView e disparando Lead/CompleteRegistration, mas o usuário não precisa aceitar manualmente.
+- Auto-reparo de migrations: o checksum gravado em `_prisma_migrations` cabe no VARCHAR(64) (antes estourava com `value too long`).
+
 ## v1.11.1 — 2026-10-14
 
 ### Correções
