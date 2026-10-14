@@ -54,6 +54,21 @@ export async function register() {
     } catch (error) {
       logger.error("waitlist.scheduler.start_failed", { errorMessage: error instanceof Error ? error.message : String(error) });
     }
+
+    // Auto-reparo de migrations que faltaram (incidente 2026-10-14): se a imagem publicada
+    // for mais antiga que a migration do schema.prisma, o `prisma migrate deploy` no boot
+    // não aplica nada (não vê a pasta). Este auto-reparo detecta a coluna/tabela ausente
+    // e aplica o SQL embarcado. Idempotente, opt-in por migration. Ver
+    // src/modules/migrations/auto-repair.ts.
+    try {
+      const { autoRepairMigrations } = await import("@/modules/migrations/auto-repair");
+      const result = await autoRepairMigrations();
+      if (result.applied.length > 0) {
+        logger.warn("migrations.auto_repair.summary", { applied: result.applied.join(","), checked: result.checked });
+      }
+    } catch (error) {
+      logger.error("migrations.auto_repair.boot_failed", { errorMessage: error instanceof Error ? error.message : String(error) });
+    }
   }
 }
 

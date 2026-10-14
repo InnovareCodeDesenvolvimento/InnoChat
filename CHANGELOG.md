@@ -7,6 +7,11 @@ Versão semântica (`MAJOR.MINOR.PATCH`), lida do `version` do `package.json` e 
 
 Toda publicação em produção sobe a versão e ganha uma entrada aqui.
 
+## v1.11.1 — 2026-10-14
+
+### Correções
+- Auto-reparo de migrations no boot: se a imagem publicada não tiver a pasta da migration nova (o que aconteceu com a v1.11.0 publicada sem a migration do Resgate), o servidor detecta as colunas/tabela ausentes e aplica o SQL automaticamente antes de começar a responder. Idempotente. A regra do projeto continua sendo rebuildar a imagem após cada push com migration — este auto-reparo é só a rede de segurança.
+
 ## v1.11.0 — 2026-10-14
 
 ### Novidade: Suporte do admin no catálogo + Resgate automático de leads do Meta Ads
