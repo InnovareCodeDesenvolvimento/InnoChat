@@ -7,6 +7,11 @@ Versão semântica (`MAJOR.MINOR.PATCH`), lida do `version` do `package.json` e 
 
 Toda publicação em produção sobe a versão e ganha uma entrada aqui.
 
+## v1.13.4 — 2026-10-14
+
+### Correções
+- Hotfix de build (segundo): o componente `SupportActionsCard` (Client) importava o módulo `support-actions` (Server) que puxava `next/headers` via cadeia, fazendo o Turbopack reclamar que a API de Server estava em Client. Os tipos públicos foram movidos para `support-actions-types.ts` (sem dependências server-only), e o card importa apenas tipos de lá.
+
 ## v1.13.3 — 2026-10-14
 
 ### Correções

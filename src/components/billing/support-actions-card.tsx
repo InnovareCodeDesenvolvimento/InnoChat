@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Wrench, CalendarPlus, Tag, Send, X, AlertCircle } from "lucide-react";
+import { Wrench, CalendarPlus, Tag, Send } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -17,13 +17,9 @@ import {
   applySupportCouponAction,
   resendPaymentLinkAction,
 } from "@/modules/billing/support-actions";
+import type { SupportInvoiceOption } from "@/modules/billing/support-actions-types";
 
-export type SupportInvoiceOption = {
-  id: string;
-  amountCents: number;
-  dueAt: string;
-  status: string;
-};
+export type { SupportInvoiceOption } from "@/modules/billing/support-actions-types";
 
 export type SupportActionsCardProps = {
   tenantSlug: string;

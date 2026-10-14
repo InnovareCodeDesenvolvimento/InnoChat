@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { SupportAccessCard } from "@/components/billing/support-access-card";
-import type { SupportSessionItem } from "@/modules/billing/support-actions";
+import type { SupportSessionItem } from "@/modules/billing/support-actions-types";
 import { HelpVisibilityProvider } from "@/components/help/help-visibility";
 
 function withProviders(children: React.ReactNode) {

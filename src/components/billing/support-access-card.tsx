@@ -2,12 +2,11 @@
 
 import { useState } from "react";
 import { formatInTimeZone } from "date-fns-tz";
-import { ShieldCheck, UserCheck, Clock, XCircle, Info } from "lucide-react";
+import { ShieldCheck, UserCheck, Clock } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Pagination } from "@/components/ui/pagination";
-import { HelpButton } from "@/components/help/help-button";
-import type { SupportSessionItem } from "@/modules/billing/support-actions";
+import type { SupportSessionItem } from "@/modules/billing/support-actions-types";
 
 export type SupportAccessCardProps = {
   items: SupportSessionItem[];

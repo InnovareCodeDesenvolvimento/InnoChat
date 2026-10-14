@@ -24,7 +24,7 @@ import { PaymentHistoryCard, type PaymentHistoryItem } from "@/components/billin
 import { SupportModeBadge } from "@/components/support/SupportModeBadge";
 import { SupportAccessCard } from "@/components/billing/support-access-card";
 import { SupportActionsCard, type SupportInvoiceOption } from "@/components/billing/support-actions-card";
-import type { SupportSessionItem } from "@/modules/billing/support-actions";
+import type { SupportSessionItem } from "@/modules/billing/support-actions-types";
 import { AssinaturaCanceladaCard, CancelamentoAgendadoAviso, CancelarAssinaturaCard } from "./cancelamento";
 import { CicloCard, CupomCard, type CycleSnapshot } from "./ciclo-cupom";
 import { PixDocumentForm } from "./pix-document-form";

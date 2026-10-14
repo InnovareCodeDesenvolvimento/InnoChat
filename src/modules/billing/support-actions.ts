@@ -1,3 +1,5 @@
+"use server";
+
 import { z } from "zod";
 import { getPrisma } from "@/lib/db/prisma";
 import { requirePlatformAdmin, requireTenantMember } from "@/lib/auth/guards";
@@ -9,6 +11,7 @@ import { regeneratePixForInvoice, findBillingRecipientEmail, findOwnInvoiceOrThr
 import { sendMail, loadEmailContext, invoiceGeneratedEmail } from "@/lib/email";
 import { formatCentsBRL, formatDateBR } from "@/modules/billing/format";
 import { recordBillingEvent } from "@/modules/billing/dunning/events";
+import type { ExtendTrialResult, ResendPaymentLinkResult, SupportSessionItem, SupportSessionsPage } from "./support-actions-types";
 
 /**
  * Server Actions e Queries para Suporte em Assinatura e Cobrança (Onda 5).
@@ -66,10 +69,6 @@ async function requireSupportOrPlatformAdmin(tenantSlug: string) {
     supportSessionId: null,
   };
 }
-
-export type ExtendTrialResult = {
-  trialEndsAt: string;
-};
 
 /**
  * 2) Estender trial
@@ -194,11 +193,9 @@ export async function applySupportCouponAction(
   });
 }
 
-export type ResendPaymentLinkResult = {
-  invoiceId: string;
-  recipientEmail: string;
-  pixCopyPaste: string | null;
-};
+// Tipos públicos re-exportados de `./support-actions-types` (compartilhado com
+// componentes Client para evitar arrastar a cadeia de imports server-only
+// como `next/headers` e `prisma` para o bundle do navegador).
 
 /**
  * 4) Reenviar link de pagamento de fatura pendente
@@ -274,25 +271,8 @@ export async function resendPaymentLinkAction(
 // 5) Card "Acessos do Suporte" (LGPD) — backend
 // ---------------------------------------------------------------------------
 
-export type SupportSessionItem = {
-  id: string;
-  adminName: string;
-  adminEmail: string;
-  reason: string;
-  startedAt: string;
-  expiresAt: string;
-  closedAt: string | null;
-  closeReason: string | null;
-  status: "ACTIVE" | "EXPIRED" | "CLOSED";
-};
-
-export type SupportSessionsPage = {
-  items: SupportSessionItem[];
-  page: number;
-  pageSize: number;
-  totalItems: number;
-  totalPages: number;
-};
+// Os tipos `SupportSessionItem` e `SupportSessionsPage` vivem em
+// `./support-actions-types` (re-exportados no topo deste arquivo).
 
 /**
  * Retorna histórico paginado de sessões de suporte para a empresa.
