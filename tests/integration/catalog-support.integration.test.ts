@@ -247,6 +247,7 @@ describe("Onda 2 — Catálogo com Suporte e Auditoria", () => {
     // 6. Atualizar serviço (mudança de preço) como suporte
     const updateResult = await updateServiceAction(tenant.slug, service.id, {
       priceCents: 7500,
+      priceChangeReason: "Reajuste anual de insumos da clínica",
     });
     expect(updateResult.ok).toBe(true);
 

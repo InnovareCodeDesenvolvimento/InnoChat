@@ -21,6 +21,10 @@ import { formatDateTimeLabel } from "@/components/lib/format-date";
 import { BillingContactCard } from "@/components/billing/billing-contact-card";
 import type { BillingContactData, SaveBillingContact } from "@/components/billing/billing-contact-types";
 import { PaymentHistoryCard, type PaymentHistoryItem } from "@/components/billing/payment-history-card";
+import { SupportModeBadge } from "@/components/support/SupportModeBadge";
+import { SupportAccessCard } from "@/components/billing/support-access-card";
+import { SupportActionsCard, type SupportInvoiceOption } from "@/components/billing/support-actions-card";
+import type { SupportSessionItem } from "@/modules/billing/support-actions";
 import { AssinaturaCanceladaCard, CancelamentoAgendadoAviso, CancelarAssinaturaCard } from "./cancelamento";
 import { CicloCard, CupomCard, type CycleSnapshot } from "./ciclo-cupom";
 import { PixDocumentForm } from "./pix-document-form";
@@ -548,6 +552,9 @@ export function AssinaturaClient({
   history,
   contact,
   saveContact,
+  isSupportImpersonation = false,
+  supportSessions = [],
+  supportInvoices = [],
 }: {
   tenantSlug: string;
   snapshot: BillingSnapshot;
@@ -560,6 +567,9 @@ export function AssinaturaClient({
   history: PaymentHistoryItem[];
   contact: BillingContactData;
   saveContact: SaveBillingContact;
+  isSupportImpersonation?: boolean;
+  supportSessions?: SupportSessionItem[];
+  supportInvoices?: SupportInvoiceOption[];
 }) {
   const router = useRouter();
   const [paymentConfirmed, setPaymentConfirmed] = useState(false);
@@ -573,7 +583,22 @@ export function AssinaturaClient({
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader help="pagina.assinatura" icon={navIconFor("assinatura")} title="Assinatura" description="Plano atual, status e fatura em aberto." />
+      <PageHeader
+        help="pagina.assinatura"
+        icon={navIconFor("assinatura")}
+        title="Assinatura"
+        description="Plano atual, status e fatura em aberto."
+        badge={<SupportModeBadge isSupportImpersonation={isSupportImpersonation} />}
+      />
+
+      {isSupportImpersonation ? (
+        <SupportActionsCard
+          tenantSlug={tenantSlug}
+          isSupportImpersonation={isSupportImpersonation}
+          isTrialing={snapshot.status === "TRIALING"}
+          invoices={supportInvoices}
+        />
+      ) : null}
 
       <Card className="rounded-hero">
         <CardHeader help="assinatura.plano">
@@ -653,6 +678,8 @@ export function AssinaturaClient({
       {snapshot.status !== "CANCELED" ? <PlanosCard tenantSlug={tenantSlug} snapshot={snapshot} plans={plans} isOwner={isOwner} /> : null}
 
       <PaymentHistoryCard items={history} timezone={snapshot.timezone} />
+
+      <SupportAccessCard items={supportSessions} timezone={snapshot.timezone} />
 
       <BillingContactCard tenantSlug={tenantSlug} initial={contact} canEdit={isOwner} save={saveContact} />
 

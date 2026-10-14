@@ -245,11 +245,11 @@ export function RescueListClient({ data, filters }: RescueListClientProps) {
       {data.items.length === 0 ? (
         <EmptyState
           icon={UserCheck}
-          title="Nenhum lead encontrado"
+          title={hasActiveFilters ? "Nenhum lead encontrado" : "Nenhum lead em resgate no momento"}
           description={
             hasActiveFilters
-              ? "Nenhum cadastro corresponde aos filtros aplicados. Tente ajustar os termos ou o período."
-              : "Ainda não há cadastros na régua de resgate."
+              ? "Nenhum cadastro corresponde aos filtros aplicados. Tente ajustar os termos ou o período selecionado."
+              : "Quem se cadastrar pelo Meta Ads aparece aqui em 24h caso ainda não tenha acessado o painel da empresa."
           }
         />
       ) : (

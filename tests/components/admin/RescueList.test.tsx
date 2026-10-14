@@ -103,7 +103,7 @@ describe("RescueListClient (Component Test)", () => {
     expect(html).toContain("Reativar régua");
   });
 
-  it("exibe estado vazio amigável quando a lista não possui leads", () => {
+  it("exibe estado vazio amigável quando a lista não possui leads sem filtros", () => {
     const html = renderToStaticMarkup(
       createElement(RescueListClient, {
         data: { ...mockData, items: [], total: 0, totalPages: 1 },
@@ -111,7 +111,19 @@ describe("RescueListClient (Component Test)", () => {
       })
     );
 
+    expect(html).toContain("Nenhum lead em resgate no momento");
+    expect(html).toContain("Quem se cadastrar pelo Meta Ads aparece aqui em 24h");
+  });
+
+  it("exibe mensagem clara quando filtros ativos não retornam nenhum lead", () => {
+    const html = renderToStaticMarkup(
+      createElement(RescueListClient, {
+        data: { ...mockData, items: [], total: 0, totalPages: 1 },
+        filters: { search: "termo-inexistente", page: 1, pageSize: 25 },
+      })
+    );
+
     expect(html).toContain("Nenhum lead encontrado");
-    expect(html).toContain("Ainda não há cadastros na régua de resgate.");
+    expect(html).toContain("Nenhum cadastro corresponde aos filtros aplicados.");
   });
 });

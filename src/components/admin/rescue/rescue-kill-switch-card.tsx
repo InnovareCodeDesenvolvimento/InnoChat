@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { CheckCircle2, Power, ShieldAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -149,9 +150,9 @@ export function RescueKillSwitchCard({ initialEnabled, onToggleSuccess }: Rescue
             </div>
 
             {errorMsg && (
-              <div className="rounded-card bg-danger-bg p-3 text-xs text-danger">
+              <Alert variant="danger" title="Não foi possível alterar a régua">
                 {errorMsg}
-              </div>
+              </Alert>
             )}
           </div>
 

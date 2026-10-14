@@ -1302,6 +1302,103 @@ const HELP_ENTRIES = {
     ],
     warning: "Pausar o resgate global interrompe a régua de todas as empresas cadastradas até que a chave seja religada.",
   },
+
+  // ───────────────────────────── Suporte em Cobrança e Assinatura ─────────────────────────────
+  "suporte.acoesCobranca": {
+    title: "Ações de suporte na assinatura",
+    purpose: "Permite à equipe da plataforma estender o período de teste, aplicar cupons de cortesia ou reenviar cobranças para ajudar a empresa.",
+    examples: [
+      "Estender o teste por 5 dias para uma empresa que precisou de mais tempo para configurar a agenda.",
+      "Reenviar o link e o código Pix de uma fatura vencida a pedido do cliente.",
+    ],
+    warning: "Toda ação exige um motivo detalhado de pelo menos 15 letras e fica registrada no histórico de auditoria.",
+  },
+  "suporte.estenderTrial": {
+    title: "Estender período de teste",
+    purpose: "Adiciona dias extras de teste para a empresa continuar avaliando o sistema antes da primeira cobrança.",
+    steps: [
+      "Informe a quantidade de dias (entre 1 e 30 dias).",
+      "O período total de teste não pode passar de 30 dias a partir da criação da conta.",
+      "Escreva o motivo detalhado com pelo menos 15 letras.",
+    ],
+    examples: [
+      "Adicionar 7 dias porque a equipe da empresa estava em treinamento.",
+    ],
+    tip: "A data final do teste é recalculada e a fatura em aberto acompanha o novo vencimento.",
+  },
+  "suporte.aplicarCupom": {
+    title: "Aplicar cupom via suporte",
+    purpose: "Aplica um cupom de desconto promocional ou cortesia diretamente na assinatura da empresa.",
+    steps: [
+      "Digite o código exato do cupom ativo cadastrado na plataforma.",
+      "Informe o motivo da aplicação para ficar registrado na auditoria.",
+    ],
+    examples: [
+      "Digitar PARCEIRO20 para conceder 20% de desconto autorizado pela diretoria.",
+    ],
+  },
+  "suporte.reenviarLink": {
+    title: "Reenviar link e código Pix da fatura",
+    purpose: "Gera um novo código Pix se o anterior estiver vencido e envia por e-mail para o endereço de cobrança da empresa.",
+    steps: [
+      "Selecione a fatura em aberto que precisa de novo envio.",
+      "Informe o motivo do reenvio para auditoria interna.",
+    ],
+    examples: [
+      "Reenviar a fatura do mês atual porque o cliente não localizou o e-mail anterior.",
+    ],
+  },
+  "suporte.acessosHistorico": {
+    title: "Histórico de acessos do suporte",
+    purpose: "Garante transparência para a empresa, mostrando todas as vezes em que alguém da plataforma entrou no painel ou realizou ajustes de suporte.",
+    examples: [
+      "Consultar quando e por qual motivo um atendente da plataforma acessou a conta.",
+    ],
+    tip: "As sessões são encerradas automaticamente após 1 hora ou quando o atendente clica em sair.",
+  },
+
+  // ───────────────────────────── Atendimento e WhatsApp (Ajuda Contextual) ─────────────────────────────
+  "atendimento.responder": {
+    title: "Responder mensagem ao cliente",
+    purpose: "Permite enviar mensagens de texto diretamente pelo WhatsApp da empresa para quem solicitou atendimento humano.",
+    steps: [
+      "Digite sua resposta no campo de texto.",
+      "Aperte Enter para enviar ou Shift mais Enter para pular de linha.",
+      "Mantenha um tom amigável e direto.",
+    ],
+    examples: [
+      "Responder dúvidas sobre horários livres ou orientações de preparo para o serviço.",
+    ],
+    tip: "O tamanho máximo é de 4.000 caracteres por envio. O contador avisa quando você estiver perto do fim.",
+  },
+  "atendimento.assumir": {
+    title: "Assumir atendimento",
+    purpose: "Ao responder um cliente aguardando na fila, o atendimento passa para você e o bot permanece em silêncio temporariamente.",
+    examples: [
+      "Você responde um cliente que estava aguardando e a conversa vai da aba Aguardando para Em atendimento.",
+    ],
+    tip: "Enquanto você atende, o bot não envia mensagens automáticas para não atrapalhar o diálogo.",
+  },
+  "atendimento.devolver": {
+    title: "Encerrar e devolver ao bot",
+    purpose: "Finaliza o atendimento humano pelo painel e devolve a conversa para o bot responder automaticamente quando o cliente mandar mensagem.",
+    steps: [
+      "Clique em Encerrar e devolver ao bot.",
+      "Confirme a finalização.",
+      "A conversa é movida para a aba de Encerrados nas últimas 24 horas.",
+    ],
+    examples: [
+      "O cliente tirou todas as dúvidas e você encerra para que ele possa agendar sozinho no próximo contato.",
+    ],
+  },
+  "whatsapp.fluxoVersao": {
+    title: "Versão do fluxo de atendimento",
+    purpose: "Indica qual versão das mensagens e regras de conversa o robô está utilizando para atender os clientes da empresa.",
+    examples: [
+      "A versão 2 traz os novos textos ajustáveis e integração com as regras do catálogo de serviços.",
+    ],
+    tip: "Quando uma nova versão do fluxo é publicada pela plataforma, as opções atualizadas passam a valer automaticamente.",
+  },
 } as const satisfies Record<string, HelpEntry>;
 
 export type HelpKey = keyof typeof HELP_ENTRIES;

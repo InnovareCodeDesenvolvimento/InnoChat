@@ -7,6 +7,11 @@ Versão semântica (`MAJOR.MINOR.PATCH`), lida do `version` do `package.json` e 
 
 Toda publicação em produção sobe a versão e ganha uma entrada aqui.
 
+## v1.13.1 — 2026-10-14
+
+### Ajustes
+- **Polimento visual da Onda 5 (Assinatura) e da Fase 3 do Resgate:** badge "Modo suporte" no PageHeader da tela de Assinatura, cartões de ação (Estender trial, Aplicar cupom, Reenviar link) e de auditoria de acessos aparecem só quando o admin está em modo de suporte. Empty states acolhedores na lista de resgate do Admin, com modais e toasts de erro mais claros. Texto humanizado conforme o guia de voz.
+
 ## v1.13.0 — 2026-10-14
 
 ### Novidade

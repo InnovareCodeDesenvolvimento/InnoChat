@@ -8,6 +8,7 @@ import { requireTenantMember } from "@/lib/auth/guards";
 import { accessEndsAt, asBillingCycle, buildCycleOptions, CANCELED_RETENTION_DAYS, effectiveStatus, type CouponKind } from "@/core/billing";
 import { addDays } from "date-fns";
 import { listActivePlansAction, type PlanListItem } from "@/modules/billing/actions";
+import { listSupportSessionsAction } from "@/modules/billing/support-actions";
 import { resolveBillingBanner } from "@/components/shell/billing-banner-state";
 import type { PaymentHistoryItem } from "@/components/billing/payment-history-card";
 import { updateBillingContactAction } from "@/modules/billing/contact-actions";
@@ -65,7 +66,7 @@ export default async function AssinaturaPage({
   const now = new Date();
   const status = effectiveStatus(subscription, now);
 
-  const [openInvoice, pendingPlan, invoiceRows, ownerMembership] = await Promise.all([
+  const [openInvoice, pendingPlan, invoiceRows, ownerMembership, supportSessionsResult] = await Promise.all([
     getPrisma().invoice.findFirst({
       where: { subscriptionId: subscription.id, status: "OPEN" },
       orderBy: { periodStart: "desc" },
@@ -86,7 +87,15 @@ export default async function AssinaturaPage({
       orderBy: { createdAt: "asc" },
       select: { user: { select: { email: true } } },
     }),
+    listSupportSessionsAction(tenantSlug, { page: 1, pageSize: 50 }),
   ]);
+  const supportSessions = supportSessionsResult.ok ? supportSessionsResult.data.items : [];
+  const supportInvoices = invoiceRows.map((inv) => ({
+    id: inv.id,
+    amountCents: inv.amountCents,
+    dueAt: inv.periodEnd.toISOString(),
+    status: inv.status,
+  }));
   const history: PaymentHistoryItem[] = invoiceRows.map((row) => ({
     id: row.id,
     amountCents: row.amountCents,
@@ -187,6 +196,9 @@ export default async function AssinaturaPage({
         ownerEmail: membership.role === "OWNER" ? (ownerMembership?.user.email ?? null) : null,
       }}
       saveContact={updateBillingContactAction}
+      isSupportImpersonation={!!ctx.isSupportImpersonation}
+      supportSessions={supportSessions}
+      supportInvoices={supportInvoices}
     />
   );
 }

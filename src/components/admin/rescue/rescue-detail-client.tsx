@@ -23,6 +23,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Alert } from "@/components/ui/alert";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PageHeader } from "@/components/ui/page-header";
 import { formatPhoneDisplay } from "@/components/lib/format-phone";
@@ -88,6 +89,7 @@ export function RescueDetailClient({ lead: initialLead }: RescueDetailClientProp
         const res = await pauseRescueLeadAction(lead.id, reason.trim());
         if (!res.ok) {
           setActionError(res.error.message);
+          notify({ variant: "error", title: "Não foi possível pausar o lead", description: res.error.message });
           return;
         }
         setLead((prev) => ({ ...prev, status: res.data.status, nextRunAt: null }));
@@ -96,6 +98,7 @@ export function RescueDetailClient({ lead: initialLead }: RescueDetailClientProp
         const res = await resumeRescueLeadAction(lead.id, reason.trim());
         if (!res.ok) {
           setActionError(res.error.message);
+          notify({ variant: "error", title: "Não foi possível retomar o lead", description: res.error.message });
           return;
         }
         setLead((prev) => ({ ...prev, status: res.data.status, nextRunAt: new Date() }));
@@ -104,6 +107,7 @@ export function RescueDetailClient({ lead: initialLead }: RescueDetailClientProp
         const res = await markRescueLeadConvertedAction(lead.id, reason.trim());
         if (!res.ok) {
           setActionError(res.error.message);
+          notify({ variant: "error", title: "Não foi possível marcar como convertido", description: res.error.message });
           return;
         }
         setLead((prev) => ({ ...prev, status: res.data.status, convertedAt: new Date(), nextRunAt: null }));
@@ -112,6 +116,7 @@ export function RescueDetailClient({ lead: initialLead }: RescueDetailClientProp
         const res = await resendRescueMessageAction(lead.id, reason.trim());
         if (!res.ok) {
           setActionError(res.error.message);
+          notify({ variant: "error", title: "Não foi possível reagendar o reenvio", description: res.error.message });
           return;
         }
         setLead((prev) => ({ ...prev, status: res.data.status, nextRunAt: res.data.nextRunAt, attempts: 0, lastErrorCode: null }));
@@ -121,7 +126,9 @@ export function RescueDetailClient({ lead: initialLead }: RescueDetailClientProp
       closeAction();
       router.refresh();
     } catch {
-      setActionError("Falha ao processar a ação. Tente novamente.");
+      const fallbackMsg = "Falha ao processar a ação. Tente novamente em alguns instantes.";
+      setActionError(fallbackMsg);
+      notify({ variant: "error", title: "Erro de comunicação", description: fallbackMsg });
     } finally {
       setIsSubmitting(false);
     }
@@ -557,9 +564,9 @@ export function RescueDetailClient({ lead: initialLead }: RescueDetailClientProp
             </div>
 
             {actionError && (
-              <div className="rounded-card bg-danger-bg p-3 text-xs text-danger">
+              <Alert variant="danger" title="Não foi possível concluir a ação">
                 {actionError}
-              </div>
+              </Alert>
             )}
           </div>
 
