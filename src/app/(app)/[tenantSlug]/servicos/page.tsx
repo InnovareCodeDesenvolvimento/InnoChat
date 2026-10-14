@@ -3,6 +3,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { navIconFor } from "@/components/shell/nav-items";
 import { EmptyState } from "@/components/ui/empty-state";
 import { getPrisma } from "@/lib/db/prisma";
+import { requireTenantMember } from "@/lib/auth/guards";
 import { listServicesAction } from "@/modules/agenda/catalog-actions";
 import { isTenantWriteBlocked } from "../_lib/write-blocked";
 import { ServicosClient, type ServiceRow } from "./servicos-client";
@@ -13,7 +14,12 @@ export default async function ServicosPage({
   params: Promise<{ tenantSlug: string }>;
 }) {
   const { tenantSlug } = await params;
-  const result = await listServicesAction(tenantSlug);
+  const [result, memberCtx] = await Promise.all([
+    listServicesAction(tenantSlug),
+    requireTenantMember(tenantSlug).catch(() => null),
+  ]);
+
+  const isSupportImpersonation = Boolean(memberCtx?.isSupportImpersonation);
 
   if (!result.ok) {
     return (
@@ -32,6 +38,11 @@ export default async function ServicosPage({
   const writeBlocked = tenant ? await isTenantWriteBlocked(tenant.id) : false;
 
   return (
-    <ServicosClient tenantSlug={tenantSlug} initialServices={result.data as ServiceRow[]} writeBlocked={writeBlocked} />
+    <ServicosClient
+      tenantSlug={tenantSlug}
+      initialServices={result.data as ServiceRow[]}
+      writeBlocked={writeBlocked}
+      isSupportImpersonation={isSupportImpersonation}
+    />
   );
 }

@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { navIconFor } from "@/components/shell/nav-items";
 import { EmptyState } from "@/components/ui/empty-state";
 import { getPrisma } from "@/lib/db/prisma";
+import { requireTenantMember } from "@/lib/auth/guards";
 import { getCommissionConfigAction, listProfessionalsAction, listServicesAction } from "@/modules/agenda/catalog-actions";
 import { listScheduleExceptionsAction } from "@/modules/agenda/catalog-actions";
 import { isTenantWriteBlocked } from "../../_lib/write-blocked";
@@ -18,13 +19,16 @@ export default async function ProfessionalDetailPage({
 }) {
   const { tenantSlug, professionalId } = await params;
 
-  const [professionalsResult, servicesResult, exceptionsResult, commissionResult] = await Promise.all([
+  const [professionalsResult, servicesResult, exceptionsResult, commissionResult, memberCtx] = await Promise.all([
     listProfessionalsAction(tenantSlug),
     listServicesAction(tenantSlug),
     listScheduleExceptionsAction(tenantSlug),
     // FORBIDDEN para STAFF: sem resposta ok, a tela nem monta o cartão de comissão.
     getCommissionConfigAction(tenantSlug),
+    requireTenantMember(tenantSlug).catch(() => null),
   ]);
+
+  const isSupportImpersonation = Boolean(memberCtx?.isSupportImpersonation);
 
   if (!professionalsResult.ok) {
     return (
@@ -61,6 +65,7 @@ export default async function ProfessionalDetailPage({
       professional={professional}
       allServices={services}
       writeBlocked={writeBlocked}
+      isSupportImpersonation={isSupportImpersonation}
       commission={commissionResult.ok ? (commissionResult.data.find((c) => c.professionalId === professionalId) ?? null) : null}
       initialExceptions={exceptions.map((exc) => ({
         ...exc,

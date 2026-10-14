@@ -1155,6 +1155,106 @@ const HELP_ENTRIES = {
     tip: "Ao terminar de ajudar, use \"Sair da conta e voltar ao Admin\" no topo para fechar a sessão.",
     warning: "Apenas administradores com a verificação em duas etapas ativa no perfil podem usar o modo suporte.",
   },
+
+  // ───────────────────────────── Catálogo: campos sensíveis ─────────────────────────────
+  "catalogo.servicoNome": {
+    title: "Nome do serviço",
+    purpose: "É o nome que os clientes veem no menu do WhatsApp e na confirmação do agendamento.",
+    examples: [
+      "\"Corte masculino\", \"Manicure completa\", \"Consulta de avaliação\".",
+    ],
+  },
+  "catalogo.servicoDuracao": {
+    title: "Duração do serviço",
+    purpose: "Tempo que o profissional leva para realizar o atendimento, usado para calcular os horários livres na agenda.",
+    examples: [
+      "Um corte de 30 minutos iniciado às 14h ocupa a agenda até 14h30.",
+    ],
+  },
+  "catalogo.servicoIntervalo": {
+    title: "Intervalo após o atendimento",
+    purpose: "Tempo de pausa ou preparação antes do próximo cliente começar.",
+    examples: [
+      "10 minutos para higienizar materiais ou organizar a sala entre atendimentos.",
+    ],
+  },
+  "catalogo.servicoPreco": {
+    title: "Preço do serviço",
+    purpose: "Valor cobrado pelo serviço, exibido no WhatsApp para o cliente e usado no cálculo de comissão.",
+    examples: [
+      "R$ 45,00 para corte simples. Deixe em branco caso prefira combinar na hora.",
+    ],
+  },
+  "catalogo.servicoOrdem": {
+    title: "Ordem de exibição do serviço",
+    purpose: "Define a posição do serviço no menu enviado pelo WhatsApp.",
+    examples: [
+      "Número 1 para o serviço mais procurado, aparecendo no topo da lista.",
+    ],
+  },
+  "catalogo.servicoAtivo": {
+    title: "Situação do serviço",
+    purpose: "Serviços ativos aparecem no WhatsApp. Desative para pausar a oferta sem apagar o histórico.",
+    examples: [
+      "Desative um pacote sazonal de verão até o próximo ano sem perder as configurações.",
+    ],
+  },
+  "catalogo.profissionalNome": {
+    title: "Nome do profissional",
+    purpose: "Identifica quem atende o cliente, tanto na escolha pelo WhatsApp quanto nos relatórios.",
+    examples: [
+      "\"Mariana Silva\" ou \"Dra. Camila\", como o público costuma chamar.",
+    ],
+  },
+  "catalogo.profissionalAtivo": {
+    title: "Situação do profissional",
+    purpose: "Profissionais ativos recebem agendamentos. Desative em caso de férias ou licença.",
+    examples: [
+      "Desative durante um mês de férias para ninguém conseguir marcar horários com ele.",
+    ],
+  },
+  "catalogo.profissionalServicos": {
+    title: "Serviços que o profissional realiza",
+    purpose: "Vincula quais atendimentos este profissional pode executar na empresa.",
+    examples: [
+      "Marque apenas Corte e Barba para quem não faz química ou coloração.",
+    ],
+  },
+  "catalogo.profissionalExpediente": {
+    title: "Expediente de trabalho semanal",
+    purpose: "Grade de dias e horários em que o profissional está disponível para atender.",
+    examples: [
+      "Segunda a sexta das 09h às 18h, com folga nos finais de semana.",
+    ],
+  },
+  "catalogo.bloqueioPeriodo": {
+    title: "Período do bloqueio",
+    purpose: "Data e horário de início e término em que nenhum profissional atenderá.",
+    examples: [
+      "Início em 24/12 às 12h e término em 26/12 às 08h para o recesso de Natal.",
+    ],
+  },
+  "catalogo.bloqueioTipo": {
+    title: "Tipo de bloqueio",
+    purpose: "Separa se o fechamento é um feriado da cidade ou uma pausa interna da empresa.",
+    examples: [
+      "Escolha Feriado para datas comemorativas e Bloqueio para reformas ou treinamento.",
+    ],
+  },
+  "catalogo.bloqueioMotivo": {
+    title: "Motivo do bloqueio",
+    purpose: "Anotação interna para lembrar o motivo do fechamento de toda a empresa.",
+    examples: [
+      "\"Reforma no salão\", \"Feriado municipal\", \"Confraternização da equipe\".",
+    ],
+  },
+  "catalogo.agendamentosFiltros": {
+    title: "Filtros de agendamentos",
+    purpose: "Permite localizar rapidamente clientes marcados por período, profissional e situação.",
+    examples: [
+      "Filtre pelo profissional Bruno e situação Concluído para conferir a produção da semana.",
+    ],
+  },
 } as const satisfies Record<string, HelpEntry>;
 
 export type HelpKey = keyof typeof HELP_ENTRIES;

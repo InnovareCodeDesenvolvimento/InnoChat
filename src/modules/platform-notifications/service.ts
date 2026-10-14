@@ -30,7 +30,7 @@ const TRIAL_WARN_MS = DAY_MS;
 // Mesma regra da tela Saúde (`health-service.ts`): billing 2h, maintenance 26h.
 const BILLING_TICK_STALE_MS = 2 * 60 * 60 * 1000;
 const MAINTENANCE_TICK_STALE_MS = 26 * 60 * 60 * 1000;
-const KEY_PATTERN = /^(signup|pay|susp|cancel|cancelreq|pvoid|pdup|trial|wa|mpwh|tick|pwa|bkp|err):[A-Za-z0-9_:.-]{1,100}$/;
+const KEY_PATTERN = /^(signup|pay|susp|cancel|cancelreq|pvoid|pdup|trial|wa|mpwh|tick|pwa|bkp|err|rescue):[A-Za-z0-9_:.-]{1,100}$/;
 
 type Item = Omit<AdminNotification, "read">;
 
@@ -396,6 +396,33 @@ async function loadItems(now: Date, from: Date): Promise<Item[]> {
       body: `${e.type}: ${e.message.length > 160 ? `${e.message.slice(0, 159)}…` : e.message}`,
       href: "/admin/erros",
       createdAt: e.firstSeenAt.toISOString(),
+    });
+  }
+
+  // Resgate de leads: leads que responderam no WhatsApp de resgate (dentro da janela de 30 dias).
+  const respondedLeads = await prisma.rescueLead.findMany({
+    where: { status: "RESPONDED", respondedAt: { gte: from } },
+    orderBy: { respondedAt: "desc" },
+    take: SOURCE_CAP,
+    select: {
+      id: true,
+      respondedAt: true,
+      user: { select: { id: true, name: true } },
+      tenant: { select: { id: true, name: true, slug: true } },
+    },
+  });
+  for (const l of respondedLeads) {
+    if (!l.respondedAt) continue;
+    const leadName = l.user?.name?.trim() || "Lead";
+    items.push({
+      id: `rescue:lead:${l.id}`,
+      kind: "RESCUE_LEAD_RESPONDED",
+      severity: "warning",
+      title: "Lead respondeu o resgate",
+      body: `Lead ${leadName} respondeu o WhatsApp de resgate. Abra para ver a conversa.`,
+      href: `/admin/resgate?leadId=${l.id}`,
+      createdAt: l.respondedAt.toISOString(),
+      tenant: l.tenant,
     });
   }
 

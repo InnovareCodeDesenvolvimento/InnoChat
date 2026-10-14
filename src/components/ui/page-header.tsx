@@ -9,6 +9,8 @@ export type PageHeaderProps = {
   title: React.ReactNode;
   description?: React.ReactNode;
   action?: React.ReactNode;
+  /** Badge ou pill opcional posicionado ao lado do título (ex.: Modo suporte ativo). */
+  badge?: React.ReactNode;
   className?: string;
   /** `hero` (docs premium, ajuste tipográfico pedido pelo dono): só a tela "Início" — ~40px,
    * tracking apertado (`-0.02em`). Telas de trabalho diário (Agenda etc.) ficam no `default`
@@ -23,7 +25,7 @@ export type PageHeaderProps = {
   help?: HelpKey;
 };
 
-export function PageHeader({ title, description, action, className, size = "default", icon: Icon, help }: PageHeaderProps) {
+export function PageHeader({ title, description, action, badge, className, size = "default", icon: Icon, help }: PageHeaderProps) {
   const hero = size === "hero";
   return (
     <div className={cn("relative mb-6 flex flex-wrap items-start justify-between gap-4", className)}>
@@ -40,16 +42,19 @@ export function PageHeader({ title, description, action, className, size = "defa
           </span>
         ) : null}
         <div className="min-w-0">
-          <h1
-            className={cn(
-              "font-display text-text",
-              hero
-                ? "text-[1.75rem] font-black leading-tight tracking-[-0.02em] sm:text-[2.5rem] sm:leading-none"
-                : "text-[1.75rem] font-bold leading-tight",
-            )}
-          >
-            {title}
-          </h1>
+          <div className="flex flex-wrap items-center gap-2.5">
+            <h1
+              className={cn(
+                "font-display text-text",
+                hero
+                  ? "text-[1.75rem] font-black leading-tight tracking-[-0.02em] sm:text-[2.5rem] sm:leading-none"
+                  : "text-[1.75rem] font-bold leading-tight",
+              )}
+            >
+              {title}
+            </h1>
+            {badge ? <div className="shrink-0">{badge}</div> : null}
+          </div>
           {description ? <p className="mt-1.5 text-sm text-text-secondary">{description}</p> : null}
         </div>
       </div>

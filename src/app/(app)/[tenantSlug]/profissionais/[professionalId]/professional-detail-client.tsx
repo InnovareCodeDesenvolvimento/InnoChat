@@ -15,6 +15,8 @@ import { Badge } from "@/components/ui/badge";
 import { Alert } from "@/components/ui/alert";
 import { Avatar } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { HelpButton } from "@/components/help/help-button";
+import { SupportModeBadge } from "@/components/support/SupportModeBadge";
 import { useToast } from "@/components/ui/toast";
 import {
   createScheduleExceptionAction,
@@ -50,6 +52,7 @@ export function ProfessionalDetailClient({
   initialExceptions,
   commission = null,
   writeBlocked = false,
+  isSupportImpersonation = false,
 }: {
   tenantSlug: string;
   professional: ProfessionalRow;
@@ -58,6 +61,7 @@ export function ProfessionalDetailClient({
   /** Só o dono recebe (nulo para STAFF): a comissão não aparece para quem não é dono. */
   commission?: ProfessionalCommission | null;
   writeBlocked?: boolean;
+  isSupportImpersonation?: boolean;
 }) {
   const { notify } = useToast();
   const [isPending, startTransition] = useTransition();
@@ -231,7 +235,9 @@ export function ProfessionalDetailClient({
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader help="pagina.profissionalDetalhe" icon={navIconFor("profissionais")}
+      <PageHeader
+        help="pagina.profissionalDetalhe"
+        icon={navIconFor("profissionais")}
         title={
           <span className="flex items-center gap-3">
             <Avatar id={professional.id} name={professional.name} />
@@ -239,6 +245,7 @@ export function ProfessionalDetailClient({
           </span>
         }
         description="Dados, serviços, expediente semanal e bloqueios."
+        badge={<SupportModeBadge isSupportImpersonation={isSupportImpersonation} />}
         action={
           <Button variant="ghost" asChild>
             <Link href={`/${tenantSlug}/profissionais`}>
@@ -265,22 +272,25 @@ export function ProfessionalDetailClient({
         <CardContent>
           <form onSubmit={saveBasics} className="flex flex-col gap-4 sm:flex-row sm:items-end sm:gap-4">
             <div className="flex-1">
-              <Field label="Nome" required>
+              <Field label="Nome" required helpKey="catalogo.profissionalNome">
                 {(fieldProps) => (
                   <Input {...fieldProps} value={name} onChange={(e) => setName(e.target.value)} required disabled={writeBlocked} />
                 )}
               </Field>
             </div>
-            <label className="flex items-center gap-2 pb-2.5 text-sm text-text">
-              <input
-                type="checkbox"
-                checked={active}
-                onChange={(e) => setActive(e.target.checked)}
-                disabled={writeBlocked}
-                className="h-4 w-4 rounded border-border accent-primary"
-              />
-              Ativo
-            </label>
+            <div className="flex items-center gap-2 pb-2.5">
+              <label className="flex items-center gap-2 text-sm text-text cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={active}
+                  onChange={(e) => setActive(e.target.checked)}
+                  disabled={writeBlocked}
+                  className="h-4 w-4 rounded border-border accent-primary"
+                />
+                Ativo
+              </label>
+              <HelpButton helpKey="catalogo.profissionalAtivo" placement="inline" />
+            </div>
             <Button icon={Check} type="submit" isLoading={isPending} disabled={writeBlocked} title={writeBlocked ? WRITE_BLOCKED_HINT : undefined} loadingText="Salvando…">
               Salvar
             </Button>

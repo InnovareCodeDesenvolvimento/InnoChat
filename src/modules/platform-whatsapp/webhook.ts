@@ -27,6 +27,7 @@ import {
   type SkipReason,
 } from "@/core/platform-whatsapp/rules";
 import { getEvolutionClient, type EvolutionClient } from "@/modules/whatsapp/evolution-client";
+import { handleRescueInboundMessage } from "@/modules/rescue/webhook";
 import { applyOpenConnection, markActiveDisconnected, type PlatformWhatsappDeps } from "./connections";
 import { patchDiagnostics } from "./diagnostics";
 import { isPlatformSender } from "./sender-guard";
@@ -65,7 +66,7 @@ export async function handlePlatformWhatsappWebhook(token: string, body: unknown
     if (eventName === "CONNECTION_UPDATE") {
       await handleConnectionUpdate(connection, body, deps);
     } else if (eventName === "MESSAGES_UPSERT") {
-      await handleInboundMessage(connection.id, { ...(body as Record<string, unknown>), event: "messages.upsert" }, deps);
+      await handleInboundMessage(connection, { ...(body as Record<string, unknown>), event: "messages.upsert" }, deps);
     } else {
       return { status: 200, body: { status: "ignored" } };
     }
@@ -100,7 +101,8 @@ async function handleConnectionUpdate(connection: ConnectionRow, body: unknown, 
 // Resposta de assinante
 // ---------------------------------------------------------------------------------------------
 
-async function handleInboundMessage(connectionId: string, payload: Record<string, unknown>, deps?: PlatformWhatsappDeps): Promise<void> {
+async function handleInboundMessage(connection: ConnectionRow, payload: Record<string, unknown>, deps?: PlatformWhatsappDeps): Promise<void> {
+  const connectionId = connection.id;
   const normalized = normalizeEvolutionMessage(payload);
   if (normalized.kind !== "message" || normalized.fromMe) return;
   // Status/canal não são conversa com ninguém: sem resposta e sem ruído no diagnóstico.
@@ -129,6 +131,22 @@ async function handleInboundMessage(connectionId: string, payload: Record<string
   const prisma = getPrisma();
   const variants = senderDigits ? phoneDigitVariants(senderDigits) : [];
   const text = normalized.content.type === "text" ? normalized.content.text : normalized.content.label;
+
+  // Se a conexão for de propósito RESCUE, desvia para o fluxo de resgate
+  if (connection.purpose === "RESCUE") {
+    if (senderDigits) {
+      await handleRescueInboundMessage(
+        {
+          connectionId,
+          senderDigits,
+          text,
+          replyTo,
+        },
+        deps,
+      );
+    }
+    return;
+  }
   const optOut = normalized.content.type === "text" && isOptOutText(text);
   const confirm = !optOut && normalized.content.type === "text" && isConfirmText(text);
 
@@ -194,7 +212,6 @@ async function handleInboundMessage(connectionId: string, payload: Record<string
   } catch {
     return skip("NO_EVOLUTION");
   }
-  const connection = await prisma.platformWhatsappConnection.findUnique({ where: { id: connectionId }, select: { instanceName: true, role: true } });
   if (!connection || connection.role === "RETIRED") return skip("CONNECTION_RETIRED");
 
   // Reserva atômica: a checagem do teto e a gravação da reserva rodam sob uma trava por contato. Duas entregas

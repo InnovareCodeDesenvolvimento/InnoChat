@@ -15,6 +15,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeadCell, TableRow } from 
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Pagination } from "@/components/ui/pagination";
+import { SupportModeBadge } from "@/components/support/SupportModeBadge";
 import { useToast } from "@/components/ui/toast";
 import {
   createProfessionalAction,
@@ -37,13 +39,20 @@ export function ProfissionaisClient({
   tenantSlug,
   initialProfessionals,
   writeBlocked = false,
+  isSupportImpersonation = false,
+  defaultDialogOpen = false,
 }: {
   tenantSlug: string;
   initialProfessionals: ProfessionalRow[];
   writeBlocked?: boolean;
+  isSupportImpersonation?: boolean;
+  /** Estado aberto inicial do diálogo de criação (útil em testes SSR) */
+  defaultDialogOpen?: boolean;
 }) {
   const [professionals, setProfessionals] = useState<ProfessionalRow[]>(initialProfessionals);
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [dialogOpen, setDialogOpen] = useState(defaultDialogOpen);
   const [name, setName] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<ProfessionalRow | null>(null);
@@ -75,6 +84,11 @@ export function ProfissionaisClient({
       notify({ variant: "success", title: "Profissional criado.", description: "Agora defina o expediente e os serviços dele." });
     });
   }
+
+  const totalItems = professionals.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const effectivePage = Math.min(page, totalPages);
+  const pagedProfessionals = professionals.slice((effectivePage - 1) * pageSize, effectivePage * pageSize);
 
   function toggleActive(professional: ProfessionalRow) {
     startTransition(async () => {
@@ -116,9 +130,12 @@ export function ProfissionaisClient({
 
   return (
     <div>
-      <PageHeader help="pagina.profissionais" icon={navIconFor("profissionais")}
+      <PageHeader
+        help="pagina.profissionais"
+        icon={navIconFor("profissionais")}
         title="Profissionais"
         description="Expediente semanal e serviços de cada um."
+        badge={<SupportModeBadge isSupportImpersonation={isSupportImpersonation} />}
         action={
           <Button onClick={openCreate} disabled={writeBlocked} title={writeBlocked ? WRITE_BLOCKED_HINT : undefined}>
             <Plus className="h-4 w-4" aria-hidden="true" />
@@ -161,7 +178,7 @@ export function ProfissionaisClient({
                 </TableRow>
               </TableHead>
               <TableBody>
-                {professionals.map((professional) => (
+                {pagedProfessionals.map((professional) => (
                   <TableRow key={professional.id}>
                     <TableCell className="font-medium">
                       <Link
@@ -216,7 +233,7 @@ export function ProfissionaisClient({
           </Card>
 
           <div className="flex flex-col gap-3 md:hidden">
-            {professionals.map((professional) => (
+            {pagedProfessionals.map((professional) => (
               <Card key={professional.id} className="rounded-hero p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <Link
@@ -264,11 +281,25 @@ export function ProfissionaisClient({
               </Card>
             ))}
           </div>
+
+          <Pagination
+            page={effectivePage}
+            pageSize={pageSize}
+            totalItems={totalItems}
+            totalPages={totalPages}
+            onPageChange={setPage}
+            onPageSizeChange={(newSize) => {
+              setPageSize(newSize);
+              setPage(1);
+            }}
+            label="Paginação dos profissionais"
+            className="mt-4"
+          />
         </>
       )}
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
+        <DialogContent container={null}>
           <DialogHeader icon={navIconFor("profissionais")}>
             <DialogTitle>Novo profissional</DialogTitle>
             <DialogDescription>Depois de criar, defina os serviços e o expediente dele.</DialogDescription>
@@ -279,7 +310,7 @@ export function ProfissionaisClient({
                 {formError}
               </p>
             ) : null}
-            <Field label="Nome" required>
+            <Field label="Nome" required helpKey="catalogo.profissionalNome">
               {(fieldProps) => (
                 <Input {...fieldProps} value={name} onChange={(e) => setName(e.target.value)} required maxLength={120} />
               )}

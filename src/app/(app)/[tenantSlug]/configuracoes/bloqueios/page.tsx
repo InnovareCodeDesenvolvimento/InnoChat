@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { navIconFor } from "@/components/shell/nav-items";
 import { EmptyState } from "@/components/ui/empty-state";
 import { getPrisma } from "@/lib/db/prisma";
+import { requireTenantMember } from "@/lib/auth/guards";
 import { listScheduleExceptionsAction } from "@/modules/agenda/catalog-actions";
 import { isTenantWriteBlocked } from "../../_lib/write-blocked";
 import { BloqueiosClient, type CompanyExceptionRow } from "./bloqueios-client";
@@ -27,7 +28,13 @@ export default async function BloqueiosPage({
     notFound();
   }
 
-  const result = await listScheduleExceptionsAction(tenantSlug);
+  const [result, memberCtx] = await Promise.all([
+    listScheduleExceptionsAction(tenantSlug),
+    requireTenantMember(tenantSlug).catch(() => null),
+  ]);
+
+  const isSupportImpersonation = Boolean(memberCtx?.isSupportImpersonation);
+
   if (!result.ok) {
     return (
       <div>
@@ -64,6 +71,7 @@ export default async function BloqueiosPage({
       timezone={tenant.timezone}
       initialExceptions={companyExceptions}
       writeBlocked={writeBlocked}
+      isSupportImpersonation={isSupportImpersonation}
     />
   );
 }

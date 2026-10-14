@@ -24,5 +24,8 @@ export type {
   MercadoPagoEnvironment,
   PlatformSettings,
   SupportSessionCloseReason,
+  RescueLeadStatus,
+  RescueLead,
+  PlatformWhatsappConnection,
   Prisma,
 } from "@prisma/client";

@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { getPrisma } from "@/lib/db/prisma";
+import { requireTenantMember } from "@/lib/auth/guards";
 import { listProfessionalsAction, listServicesAction } from "@/modules/agenda/catalog-actions";
 import { AgendamentosClient } from "./agendamentos-client";
 import type { ProfessionalRow } from "../profissionais/profissionais-client";
@@ -17,11 +18,13 @@ export default async function AgendamentosPage({
     notFound();
   }
 
-  const [professionalsResult, servicesResult] = await Promise.all([
+  const [professionalsResult, servicesResult, memberCtx] = await Promise.all([
     listProfessionalsAction(tenantSlug),
     listServicesAction(tenantSlug),
+    requireTenantMember(tenantSlug).catch(() => null),
   ]);
 
+  const isSupportImpersonation = Boolean(memberCtx?.isSupportImpersonation);
   const professionals = professionalsResult.ok ? (professionalsResult.data as ProfessionalRow[]) : [];
   const services = servicesResult.ok ? (servicesResult.data as ServiceRow[]) : [];
 
@@ -32,6 +35,7 @@ export default async function AgendamentosPage({
       notifyClient={tenant.notifyClientOnStaffChanges}
       professionals={professionals}
       services={services}
+      isSupportImpersonation={isSupportImpersonation}
     />
   );
 }

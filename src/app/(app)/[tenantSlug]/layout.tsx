@@ -20,6 +20,7 @@ import { getOnboardingStateAction } from "@/modules/onboarding/actions";
 import { TwoFactorCard } from "@/components/account/two-factor-card";
 import { TwoFactorNudge } from "@/components/account/two-factor-nudge";
 import { getTwoFactorStatus } from "@/modules/two-factor/service";
+import { touchUserLastSeen } from "@/modules/rescue/throttle";
 
 export const metadata: Metadata = { title: "InnoChat · Painel" };
 
@@ -100,6 +101,11 @@ export default async function TenantLayout({
 
   if (!membership) {
     notFound();
+  }
+
+  // Throttle de atividade do usuário (resgate de leads pós-cadastro / abandono de funil)
+  if (session.user.id && !supportSessionData) {
+    await touchUserLastSeen(session.user.id).catch(() => undefined);
   }
 
   // Status efetivo da assinatura (docs/arquitetura.md §7.4) para o banner global do painel —

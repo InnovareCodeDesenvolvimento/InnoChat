@@ -14,6 +14,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeadCell, TableRow } from 
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { HelpButton } from "@/components/help/help-button";
+import { Pagination } from "@/components/ui/pagination";
+import { SupportModeBadge } from "@/components/support/SupportModeBadge";
 import { useToast } from "@/components/ui/toast";
 import {
   createServiceAction,
@@ -60,13 +63,20 @@ export function ServicosClient({
   tenantSlug,
   initialServices,
   writeBlocked = false,
+  isSupportImpersonation = false,
+  defaultDialogOpen = false,
 }: {
   tenantSlug: string;
   initialServices: ServiceRow[];
   writeBlocked?: boolean;
+  isSupportImpersonation?: boolean;
+  /** Estado aberto inicial do diálogo de cadastro/edição (útil em testes SSR) */
+  defaultDialogOpen?: boolean;
 }) {
   const [services, setServices] = useState<ServiceRow[]>(initialServices);
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [dialogOpen, setDialogOpen] = useState(defaultDialogOpen);
   const [editing, setEditing] = useState<ServiceRow | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [formError, setFormError] = useState<string | null>(null);
@@ -133,6 +143,11 @@ export function ServicosClient({
     });
   }
 
+  const totalItems = services.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const effectivePage = Math.min(page, totalPages);
+  const pagedServices = services.slice((effectivePage - 1) * pageSize, effectivePage * pageSize);
+
   function handleDelete() {
     if (!confirmDelete) return;
     const target = confirmDelete;
@@ -172,9 +187,12 @@ export function ServicosClient({
 
   return (
     <div>
-      <PageHeader help="pagina.servicos" icon={navIconFor("servicos")}
+      <PageHeader
+        help="pagina.servicos"
+        icon={navIconFor("servicos")}
         title="Serviços"
         description="Nome, duração, intervalo, preço opcional e ordem."
+        badge={<SupportModeBadge isSupportImpersonation={isSupportImpersonation} />}
         action={
           <Button onClick={openCreate} disabled={writeBlocked} title={writeBlocked ? WRITE_BLOCKED_HINT : undefined}>
             <Plus className="h-4 w-4" aria-hidden="true" />
@@ -218,7 +236,7 @@ export function ServicosClient({
                 </TableRow>
               </TableHead>
               <TableBody>
-                {services.map((service) => (
+                {pagedServices.map((service) => (
                   <TableRow key={service.id}>
                     <TableCell className="font-medium">{service.name}</TableCell>
                     <TableCell>{service.durationMin} min</TableCell>
@@ -269,7 +287,7 @@ export function ServicosClient({
           </Card>
 
           <div className="flex flex-col gap-3 md:hidden">
-            {services.map((service) => (
+            {pagedServices.map((service) => (
               <Card key={service.id} className="rounded-hero p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="font-medium text-text">{service.name}</p>
@@ -317,11 +335,25 @@ export function ServicosClient({
               </Card>
             ))}
           </div>
+
+          <Pagination
+            page={effectivePage}
+            pageSize={pageSize}
+            totalItems={totalItems}
+            totalPages={totalPages}
+            onPageChange={setPage}
+            onPageSizeChange={(newSize) => {
+              setPageSize(newSize);
+              setPage(1);
+            }}
+            label="Paginação dos serviços"
+            className="mt-4"
+          />
         </>
       )}
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
+        <DialogContent container={null}>
           <DialogHeader icon={navIconFor("servicos")}>
             <DialogTitle>{editing ? "Editar serviço" : "Novo serviço"}</DialogTitle>
             <DialogDescription>Duração e intervalo entram no cálculo dos horários livres.</DialogDescription>
@@ -334,7 +366,7 @@ export function ServicosClient({
               </p>
             ) : null}
 
-            <Field label="Nome" required>
+            <Field label="Nome" required helpKey="catalogo.servicoNome">
               {(fieldProps) => (
                 <Input
                   {...fieldProps}
@@ -347,7 +379,7 @@ export function ServicosClient({
             </Field>
 
             <div className="grid grid-cols-2 gap-4">
-              <Field label="Duração (min)" required>
+              <Field label="Duração (min)" required helpKey="catalogo.servicoDuracao">
                 {(fieldProps) => (
                   <Input
                     {...fieldProps}
@@ -360,7 +392,7 @@ export function ServicosClient({
                   />
                 )}
               </Field>
-              <Field label="Intervalo após (min)" hint="Tempo de folga depois do atendimento.">
+              <Field label="Intervalo após (min)" hint="Tempo de folga depois do atendimento." helpKey="catalogo.servicoIntervalo">
                 {(fieldProps) => (
                   <Input
                     {...fieldProps}
@@ -375,7 +407,7 @@ export function ServicosClient({
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              <Field label="Preço (R$)" hint="Deixe em branco para não mostrar preço.">
+              <Field label="Preço (R$)" hint="Deixe em branco para não mostrar preço." helpKey="catalogo.servicoPreco">
                 {(fieldProps) => (
                   <Input
                     {...fieldProps}
@@ -386,7 +418,7 @@ export function ServicosClient({
                   />
                 )}
               </Field>
-              <Field label="Ordem de exibição">
+              <Field label="Ordem de exibição" helpKey="catalogo.servicoOrdem">
                 {(fieldProps) => (
                   <Input
                     {...fieldProps}
@@ -398,15 +430,18 @@ export function ServicosClient({
               </Field>
             </div>
 
-            <label className="flex items-center gap-2 text-sm text-text">
-              <input
-                type="checkbox"
-                checked={form.active}
-                onChange={(e) => setForm((f) => ({ ...f, active: e.target.checked }))}
-                className="h-4 w-4 rounded border-border accent-primary"
-              />
-              Ativo (aparece para agendamento)
-            </label>
+            <div className="flex items-center gap-2">
+              <label className="flex items-center gap-2 text-sm text-text cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.active}
+                  onChange={(e) => setForm((f) => ({ ...f, active: e.target.checked }))}
+                  className="h-4 w-4 rounded border-border accent-primary"
+                />
+                Ativo (aparece para agendamento)
+              </label>
+              <HelpButton helpKey="catalogo.servicoAtivo" placement="inline" />
+            </div>
 
             <DialogFooter>
               <Button icon={X} type="button" variant="secondary" onClick={() => setDialogOpen(false)}>

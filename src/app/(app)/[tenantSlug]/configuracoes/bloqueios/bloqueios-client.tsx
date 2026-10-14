@@ -15,6 +15,9 @@ import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
+import { HelpButton } from "@/components/help/help-button";
+import { Pagination } from "@/components/ui/pagination";
+import { SupportModeBadge } from "@/components/support/SupportModeBadge";
 import { useToast } from "@/components/ui/toast";
 import { formatDateTimeLabel } from "@/components/lib/format-date";
 import { createScheduleExceptionAction, deleteScheduleExceptionAction } from "@/modules/agenda/catalog-actions";
@@ -42,15 +45,22 @@ export function BloqueiosClient({
   timezone,
   initialExceptions,
   writeBlocked = false,
+  isSupportImpersonation = false,
+  defaultDialogOpen = false,
 }: {
   tenantSlug: string;
   timezone: string;
   initialExceptions: CompanyExceptionRow[];
   writeBlocked?: boolean;
+  isSupportImpersonation?: boolean;
+  /** Estado aberto inicial do diálogo de criação (útil em testes SSR) */
+  defaultDialogOpen?: boolean;
 }) {
   const { notify } = useToast();
   const [exceptions, setExceptions] = useState<CompanyExceptionRow[]>(initialExceptions);
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [dialogOpen, setDialogOpen] = useState(defaultDialogOpen);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [formError, setFormError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<CompanyExceptionRow | null>(null);
@@ -100,6 +110,11 @@ export function BloqueiosClient({
     });
   }
 
+  const totalItems = exceptions.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const effectivePage = Math.min(page, totalPages);
+  const pagedExceptions = exceptions.slice((effectivePage - 1) * pageSize, effectivePage * pageSize);
+
   function handleDelete() {
     if (!confirmDelete) return;
     const target = confirmDelete;
@@ -118,9 +133,12 @@ export function BloqueiosClient({
 
   return (
     <div>
-      <PageHeader help="pagina.bloqueios" icon={navIconFor("configuracoes")}
+      <PageHeader
+        help="pagina.bloqueios"
+        icon={navIconFor("configuracoes")}
         title="Bloqueios e feriados"
         description="Períodos em que a empresa inteira não atende. Vale para todos os profissionais, diferente do bloqueio individual em Profissionais."
+        badge={<SupportModeBadge isSupportImpersonation={isSupportImpersonation} />}
         action={
           <Button onClick={openCreate} disabled={writeBlocked} title={writeBlocked ? WRITE_BLOCKED_HINT : undefined}>
             <Plus className="h-4 w-4" aria-hidden="true" />
@@ -157,7 +175,7 @@ export function BloqueiosClient({
             <CardDescription>Ordenados do mais próximo para o mais distante.</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
-            {exceptions.map((exc) => (
+            {pagedExceptions.map((exc) => (
               <div
                 key={exc.id}
                 className="flex items-center justify-between gap-3 rounded-card border border-border p-3 transition-colors duration-150 hover:border-primary/20 hover:bg-primary/[0.03]"
@@ -184,11 +202,25 @@ export function BloqueiosClient({
               </div>
             ))}
           </CardContent>
+          <div className="p-4 pt-0">
+            <Pagination
+              page={effectivePage}
+              pageSize={pageSize}
+              totalItems={totalItems}
+              totalPages={totalPages}
+              onPageChange={setPage}
+              onPageSizeChange={(newSize) => {
+                setPageSize(newSize);
+                setPage(1);
+              }}
+              label="Paginação dos bloqueios e feriados"
+            />
+          </div>
         </Card>
       )}
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
+        <DialogContent container={null}>
           <DialogHeader icon={CalendarOff}>
             <DialogTitle>Novo bloqueio/feriado da empresa</DialogTitle>
             <DialogDescription>
@@ -202,18 +234,19 @@ export function BloqueiosClient({
                 {formError}
               </p>
             ) : null}
-            <div>
+            <div className="flex items-center justify-between">
               <Label htmlFor="company-block-type">Tipo</Label>
-              <Select
-                id="company-block-type"
-                value={form.type}
-                onChange={(e) => setForm((f) => ({ ...f, type: e.target.value as "BLOCK" | "HOLIDAY" }))}
-              >
-                <option value="HOLIDAY">Feriado/folga</option>
-                <option value="BLOCK">Bloqueio</option>
-              </Select>
+              <HelpButton helpKey="catalogo.bloqueioTipo" placement="inline" />
             </div>
-            <Field label="Início" required>
+            <Select
+              id="company-block-type"
+              value={form.type}
+              onChange={(e) => setForm((f) => ({ ...f, type: e.target.value as "BLOCK" | "HOLIDAY" }))}
+            >
+              <option value="HOLIDAY">Feriado/folga</option>
+              <option value="BLOCK">Bloqueio</option>
+            </Select>
+            <Field label="Início" required helpKey="catalogo.bloqueioPeriodo">
               {(fieldProps) => (
                 <Input
                   {...fieldProps}
@@ -224,7 +257,7 @@ export function BloqueiosClient({
                 />
               )}
             </Field>
-            <Field label="Fim" required>
+            <Field label="Fim" required helpKey="catalogo.bloqueioPeriodo">
               {(fieldProps) => (
                 <Input
                   {...fieldProps}
@@ -235,7 +268,7 @@ export function BloqueiosClient({
                 />
               )}
             </Field>
-            <Field label="Motivo (opcional)">
+            <Field label="Motivo (opcional)" helpKey="catalogo.bloqueioMotivo">
               {(fieldProps) => (
                 <Input
                   {...fieldProps}

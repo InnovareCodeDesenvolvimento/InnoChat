@@ -17,8 +17,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeadCell, TableRow } from "@/components/ui/table";
 import { listAppointmentsAction } from "@/modules/agenda/appointment-actions";
 import { formatDateTimeShortLabel } from "@/components/lib/format-date";
-import { NovoAgendamentoDialog, type AgendaProfessional, type AgendaService } from "@/components/agenda/novo-agendamento-dialog";
+import { NovoAgendamentoDialog, type AgendaService, type AgendaProfessional } from "@/components/agenda/novo-agendamento-dialog";
 import { DetalheAgendamentoDialog, type AppointmentDetail } from "@/components/agenda/detalhe-agendamento-dialog";
+import { HelpButton } from "@/components/help/help-button";
+import { Pagination } from "@/components/ui/pagination";
+import { SupportModeBadge } from "@/components/support/SupportModeBadge";
 import type { ProfessionalRow } from "../profissionais/profissionais-client";
 import type { ServiceRow } from "../servicos/servicos-client";
 
@@ -50,18 +53,22 @@ export function AgendamentosClient({
   professionals,
   services,
   notifyClient = false,
+  isSupportImpersonation = false,
 }: {
   tenantSlug: string;
   timezone: string;
   notifyClient?: boolean;
   professionals: ProfessionalRow[];
   services: ServiceRow[];
+  isSupportImpersonation?: boolean;
 }) {
   const [from, setFrom] = useState(todayISO());
   const [to, setTo] = useState(addDaysISO(todayISO(), 14));
   const [professionalId, setProfessionalId] = useState("");
   const [status, setStatus] = useState<"ALL" | AppointmentDetail["status"]>("ALL");
   const [appointments, setAppointments] = useState<ApptRaw[]>([]);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [novoOpen, setNovoOpen] = useState(false);
@@ -96,6 +103,10 @@ export function AgendamentosClient({
   const highlightedIds = useLiveAppointments().highlightedIds;
 
   const filtered = appointments.filter((a) => status === "ALL" || a.status === status);
+  const totalItems = filtered.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const effectivePage = Math.min(page, totalPages);
+  const pagedAppointments = filtered.slice((effectivePage - 1) * pageSize, effectivePage * pageSize);
 
   function openDetail(a: ApptRaw) {
     setDetail(a);
@@ -103,9 +114,12 @@ export function AgendamentosClient({
 
   return (
     <div>
-      <PageHeader help="pagina.agendamentos" icon={navIconFor("agendamentos")}
+      <PageHeader
+        help="pagina.agendamentos"
+        icon={navIconFor("agendamentos")}
         title="Agendamentos"
         description="Filtre por período, profissional e situação."
+        badge={<SupportModeBadge isSupportImpersonation={isSupportImpersonation} />}
         action={
           <Button onClick={() => setNovoOpen(true)}>
             <Plus className="h-4 w-4" aria-hidden="true" />
@@ -125,6 +139,10 @@ export function AgendamentosClient({
       ) : null}
 
       <Card className="mb-4 rounded-hero p-4">
+        <div className="mb-3 flex items-center justify-between border-b border-border pb-2">
+          <span className="text-xs font-semibold uppercase tracking-wider text-text-secondary">Filtros de busca</span>
+          <HelpButton helpKey="catalogo.agendamentosFiltros" placement="inline" />
+        </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <Label htmlFor="filtro-de">De</Label>
@@ -188,7 +206,7 @@ export function AgendamentosClient({
                 </TableRow>
               </TableHead>
               <TableBody>
-                {filtered.map((a) => (
+                {pagedAppointments.map((a) => (
                   <TableRow key={a.id} className={cn("cursor-pointer transition-colors duration-700 motion-reduce:transition-none", highlightedIds.has(a.id) && "bg-primary/10")} onClick={() => openDetail(a)}>
                     <TableCell className="tabular-nums">{formatDateTimeShortLabel(a.startsAt, timezone)}</TableCell>
                     <TableCell>{a.contact.name ?? "Sem nome"}</TableCell>
@@ -207,7 +225,7 @@ export function AgendamentosClient({
           </Card>
 
           <div className="flex flex-col gap-3 md:hidden">
-            {filtered.map((a) => (
+            {pagedAppointments.map((a) => (
               <Card
                 key={a.id}
                 role="button"
@@ -233,6 +251,20 @@ export function AgendamentosClient({
               </Card>
             ))}
           </div>
+
+          <Pagination
+            page={effectivePage}
+            pageSize={pageSize}
+            totalItems={totalItems}
+            totalPages={totalPages}
+            onPageChange={setPage}
+            onPageSizeChange={(newSize) => {
+              setPageSize(newSize);
+              setPage(1);
+            }}
+            label="Paginação dos agendamentos"
+            className="mt-4"
+          />
         </>
       )}
 

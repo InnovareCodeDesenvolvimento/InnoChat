@@ -7,6 +7,12 @@ Versão semântica (`MAJOR.MINOR.PATCH`), lida do `version` do `package.json` e 
 
 Toda publicação em produção sobe a versão e ganha uma entrada aqui.
 
+## v1.11.0 — 2026-10-14
+
+### Novidade: Suporte do admin no catálogo + Resgate automático de leads do Meta Ads
+- O admin em sessão de suporte agora vê e edita o catálogo da empresa direto: serviços, profissionais, agendamentos e bloqueios. Um badge discreto no cabeçalho de cada tela reforça que o modo suporte está ativo, com modal explicativo e atalho para a ajuda. Todos os campos sensíveis ganharam ícone de ajuda ⓘ com exemplos práticos. Listas longas ganharam paginação numerada (10/25/50/100).
+- Resgate automático de leads: clientes que vieram do Meta Ads, criaram a conta, mas nunca entraram no painel agora recebem até 2 mensagens de WhatsApp (24h e 96h após o cadastro) com um tom humano, dica de como seguir e opção clara de SAIR. Resposta do cliente para o resgate vira notificação no sino do admin da plataforma, com link para abrir a conversa. A régua respeita horário de silêncio e tem kill-switch global.
+
 ## v1.10.1 — 2026-10-14
 
 ### Correções

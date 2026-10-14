@@ -1,5 +1,7 @@
 import { useId } from "react";
 import { Label } from "./label";
+import { HelpButton } from "@/components/help/help-button";
+import type { HelpKey } from "@/components/help/help-content";
 
 export type FieldProps = {
   label: string;
@@ -9,6 +11,8 @@ export type FieldProps = {
   required?: boolean;
   /** Ação alinhada à direita da linha do label (ex.: "Esqueci minha senha"). */
   labelAction?: React.ReactNode;
+  /** Ajuda contextual ⓘ associada diretamente ao campo */
+  helpKey?: HelpKey;
   children: (fieldProps: { id: string; "aria-describedby"?: string; "aria-invalid"?: boolean }) => React.ReactNode;
 };
 
@@ -18,27 +22,35 @@ export type FieldProps = {
  * precisa receber `id` + `aria-describedby`, e cada um tem uma prop diferente
  * para isso — aqui é só o contrato de acessibilidade, não o componente.
  */
-export function Field({ label, htmlFor, hint, error, required, labelAction, children }: FieldProps) {
+export function Field({ label, htmlFor, hint, error, required, labelAction, helpKey, children }: FieldProps) {
   const autoId = useId();
   const id = htmlFor ?? autoId;
   const hintId = hint ? `${id}-hint` : undefined;
   const errorId = error ? `${id}-error` : undefined;
   const describedBy = [hintId, errorId].filter(Boolean).join(" ") || undefined;
 
+  const labelContent = (
+    <span className="inline-flex items-center gap-1.5">
+      <span>
+        {label}
+        {required ? <span className="text-danger"> *</span> : null}
+      </span>
+      {helpKey ? <HelpButton helpKey={helpKey} placement="inline" /> : null}
+    </span>
+  );
+
   return (
     <div>
       {labelAction ? (
         <div className="mb-2 flex items-center justify-between gap-3">
           <Label htmlFor={id} className="mb-0">
-            {label}
-            {required ? <span className="text-danger"> *</span> : null}
+            {labelContent}
           </Label>
           {labelAction}
         </div>
       ) : (
         <Label htmlFor={id}>
-          {label}
-          {required ? <span className="text-danger"> *</span> : null}
+          {labelContent}
         </Label>
       )}
       {children({ id, "aria-describedby": describedBy, "aria-invalid": !!error })}

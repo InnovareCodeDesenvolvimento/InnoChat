@@ -17,7 +17,8 @@ export type PlatformNotificationKind =
   | "PLATFORM_WHATSAPP_DISCONNECTED"
   | "PLATFORM_WHATSAPP_REPLY"
   | "BACKUP_LATE"
-  | "NEW_ERROR";
+  | "NEW_ERROR"
+  | "RESCUE_LEAD_RESPONDED";
 
 export type PlatformNotificationSeverity = "info" | "success" | "warning" | "danger";
 

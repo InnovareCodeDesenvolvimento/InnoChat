@@ -69,6 +69,7 @@ export const ADMIN_KIND_ICON: Record<AdminNotificationKind, LucideIcon> = {
   PLATFORM_WHATSAPP_REPLY: MessageCircle,
   BACKUP_LATE: DatabaseBackup,
   NEW_ERROR: TriangleAlert,
+  RESCUE_LEAD_RESPONDED: MessageCircle,
 };
 
 /**
