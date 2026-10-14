@@ -16,11 +16,12 @@ import {
   setPlatformWhatsappEnabled,
   startPlatformConnection,
   type PlatformQrView,
+  type PlatformWhatsappPurpose,
   type PlatformWhatsappState,
 } from "@/modules/platform-whatsapp/connections";
 import { sendPlatformWhatsappTest, type PlatformWhatsappTestResult } from "@/modules/platform-whatsapp/sender";
 
-export type { PlatformQrView, PlatformWhatsappState, PlatformWhatsappTestResult };
+export type { PlatformQrView, PlatformWhatsappPurpose, PlatformWhatsappState, PlatformWhatsappTestResult };
 
 /**
  * Server Actions do card "WhatsApp de cobrança" no Admin (docs/regua-de-cobranca.md §2.4). Todas
@@ -44,11 +45,13 @@ async function auditWhatsapp(adminId: string, action: string, summary: string, c
 }
 
 const connectionIdSchema = z.string().trim().min(1).max(60);
+const purposeSchema = z.enum(["BILLING", "RESCUE"]).default("BILLING");
 
-export async function getPlatformWhatsappAction(): Promise<Result<PlatformWhatsappState>> {
+export async function getPlatformWhatsappAction(input?: unknown): Promise<Result<PlatformWhatsappState>> {
   return runAction(async () => {
     await requirePlatformAdmin();
-    return getPlatformWhatsappState();
+    const purpose = input ? purposeSchema.parse(input) : "BILLING";
+    return getPlatformWhatsappState(purpose);
   });
 }
 
@@ -69,10 +72,12 @@ export async function setPlatformWhatsappEnabledAction(input: unknown): Promise<
 export async function startPlatformWhatsappConnectionAction(input: unknown): Promise<Result<{ connectionId: string }>> {
   return runAction(async () => {
     const admin = await requirePlatformAdmin();
-    const data = z.object({ label: z.string() }).parse(input);
+    const data = z.object({ label: z.string(), purpose: z.enum(["BILLING", "RESCUE"]).optional() }).parse(input);
     enforceActionLimit(admin.id);
-    const started = await startPlatformConnection({ label: data.label, adminId: admin.id });
-    await auditWhatsapp(admin.id, "platform_whatsapp.connection_started", "Começou a conectar um número no WhatsApp da plataforma.", null, started.connectionId);
+    const purpose = data.purpose ?? "BILLING";
+    const started = await startPlatformConnection({ label: data.label, adminId: admin.id, purpose });
+    const purposeLabel = purpose === "RESCUE" ? "resgate" : "cobrança";
+    await auditWhatsapp(admin.id, "platform_whatsapp.connection_started", `Começou a conectar um número no WhatsApp de ${purposeLabel} da plataforma.`, null, started.connectionId);
     return started;
   });
 }
@@ -99,11 +104,12 @@ export async function cancelPlatformWhatsappConnectionAction(connectionId: unkno
 export async function disconnectPlatformWhatsappAction(input: unknown): Promise<Result<{ retired: boolean }>> {
   return runAction(async () => {
     const admin = await requirePlatformAdmin();
-    const data = z.object({ confirm: z.literal("DESCONECTAR") }).parse(input);
-    void data;
+    const data = z.object({ confirm: z.literal("DESCONECTAR"), purpose: z.enum(["BILLING", "RESCUE"]).optional() }).parse(input);
     enforceActionLimit(admin.id);
-    const retired = await disconnectPlatformWhatsapp(admin.id);
-    if (retired.retired) await auditWhatsapp(admin.id, "platform_whatsapp.disconnected", "Desconectou o número do WhatsApp da plataforma.");
+    const purpose = data.purpose ?? "BILLING";
+    const retired = await disconnectPlatformWhatsapp(admin.id, purpose);
+    const purposeLabel = purpose === "RESCUE" ? "resgate" : "cobrança";
+    if (retired.retired) await auditWhatsapp(admin.id, "platform_whatsapp.disconnected", `Desconectou o número do WhatsApp de ${purposeLabel} da plataforma.`);
     return retired;
   });
 }
@@ -111,9 +117,10 @@ export async function disconnectPlatformWhatsappAction(input: unknown): Promise<
 export async function sendPlatformWhatsappTestAction(input: unknown): Promise<Result<PlatformWhatsappTestResult>> {
   return runAction(async () => {
     const admin = await requirePlatformAdmin();
-    const data = z.object({ toE164: z.string().trim().min(8).max(30) }).parse(input);
+    const data = z.object({ toE164: z.string().trim().min(8).max(30), purpose: z.enum(["BILLING", "RESCUE"]).optional() }).parse(input);
     enforceActionLimit(admin.id);
     const parsed = parseBrazilianPhoneToE164(data.toE164);
-    return sendPlatformWhatsappTest({ toE164: parsed ?? data.toE164, adminId: admin.id });
+    const purpose = data.purpose ?? "BILLING";
+    return sendPlatformWhatsappTest({ toE164: parsed ?? data.toE164, adminId: admin.id, purpose });
   });
 }

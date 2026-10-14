@@ -25,8 +25,8 @@ export async function loadPlatformWhatsappItems(now: Date, from: Date): Promise<
   const prisma = getPrisma();
   const [settings, active, lastRetired, lastEnabled, replies] = await Promise.all([
     prisma.platformSettings.findUnique({ where: { id: 1 }, select: { platformWhatsappEnabled: true } }),
-    prisma.platformWhatsappConnection.findFirst({ where: { role: "ACTIVE" }, select: { id: true, label: true, status: true, phoneE164: true, disconnectedAt: true } }),
-    prisma.platformWhatsappConnection.findFirst({ where: { role: "RETIRED", activatedAt: { not: null } }, orderBy: { retiredAt: "desc" }, select: { retiredAt: true } }),
+    prisma.platformWhatsappConnection.findFirst({ where: { role: "ACTIVE", purpose: "BILLING" }, select: { id: true, label: true, status: true, phoneE164: true, disconnectedAt: true } }),
+    prisma.platformWhatsappConnection.findFirst({ where: { role: "RETIRED", purpose: "BILLING", activatedAt: { not: null } }, orderBy: { retiredAt: "desc" }, select: { retiredAt: true } }),
     prisma.providerEvent.findFirst({ where: { provider: "platform-whatsapp-enabled" }, orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
     prisma.providerEvent.findMany({
       where: { provider: "platform-whatsapp-reply", createdAt: { gte: from } },

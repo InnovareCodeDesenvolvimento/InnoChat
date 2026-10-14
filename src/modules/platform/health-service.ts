@@ -188,7 +188,7 @@ export async function getPlatformHealth(now: Date = new Date()): Promise<Platfor
     prisma.whatsappInstance.groupBy({ by: ["status"], where: { deletedAt: null }, _count: { _all: true } }),
     prisma.subscription.groupBy({ by: ["status"], _count: { _all: true } }),
     prisma.inboundEvent.count({ where: { createdAt: { gte: new Date(now.getTime() - 24 * 60 * 60 * 1000) } } }),
-    prisma.platformWhatsappConnection.findFirst({ where: { role: "ACTIVE" }, select: { label: true, status: true, phoneE164: true, disconnectedAt: true } }),
+    prisma.platformWhatsappConnection.findFirst({ where: { role: "ACTIVE", purpose: "BILLING" }, select: { label: true, status: true, phoneE164: true, disconnectedAt: true } }),
     loadBillingHealth(now),
   ]);
 

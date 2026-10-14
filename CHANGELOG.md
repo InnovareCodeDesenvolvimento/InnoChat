@@ -7,6 +7,11 @@ Versão semântica (`MAJOR.MINOR.PATCH`), lida do `version` do `package.json` e 
 
 Toda publicação em produção sobe a versão e ganha uma entrada aqui.
 
+## v1.13.5 — 2026-10-14
+
+### Correções
+- **WhatsApp da plataforma parametrizado por `purpose`:** todas as funções de `connections.ts`, `sender.ts` e `platform-whatsapp-actions.ts` agora filtram por `BILLING` ou `RESCUE`. Antes, conectar o chip de resgate aposentaria a conexão de cobrança ativa (bug latente crítico). Retrocompatibilidade mantida: chamadas sem `purpose` caem no default `BILLING`. 50 testes de integração verdes contra banco real, 2011 unitários.
+
 ## v1.13.4 — 2026-10-14
 
 ### Correções

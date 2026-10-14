@@ -44,7 +44,7 @@ export async function loadBillingHealth(now: Date = new Date()): Promise<Billing
       where: { id: 1 },
       select: { lastBillingTickAt: true, lastBillingTickResult: true, platformWhatsappEnabled: true },
     }),
-    prisma.platformWhatsappConnection.findFirst({ where: { role: "ACTIVE" }, select: { status: true } }),
+    prisma.platformWhatsappConnection.findFirst({ where: { role: "ACTIVE", purpose: "BILLING" }, select: { status: true } }),
     prisma.billingNotice.count({ where: stuckNoticesWhere(now, "EMAIL") }),
     prisma.billingNotice.count({ where: stuckNoticesWhere(now, "WHATSAPP") }),
     prisma.billingNotice.count({ where: { status: "FAILED", updatedAt: { gte: new Date(now.getTime() - DAY_MS) } } }),

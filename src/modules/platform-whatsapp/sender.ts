@@ -4,7 +4,7 @@ import { logger } from "@/lib/logger";
 import { mapEvolutionState } from "@/core/whatsapp/connection-event";
 import { digitsOnly, maskPhone, phoneDigitVariants, ROUND_WINDOW_MS, roundCapFor, withNewNumberNotice } from "@/core/platform-whatsapp/rules";
 import { EvolutionApiError, getEvolutionClient, type EvolutionClient } from "@/modules/whatsapp/evolution-client";
-import { markActiveDisconnected } from "./connections";
+import { markActiveDisconnected, type PlatformWhatsappPurpose } from "./connections";
 import { isPlatformSender } from "./sender-guard";
 
 /**
@@ -56,7 +56,7 @@ export async function sendPlatformWhatsapp(
   const settings = await prisma.platformSettings.findUnique({ where: { id: 1 }, select: { platformWhatsappEnabled: true } });
   if (!settings?.platformWhatsappEnabled) return { outcome: "NO_PLATFORM_NUMBER" };
 
-  const active = await prisma.platformWhatsappConnection.findFirst({ where: { role: "ACTIVE" } });
+  const active = await prisma.platformWhatsappConnection.findFirst({ where: { role: "ACTIVE", purpose: "BILLING" } });
   if (!active || !active.phoneE164) return { outcome: "NO_PLATFORM_NUMBER" };
   const base = { connectionId: active.id, senderPhoneE164: active.phoneE164 };
 
@@ -128,7 +128,7 @@ export function isRecipientRejection(error: unknown): boolean {
  */
 export async function checkPlatformWhatsappNumber(toE164: string, deps?: PlatformWhatsappSendDeps): Promise<"EXISTS" | "NOT_FOUND" | "UNKNOWN"> {
   try {
-    const active = await getPrisma().platformWhatsappConnection.findFirst({ where: { role: "ACTIVE" } });
+    const active = await getPrisma().platformWhatsappConnection.findFirst({ where: { role: "ACTIVE", purpose: "BILLING" } });
     if (!active || active.status !== "CONNECTED") return "UNKNOWN";
     const variants = phoneDigitVariants(toE164);
     if (variants.length === 0) return "UNKNOWN";
@@ -160,7 +160,7 @@ async function getRoundBudget(active: ActiveRow, now: Date): Promise<{ cap: numb
  * lote ANTES de reservar os avisos. `null` = sem número ativo.
  */
 export async function getPlatformWhatsappRoundBudget(now: Date = new Date()): Promise<{ connectionId: string; cap: number; used: number; remaining: number } | null> {
-  const active = await getPrisma().platformWhatsappConnection.findFirst({ where: { role: "ACTIVE" }, select: { id: true, activatedAt: true } });
+  const active = await getPrisma().platformWhatsappConnection.findFirst({ where: { role: "ACTIVE", purpose: "BILLING" }, select: { id: true, activatedAt: true } });
   if (!active) return null;
   const { cap, used } = await getRoundBudget(active, now);
   return { connectionId: active.id, cap, used, remaining: Math.max(0, cap - used) };
@@ -207,15 +207,17 @@ async function markNewNumberAnnounced(tenantId: string, senderPhone: string): Pr
 // ---------------------------------------------------------------------------------------------
 
 export const TEST_MESSAGE_TEXT = "Teste do WhatsApp de cobrança do InnoChat. Se esta mensagem chegou, o número está funcionando.";
+export const RESCUE_TEST_MESSAGE_TEXT = "Teste do WhatsApp de resgate do InnoChat. Se você recebeu esta mensagem, o número está respondendo.";
 
 export type PlatformWhatsappTestResult = { sent: boolean; errorCode?: "NO_PLATFORM_NUMBER" | "CHANNEL_DOWN" | "BLOCKED_LOOP" | "SEND_FAILED" | "INVALID_NUMBER" };
 
 export async function sendPlatformWhatsappTest(
-  args: { toE164: string; adminId: string },
+  args: { toE164: string; adminId: string; purpose?: PlatformWhatsappPurpose },
   deps?: PlatformWhatsappSendDeps,
 ): Promise<PlatformWhatsappTestResult> {
+  const purpose: PlatformWhatsappPurpose = args.purpose ?? "BILLING";
   const prisma = getPrisma();
-  const active = await prisma.platformWhatsappConnection.findFirst({ where: { role: "ACTIVE" } });
+  const active = await prisma.platformWhatsappConnection.findFirst({ where: { role: "ACTIVE", purpose } });
   if (!active) return { sent: false, errorCode: "NO_PLATFORM_NUMBER" };
   if (active.status !== "CONNECTED") return { sent: false, errorCode: "CHANNEL_DOWN" };
 
@@ -229,12 +231,13 @@ export async function sendPlatformWhatsappTest(
   } catch {
     return { sent: false, errorCode: "CHANNEL_DOWN" };
   }
+  const text = purpose === "RESCUE" ? RESCUE_TEST_MESSAGE_TEXT : TEST_MESSAGE_TEXT;
   try {
-    await evolution.sendText(active.instanceName, to, TEST_MESSAGE_TEXT);
-    logger.info("platform_whatsapp.test_sent", { connectionId: active.id, adminId: args.adminId, to: maskPhone(to) });
+    await evolution.sendText(active.instanceName, to, text);
+    logger.info("platform_whatsapp.test_sent", { connectionId: active.id, adminId: args.adminId, purpose, to: maskPhone(to) });
     return { sent: true };
   } catch (error) {
-    logger.warn("platform_whatsapp.test_failed", { connectionId: active.id, adminId: args.adminId, errorMessage: error instanceof Error ? error.message : String(error) });
+    logger.warn("platform_whatsapp.test_failed", { connectionId: active.id, adminId: args.adminId, purpose, errorMessage: error instanceof Error ? error.message : String(error) });
     return { sent: false, errorCode: "SEND_FAILED" };
   }
 }

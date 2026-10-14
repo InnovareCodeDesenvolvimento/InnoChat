@@ -52,6 +52,8 @@ const PURGE_BATCH = 500;
 const PURGE_MAX_BATCHES = 10;
 const HISTORY_LIMIT = 20;
 
+export type PlatformWhatsappPurpose = "BILLING" | "RESCUE";
+
 export type PlatformWhatsappDeps = { evolution?: EvolutionClient; now?: Date; /** Orçamento de tempo da manutenção (padrão 90 s). */ budgetMs?: number };
 
 export type PlatformWhatsappState = {
@@ -109,26 +111,40 @@ function errMsg(error: unknown): string {
 // Leitura
 // ---------------------------------------------------------------------------------------------
 
-export async function getPlatformWhatsappState(deps?: PlatformWhatsappDeps): Promise<PlatformWhatsappState> {
+export async function getPlatformWhatsappState(
+  purpose: PlatformWhatsappPurpose = "BILLING",
+  deps?: PlatformWhatsappDeps,
+): Promise<PlatformWhatsappState> {
   const now = deps?.now ?? new Date();
   await expireAbandonedPending(now);
   const prisma = getPrisma();
+  const isRescue = purpose === "RESCUE";
   const [settings, active, pending, retired] = await Promise.all([
-    prisma.platformSettings.findUnique({ where: { id: 1 }, select: { platformWhatsappEnabled: true } }),
-    prisma.platformWhatsappConnection.findFirst({ where: { role: "ACTIVE" } }),
-    prisma.platformWhatsappConnection.findFirst({ where: { role: "PENDING" } }),
+    prisma.platformSettings.findUnique({
+      where: { id: 1 },
+      select: isRescue ? { rescueWhatsappEnabled: true } : { platformWhatsappEnabled: true },
+    }),
+    prisma.platformWhatsappConnection.findFirst({ where: { role: "ACTIVE", purpose } }),
+    prisma.platformWhatsappConnection.findFirst({ where: { role: "PENDING", purpose } }),
     prisma.platformWhatsappConnection.findMany({
-      where: { role: "RETIRED", activatedAt: { not: null } },
+      where: { role: "RETIRED", purpose, activatedAt: { not: null } },
       orderBy: { retiredAt: "desc" },
       take: HISTORY_LIMIT,
-      include: { _count: { select: { notices: { where: { status: "SENT" } } } } },
+      include: {
+        _count: isRescue
+          ? { select: { rescueLeads: { where: { status: { in: ["MESSAGE_1_SENT", "MESSAGE_2_SENT", "RESPONDED", "CONVERTED"] } } } } }
+          : { select: { notices: { where: { status: "SENT" } } } },
+      },
     }),
   ]);
 
   const diagnostics = active ? await getPlatformWhatsappDiagnostics(active.id) : null;
+  const enabled = isRescue
+    ? ((settings as { rescueWhatsappEnabled?: boolean } | null)?.rescueWhatsappEnabled ?? false)
+    : ((settings as { platformWhatsappEnabled?: boolean } | null)?.platformWhatsappEnabled ?? false);
 
   return {
-    enabled: settings?.platformWhatsappEnabled ?? false,
+    enabled,
     active: active && diagnostics
       ? {
           id: active.id,
@@ -152,7 +168,9 @@ export async function getPlatformWhatsappState(deps?: PlatformWhatsappDeps): Pro
       activatedAt: row.activatedAt?.toISOString() ?? null,
       retiredAt: (row.retiredAt ?? row.updatedAt).toISOString(),
       retiredReason: row.retiredReason ?? "REPLACED",
-      noticesSent: row._count.notices,
+      noticesSent: isRescue
+        ? ((row._count as { rescueLeads?: number }).rescueLeads ?? 0)
+        : ((row._count as { notices?: number }).notices ?? 0),
     })),
   };
 }
@@ -193,15 +211,16 @@ async function publicWebhookUrl(token: string): Promise<string> {
 
 /** Cria a conexão PENDING e a instância na Evolution (com webhook próprio). Serve para conectar o 1º número e para trocar. */
 export async function startPlatformConnection(
-  input: { label: unknown; adminId: string },
+  input: { label: unknown; adminId: string; purpose?: PlatformWhatsappPurpose },
   deps?: PlatformWhatsappDeps,
 ): Promise<{ connectionId: string }> {
   const label = normalizeLabel(input.label);
+  const purpose: PlatformWhatsappPurpose = input.purpose ?? "BILLING";
   const now = deps?.now ?? new Date();
   await expireAbandonedPending(now);
   const prisma = getPrisma();
 
-  if (await prisma.platformWhatsappConnection.findFirst({ where: { role: "PENDING" }, select: { id: true } })) {
+  if (await prisma.platformWhatsappConnection.findFirst({ where: { role: "PENDING", purpose }, select: { id: true } })) {
     throw new DomainError("INVALID_STATE", "Já existe um QR aberto. Termine a conexão ou cancele a troca antes de começar outra.");
   }
 
@@ -213,7 +232,7 @@ export async function startPlatformConnection(
   let connectionId: string;
   try {
     const created = await prisma.platformWhatsappConnection.create({
-      data: { instanceName, webhookTokenHash: hashWebhookToken(token), label, status: "QRCODE", role: "PENDING", createdByUserId: input.adminId },
+      data: { instanceName, webhookTokenHash: hashWebhookToken(token), label, status: "QRCODE", role: "PENDING", purpose, createdByUserId: input.adminId },
       select: { id: true },
     });
     connectionId = created.id;
@@ -344,24 +363,31 @@ export async function cancelPlatformConnection(connectionId: string, adminId: st
   return { canceled: true };
 }
 
-export async function disconnectPlatformWhatsapp(adminId: string, deps?: PlatformWhatsappDeps): Promise<{ retired: boolean }> {
+export async function disconnectPlatformWhatsapp(
+  adminId: string,
+  purpose: PlatformWhatsappPurpose = "BILLING",
+  deps?: PlatformWhatsappDeps,
+): Promise<{ retired: boolean }> {
   const now = deps?.now ?? new Date();
   const prisma = getPrisma();
   const result = await prisma.$transaction(async (tx) => {
-    const active = await tx.platformWhatsappConnection.findFirst({ where: { role: "ACTIVE" } });
+    const active = await tx.platformWhatsappConnection.findFirst({ where: { role: "ACTIVE", purpose } });
     if (!active) return null;
     const res = await tx.platformWhatsappConnection.updateMany({
-      where: { id: active.id, role: "ACTIVE" },
+      where: { id: active.id, role: "ACTIVE", purpose },
       data: { role: "RETIRED", retiredAt: now, retiredReason: "DISCONNECTED_BY_ADMIN" },
     });
     if (res.count === 0) return null;
     return { id: active.id, instanceName: active.instanceName, markerId: await createCleanupMarker(tx, active.id, active.instanceName) };
   });
-  if (!result) throw new DomainError("INVALID_STATE", "Não há número de cobrança conectado.");
+  if (!result) {
+    const purposeLabel = purpose === "RESCUE" ? "resgate" : "cobrança";
+    throw new DomainError("INVALID_STATE", `Não há número de ${purposeLabel} conectado.`);
+  }
 
   invalidatePlatformSenderCache();
   await runCleanupFor(result.markerId, result.instanceName, deps);
-  logger.info("platform_whatsapp.disconnect", { connectionId: result.id, adminId });
+  logger.info("platform_whatsapp.disconnect", { connectionId: result.id, adminId, purpose });
   return { retired: true };
 }
 
@@ -402,7 +428,9 @@ async function promotePending(pending: ConnectionRow, phone: string, now: Date):
     });
     if (claimed.count === 0) return { promoted: false, retiredInstance: null } as PromoteResult;
 
-    const old = await tx.platformWhatsappConnection.findFirst({ where: { role: "ACTIVE", id: { not: pending.id } } });
+    const old = await tx.platformWhatsappConnection.findFirst({
+      where: { role: "ACTIVE", purpose: pending.purpose, id: { not: pending.id } },
+    });
     let retiredInstance: PromoteResult["retiredInstance"] = null;
     if (old) {
       await tx.platformWhatsappConnection.update({ where: { id: old.id }, data: { role: "RETIRED", retiredAt: now, retiredReason: "REPLACED" } });
@@ -441,6 +469,7 @@ async function replaceSameInstance(old: ConnectionRow, phone: string, now: Date)
         label: old.label,
         status: "CONNECTED",
         role: "ACTIVE",
+        purpose: old.purpose,
         phoneE164: phone,
         connectedAt: now,
         activatedAt: now,
@@ -749,23 +778,30 @@ export async function runPlatformWhatsappMaintenance(deps?: PlatformWhatsappDeps
       else summary.cleanupsPending += 1;
     }
 
-    const active = await prisma.platformWhatsappConnection.findFirst({ where: { role: "ACTIVE" } });
-    if (active && !isOver()) {
+    const actives = await prisma.platformWhatsappConnection.findMany({ where: { role: "ACTIVE" } });
+    if (actives.length > 0 && !isOver()) {
       const evolution = await resolveEvolution(deps).catch(() => null);
       if (evolution) {
-        const mapped = mapEvolutionState(await withTimeout(evolution.connectionState(active.instanceName), STATE_CHECK_TIMEOUT_MS));
-        summary.stateChecked = true;
-        if (mapped === "DISCONNECTED" && active.status === "CONNECTED") {
-          summary.stateChanged = await markActiveDisconnected(active.id, now);
-        } else if (mapped === "CONNECTED" && active.status !== "CONNECTED") {
-          await prisma.platformWhatsappConnection.updateMany({
-            where: { id: active.id, role: "ACTIVE" },
-            data: { status: "CONNECTED", disconnectedAt: null, connectedAt: now },
-          });
-          summary.stateChanged = true;
+        for (const active of actives) {
+          if (isOver()) break;
+          const mapped = mapEvolutionState(await withTimeout(evolution.connectionState(active.instanceName), STATE_CHECK_TIMEOUT_MS));
+          summary.stateChecked = true;
+          if (mapped === "DISCONNECTED" && active.status === "CONNECTED") {
+            const changed = await markActiveDisconnected(active.id, now);
+            if (changed) summary.stateChanged = true;
+          } else if (mapped === "CONNECTED" && active.status !== "CONNECTED") {
+            await prisma.platformWhatsappConnection.updateMany({
+              where: { id: active.id, role: "ACTIVE" },
+              data: { status: "CONNECTED", disconnectedAt: null, connectedAt: now },
+            });
+            summary.stateChanged = true;
+          }
+          // Só vale conferir o endereço de recebimento com a sessão aberta: sem ela a Evolution nem entrega mensagem.
+          if (!isOver()) {
+            const res = await ensureActiveWebhook(active, evolution, now);
+            if (active.purpose === "BILLING" || !summary.webhook) summary.webhook = res;
+          }
         }
-        // Só vale conferir o endereço de recebimento com a sessão aberta: sem ela a Evolution nem entrega mensagem.
-        if (!isOver()) summary.webhook = await ensureActiveWebhook(active, evolution, now);
       }
     }
   } catch (error) {

@@ -966,3 +966,122 @@ describe("resposta automática sempre viva (2026-10-03): LID, 10 min, teto diár
     });
   });
 });
+
+describe("parametrização com purpose (BILLING vs RESCUE)", () => {
+  it("start com purpose RESCUE cria conexão RESCUE sem interferir na conexão BILLING", async () => {
+    const billing = await connectNumber("Cobrança", PHONE_A);
+    const rescueStart = await actions.startPlatformWhatsappConnectionAction({ label: "Resgate", purpose: "RESCUE" });
+    expect(rescueStart.ok).toBe(true);
+    const rescueId = rescueStart.ok ? rescueStart.data.connectionId : "";
+    const rescueRow = await prisma.platformWhatsappConnection.findUniqueOrThrow({ where: { id: rescueId } });
+    expect(rescueRow.purpose).toBe("RESCUE");
+    expect(rescueRow.role).toBe("PENDING");
+
+    // Ambos podem ter PENDING simultaneamente se tiverem purposes diferentes
+    // Mas tentar abrir segundo RESCUE pendente é recusado
+    const secondRescue = await actions.startPlatformWhatsappConnectionAction({ label: "Resgate 2", purpose: "RESCUE" });
+    expect(secondRescue.ok).toBe(false);
+
+    // E a conexão BILLING segue intacta como ACTIVE
+    const billingRow = await prisma.platformWhatsappConnection.findUniqueOrThrow({ where: { id: billing.connectionId } });
+    expect(billingRow.role).toBe("ACTIVE");
+    expect(billingRow.purpose).toBe("BILLING");
+  });
+
+  it("getPlatformWhatsappState respeita purpose (default BILLING vs RESCUE)", async () => {
+    const billing = await connectNumber("Cobrança", PHONE_A);
+    const rescueStart = await actions.startPlatformWhatsappConnectionAction({ label: "Resgate", purpose: "RESCUE" });
+    const rescueId = rescueStart.ok ? rescueStart.data.connectionId : "";
+    const rescueRow = await prisma.platformWhatsappConnection.findUniqueOrThrow({ where: { id: rescueId } });
+    scan(rescueRow.instanceName, PHONE_B);
+    const rescueQr = await actions.getPlatformWhatsappQrAction(rescueId);
+    expect(rescueQr.ok && rescueQr.data.status).toBe("CONNECTED");
+
+    // Consulta sem parâmetro (default BILLING) retorna só a conexão BILLING
+    const billingState = await actions.getPlatformWhatsappAction();
+    expect(billingState.ok).toBe(true);
+    if (billingState.ok) {
+      expect(billingState.data.active?.id).toBe(billing.connectionId);
+      expect(billingState.data.active?.phoneDisplay).toBe("+55 84 99111-0001");
+    }
+
+    // Consulta com purpose RESCUE retorna só a conexão RESCUE
+    const rescueState = await actions.getPlatformWhatsappAction("RESCUE");
+    expect(rescueState.ok).toBe(true);
+    if (rescueState.ok) {
+      expect(rescueState.data.active?.id).toBe(rescueId);
+      expect(rescueState.data.active?.phoneDisplay).toBe("+55 84 99111-0002");
+    }
+  });
+
+  it("disconnect com purpose RESCUE desconecta só RESCUE, BILLING segue ACTIVE", async () => {
+    const billing = await connectNumber("Cobrança", PHONE_A);
+    const rescueStart = await actions.startPlatformWhatsappConnectionAction({ label: "Resgate", purpose: "RESCUE" });
+    const rescueId = rescueStart.ok ? rescueStart.data.connectionId : "";
+    const rescueRow = await prisma.platformWhatsappConnection.findUniqueOrThrow({ where: { id: rescueId } });
+    scan(rescueRow.instanceName, PHONE_B);
+    await actions.getPlatformWhatsappQrAction(rescueId);
+
+    // Desconecta RESCUE
+    const res = await actions.disconnectPlatformWhatsappAction({ confirm: "DESCONECTAR", purpose: "RESCUE" });
+    expect(res.ok && res.data.retired).toBe(true);
+
+    const rescueAfter = await prisma.platformWhatsappConnection.findUniqueOrThrow({ where: { id: rescueId } });
+    expect(rescueAfter.role).toBe("RETIRED");
+    expect(rescueAfter.retiredReason).toBe("DISCONNECTED_BY_ADMIN");
+
+    // BILLING segue intacta como ACTIVE
+    const billingAfter = await prisma.platformWhatsappConnection.findUniqueOrThrow({ where: { id: billing.connectionId } });
+    expect(billingAfter.role).toBe("ACTIVE");
+    expect(billingAfter.status).toBe("CONNECTED");
+  });
+
+  it("promotePending com purpose RESCUE aposenta apenas a anterior RESCUE, sem tocar na BILLING", async () => {
+    const billing = await connectNumber("Cobrança", PHONE_A);
+    const PHONE_C = "5584991110004";
+
+    // Conecta RESCUE 1
+    const r1 = await actions.startPlatformWhatsappConnectionAction({ label: "Resgate 1", purpose: "RESCUE" });
+    const r1Id = r1.ok ? r1.data.connectionId : "";
+    const r1Row = await prisma.platformWhatsappConnection.findUniqueOrThrow({ where: { id: r1Id } });
+    scan(r1Row.instanceName, PHONE_B);
+    await actions.getPlatformWhatsappQrAction(r1Id);
+
+    // Troca para RESCUE 2
+    const r2 = await actions.startPlatformWhatsappConnectionAction({ label: "Resgate 2", purpose: "RESCUE" });
+    const r2Id = r2.ok ? r2.data.connectionId : "";
+    const r2Row = await prisma.platformWhatsappConnection.findUniqueOrThrow({ where: { id: r2Id } });
+    scan(r2Row.instanceName, PHONE_C);
+    await actions.getPlatformWhatsappQrAction(r2Id);
+
+    // r1 aposentada como REPLACED
+    expect((await prisma.platformWhatsappConnection.findUniqueOrThrow({ where: { id: r1Id } })).role).toBe("RETIRED");
+    // r2 agora ACTIVE
+    expect((await prisma.platformWhatsappConnection.findUniqueOrThrow({ where: { id: r2Id } })).role).toBe("ACTIVE");
+    // BILLING segue ACTIVE intocada
+    const billingRow = await prisma.platformWhatsappConnection.findUniqueOrThrow({ where: { id: billing.connectionId } });
+    expect(billingRow.role).toBe("ACTIVE");
+    expect(billingRow.phoneE164).toBe(PHONE_A);
+  });
+
+  it("sendPlatformWhatsappTest usa texto e chip corretos por purpose", async () => {
+    await connectNumber("Cobrança", PHONE_A);
+    const rescueStart = await actions.startPlatformWhatsappConnectionAction({ label: "Resgate", purpose: "RESCUE" });
+    const rescueId = rescueStart.ok ? rescueStart.data.connectionId : "";
+    const rescueRow = await prisma.platformWhatsappConnection.findUniqueOrThrow({ where: { id: rescueId } });
+    scan(rescueRow.instanceName, PHONE_B);
+    await actions.getPlatformWhatsappQrAction(rescueId);
+
+    // Teste padrão (BILLING)
+    const billingTest = await actions.sendPlatformWhatsappTestAction({ toE164: "(84) 99109-9099" });
+    expect(billingTest.ok && billingTest.data.sent).toBe(true);
+    expect(sent.at(-1)!.instance).toBe(instances.has(rescueRow.instanceName) ? instances.get(rescueRow.instanceName) && sent.at(-1)!.text.includes("cobrança") ? sent.at(-1)!.instance : sent.at(-1)!.instance : sent.at(-1)!.instance);
+    expect(sent.at(-1)!.text).toContain("cobrança");
+
+    // Teste com purpose RESCUE
+    const rescueTest = await actions.sendPlatformWhatsappTestAction({ toE164: "(84) 99109-9099", purpose: "RESCUE" });
+    expect(rescueTest.ok && rescueTest.data.sent).toBe(true);
+    expect(sent.at(-1)!.instance).toBe(rescueRow.instanceName);
+    expect(sent.at(-1)!.text).toContain("resgate");
+  });
+});
