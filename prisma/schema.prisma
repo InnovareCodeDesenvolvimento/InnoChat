@@ -14,27 +14,27 @@ datasource db {
 // ---------------------------------------------------------------------------
 
 model User {
-  id                String    @id @default(cuid())
-  email             String    @unique
+  id                             String    @id @default(cuid())
+  email                          String    @unique
   // null = conta criada só pelo Google (sem senha). Login por senha responde "esta conta usa
   // Google"; "esqueci a senha" permite DEFINIR uma. Nunca gravar string vazia.
-  passwordHash      String?
+  passwordHash                   String?
   // `sub` do Google (id estável da conta Google). Vincula o usuário ao login com Google; @unique
   // impede duas contas InnoChat no mesmo Google.
-  googleSub         String?   @unique
+  googleSub                      String?   @unique
   // Versão da sessão: o JWT carrega `sv`; se o banco tiver outro valor a sessão deixa de valer.
   // Incrementa quando algo deve derrubar sessões abertas (vínculo Google em conta não verificada,
   // redefinição de senha, "sair de todos os dispositivos").
-  sessionVersion    Int       @default(0)
-  emailVerifiedAt  DateTime?
-  isPlatformAdmin   Boolean   @default(false)
-  termsAcceptedAt   DateTime?
-  termsVersion      String?
+  sessionVersion                 Int       @default(0)
+  emailVerifiedAt                DateTime?
+  isPlatformAdmin                Boolean   @default(false)
+  termsAcceptedAt                DateTime?
+  termsVersion                   String?
   // Onboarding (tour guiado do Inno): por USUÁRIO — funcionário novo também vê o tour.
   // null = ainda não concluiu/pulou.
-  onboardingTourCompletedAt DateTime?
+  onboardingTourCompletedAt      DateTime?
   // Nome de exibição (até 80 caracteres — limite na validação, não no banco). null = sem nome.
-  name              String?
+  name                           String?
   // Notificações da plataforma (admin): "marcar todas como lidas" = tudo com data <= este instante.
   platformNotificationsReadAllAt DateTime?
 
@@ -49,15 +49,16 @@ model User {
   totpLastUsedStep  Int?
   twoFactorRequired Boolean   @default(false)
 
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   twoFactorRecoveryCodes    TwoFactorRecoveryCode[]
   platformNotificationReads PlatformNotificationRead[]
-  memberships       Membership[]
-  authTokens        AuthToken[]
-  chatMessagesAuthored ChatMessage[] @relation("ChatMessageAuthor")
-  platformSettingsUpdates PlatformSettings[] @relation("PlatformSettingsUpdatedBy")
+  memberships               Membership[]
+  authTokens                AuthToken[]
+  chatMessagesAuthored      ChatMessage[]              @relation("ChatMessageAuthor")
+  platformSettingsUpdates   PlatformSettings[]         @relation("PlatformSettingsUpdatedBy")
+  supportSessions           SupportSession[]
 
   @@map("users")
 }
@@ -104,10 +105,10 @@ enum PanelTheme {
 }
 
 model Tenant {
-  id        String     @id @default(cuid())
-  slug      String     @unique
-  name      String
-  timezone  String
+  id       String     @id @default(cuid())
+  slug     String     @unique
+  name     String
+  timezone String
   // CPF/CNPJ da empresa (só dígitos), exigido pelo Mercado Pago para criar cobrança Pix
   // (`payer.identification` — ver `src/modules/billing/mercadopago.ts`). Decisão do dono,
   // 2026-09-29: como a PRIMEIRA fatura (com Pix) já nasce no cadastro, `signUpAction` passou a
@@ -117,34 +118,34 @@ model Tenant {
   // `updateTenantDocumentAction` (`src/modules/tenant/actions.ts`) continua existindo para
   // corrigir depois. Enquanto for `null`, a fatura nasce sem Pix (mesmo caminho já existente de
   // "Mercado Pago indisponível").
-  document  String?
-  segment   String?
+  document String?
+  segment  String?
   // Tema visual do painel (decisão do dono, 2026-09-28): só os 3 temas prontos abaixo — sem cor
   // personalizada, sem modo escuro e sem logo.
-  theme     PanelTheme @default(INDIGO_CLINICO)
+  theme    PanelTheme @default(INDIGO_CLINICO)
 
   // Regras de agenda/bot em colunas escalares (§5).
   // Grade de horários ancorada (bot v2): 15 ou 30 (CHECK no banco). Padrão 30 desde o bot v2.
-  slotGranularityMin        Int     @default(30)
-  minLeadTimeMin            Int     @default(60)
-  maxHorizonDays            Int     @default(30)
-  cancelMinLeadMin          Int     @default(120)
-  sessionTimeoutMin         Int     @default(30)
-  humanPauseMin             Int     @default(720)
-  askProfessional           Boolean @default(true)
-  maxWhatsappNumbersOverride Int?
-  maxProfessionalsOverride   Int?
+  slotGranularityMin              Int       @default(30)
+  minLeadTimeMin                  Int       @default(60)
+  maxHorizonDays                  Int       @default(30)
+  cancelMinLeadMin                Int       @default(120)
+  sessionTimeoutMin               Int       @default(30)
+  humanPauseMin                   Int       @default(720)
+  askProfessional                 Boolean   @default(true)
+  maxWhatsappNumbersOverride      Int?
+  maxProfessionalsOverride        Int?
   // Onboarding: o checklist "Primeiros passos" é por EMPRESA; null = visível.
-  onboardingChecklistDismissedAt DateTime?
+  onboardingChecklistDismissedAt  DateTime?
   // Lembrete de véspera ao cliente por WhatsApp.
-  reminderEnabled     Boolean @default(true)
-  reminderHoursBefore Int     @default(24)
+  reminderEnabled                 Boolean   @default(true)
+  reminderHoursBefore             Int       @default(24)
   // Bot v2. 0 = sem limite de agendamentos futuros por contato no WhatsApp (CHECK 0..20).
-  maxFutureAppointmentsPerContact Int @default(3)
+  maxFutureAppointmentsPerContact Int       @default(3)
   // Atendimento humano: avisa o cliente no WhatsApp quando a EQUIPE agenda/remarca/cancela pelo painel.
-  notifyClientOnStaffChanges Boolean @default(true)
+  notifyClientOnStaffChanges      Boolean   @default(true)
   // Minutos até o bot retomar após atendimento humano (CHECK 30..1440).
-  handoffResumeMinutes            Int @default(120)
+  handoffResumeMinutes            Int       @default(120)
 
   // Contato de cobrança (régua, docs/regua-de-cobranca.md D4/D5). `billingEmail` nulo = os avisos vão
   // para o OWNER mais antigo (comportamento de sempre); preenchido = recebe tudo e o dono continua
@@ -153,9 +154,9 @@ model Tenant {
   // `billingWhatsappOptOutAt` preenchido = a empresa desligou (pela tela Assinatura ou respondendo SAIR)
   // e é a prova do pedido. Nulo = recebe. Nenhum número é inventado: sem `billingWhatsappE164` a etapa
   // de WhatsApp é pulada (NO_RECIPIENT).
-  billingEmail            String?
-  billingWhatsappE164     String?
-  billingWhatsappOptOutAt DateTime?
+  billingEmail               String?
+  billingWhatsappE164        String?
+  billingWhatsappOptOutAt    DateTime?
   // Posse do número de cobrança confirmada: o assinante respondeu SIM ao número da plataforma. Nulo =
   // não confirmado (qualquer um pode digitar o número de outra pessoa no cadastro): o WhatsApp sai no
   // máximo 1 vez por dia e com o convite para responder SIM ou SAIR. Volta a nulo quando o número muda.
@@ -166,7 +167,7 @@ model Tenant {
 
   memberships        Membership[]
   services           Service[]
-  professionals       Professional[]
+  professionals      Professional[]
   scheduleExceptions ScheduleException[]
   contacts           Contact[]
   appointments       Appointment[]
@@ -181,6 +182,7 @@ model Tenant {
   auditLogs          AuditLog[]
   couponRedemptions  CouponRedemption[]
   waitlistEntries    WaitlistEntry[]
+  supportSessions    SupportSession[]
 
   @@map("tenants")
 }
@@ -191,17 +193,17 @@ enum MembershipRole {
 }
 
 model Membership {
-  id        String         @id @default(cuid())
-  userId    String
-  tenantId  String
-  role      MembershipRole
-  createdAt DateTime       @default(now())
+  id                     String         @id @default(cuid())
+  userId                 String
+  tenantId               String
+  role                   MembershipRole
+  createdAt              DateTime       @default(now())
   // Central de notificações: "marcar todas como lidas" = tudo com createdAt <= este instante.
   // Leitura individual fica em NotificationRead. Por (usuário, empresa) porque a Membership já é isso.
   notificationsReadAllAt DateTime?
 
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant            Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   notificationReads NotificationRead[]
 
   @@unique([userId, tenantId])
@@ -247,8 +249,8 @@ model PlatformSettings {
   // Login com Google (OAuth). Client ID/Secret cadastrados em Admin > Configurações — nada em env
   // var. O secret é cifrado (`enc:v1:`, src/lib/crypto.ts). O provedor só entra no Auth.js quando
   // `googleAuthEnabled` está ligado com ID e secret que decifram.
-  googleAuthEnabled   Boolean @default(false)
-  googleClientId      String?
+  googleAuthEnabled     Boolean @default(false)
+  googleClientId        String?
   googleClientSecretEnc String?
 
   evolutionApiUrl String?
@@ -267,12 +269,12 @@ model PlatformSettings {
   n8nCredPainelId    String?
   n8nCredEvolutionId String?
   n8nCredApiId       String?
-  n8nWorkflowBotId    String?
-  n8nWorkflowErrosId  String?
+  n8nWorkflowBotId   String?
+  n8nWorkflowErrosId String?
   // `innochat-cron` (Schedule de hora em hora → POST /billing/tick, ver src/modules/platform/
   // n8n-sync.ts) — opcional: pode não existir ainda no n8n do dono, `syncN8n` não falha por
   // isso, só avisa no resumo.
-  n8nWorkflowCronId   String?
+  n8nWorkflowCronId  String?
 
   // Pixel do Meta + API de Conversões (Onda 0, item 5). `metaPixelId` não é segredo (aparece no HTML
   // da landing); o token da CAPI é cifrado (`enc:v1:`) e nunca volta à tela. `metaTestEventCode` é o
@@ -284,11 +286,11 @@ model PlatformSettings {
   metaEnabled       Boolean @default(false)
 
   // Publicação do fluxo do bot pelo painel (bot v2, docs/bot-v2-plano.md §3.1/§3.6).
-  n8nBotFlowVersion           String?   // Config.flowVersion do JSON publicado, ex.: "2.0.0"
-  n8nBotFlowHash              String?   // hash canônico do que foi publicado
+  n8nBotFlowVersion           String? // Config.flowVersion do JSON publicado, ex.: "2.0.0"
+  n8nBotFlowHash              String? // hash canônico do que foi publicado
   n8nBotFlowPublishedAt       DateTime?
-  n8nBotFlowPublishedByUserId String?   // sem FK (auditoria simples)
-  n8nBotFlowPrevious          Json?     // { version, hash, nodes, connections } do vivo antes do último PUT
+  n8nBotFlowPublishedByUserId String? // sem FK (auditoria simples)
+  n8nBotFlowPrevious          Json? // { version, hash, nodes, connections } do vivo antes do último PUT
 
   // LEGADO (pré-2026-09-29): texto puro. Migração preguiçosa no código (`src/modules/platform/
   // mercadopago-config.ts`, `migrateLegacyPlatformSecrets`): na 1ª leitura/gravação o valor vai,
@@ -332,20 +334,20 @@ model PlatformSettings {
   // leitura) — são os mesmos dados que já apareceriam public/mente nos Termos/Privacidade.
   // `getPublicLegalInfo()` (src/modules/platform/legal-service.ts) expõe só estes campos para
   // as páginas `/termos` e `/privacidade` substituírem os marcadores `[CNPJ]`, `[ENDEREÇO]` etc.
-  companyLegalName     String?
-  companyCnpj          String?
-  companyAddress       String?
-  contactEmail         String?
-  dpoName              String?
-  dpoEmail             String?
-  forumCity            String?
-  hostingRegion        String?
-  backupRetentionDays  Int?
+  companyLegalName    String?
+  companyCnpj         String?
+  companyAddress      String?
+  contactEmail        String?
+  dpoName             String?
+  dpoEmail            String?
+  forumCity           String?
+  hostingRegion       String?
+  backupRetentionDays Int?
 
   // WhatsApp comercial da empresa (botão "Tirar dúvidas" da landing). E.164 só dígitos com DDI
   // (`558431132584`); nulo = botão some. Não é segredo. Lido por `getPublicSalesWhatsapp()`
   // (src/modules/platform/sales-contact.ts); cadastrado em Admin → Configurações.
-  salesWhatsappE164    String?
+  salesWhatsappE164 String?
 
   // Chave geral da régua por WhatsApp (docs/regua-de-cobranca.md §2.4). Desligada = a régua roda só por
   // e-mail e sino. O número em si mora em `PlatformWhatsappConnection` (conexão ACTIVE), nunca aqui.
@@ -356,13 +358,13 @@ model PlatformSettings {
   // parou de rodar (docs/contratos.md, seção "Admin Saúde"). `*Result` guarda o resumo já
   // devolvido por cada tick (`BillingTickSummary`/`MaintenanceTickSummary`), sem achatar em
   // colunas novas a cada contador futuro.
-  lastBillingTickAt        DateTime?
+  lastBillingTickAt         DateTime?
   lastBillingTickResult     Json?
   lastMaintenanceTickAt     DateTime?
   lastMaintenanceTickResult Json?
 
   // Monitor de cobrança (F7): quando saiu o último e-mail de "cobrança parada" ao admin. Limita a 1 e-mail a cada 6 h.
-  lastBillingDownAlertAt    DateTime?
+  lastBillingDownAlertAt DateTime?
 
   // Diagnóstico do webhook do Mercado Pago (Admin → Saúde): último recebido (qualquer desfecho) e
   // última rejeição com o motivo. JSON pequeno `{ outcome|reason, environment, type }` — NUNCA o
@@ -396,9 +398,9 @@ model Service {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  tenant                Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  professionalServices  ProfessionalService[]
-  appointments          Appointment[]
+  tenant               Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  professionalServices ProfessionalService[]
+  appointments         Appointment[]
   waitlistEntries      WaitlistEntry[]
 
   @@index([tenantId, active, sortOrder])
@@ -406,19 +408,19 @@ model Service {
 }
 
 model Professional {
-  id        String   @id @default(cuid())
-  tenantId  String
-  name      String
-  active    Boolean  @default(true)
-  sortOrder Int      @default(0)
+  id            String   @id @default(cuid())
+  tenantId      String
+  name          String
+  active        Boolean  @default(true)
+  sortOrder     Int      @default(0)
   // Comissão padrão do profissional, em % do valor do serviço (0 a 100, 2 casas; CHECK no banco).
   // NULO = sem comissão cadastrada (relatório trata como 0). O Prisma devolve Decimal: converter
   // com Number() antes de calcular em centavos.
   commissionPct Decimal? @db.Decimal(5, 2)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  tenant               Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant               Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   workingHours         WorkingHour[]
   professionalServices ProfessionalService[]
   scheduleExceptions   ScheduleException[]
@@ -431,7 +433,7 @@ model Professional {
 }
 
 model ProfessionalService {
-  id             String @id @default(cuid())
+  id             String   @id @default(cuid())
   professionalId String
   serviceId      String
   // Override da comissão para ESTE serviço neste profissional (% 0 a 100). NULO = vale
@@ -468,14 +470,14 @@ enum ScheduleExceptionType {
 
 // professionalId nulo = escopo da empresa inteira.
 model ScheduleException {
-  id             String                 @id @default(cuid())
+  id             String                @id @default(cuid())
   tenantId       String
   professionalId String?
   type           ScheduleExceptionType
   startsAt       DateTime
   endsAt         DateTime
   reason         String?
-  createdAt      DateTime               @default(now())
+  createdAt      DateTime              @default(now())
 
   tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   professional Professional? @relation(fields: [professionalId], references: [id], onDelete: Cascade)
@@ -486,22 +488,22 @@ model ScheduleException {
 }
 
 model Contact {
-  id            String    @id @default(cuid())
-  tenantId      String
-  waJid         String
-  phoneE164     String?
-  lid           String?
-  name          String?
-  pushName      String?
-  notes         String?
+  id             String    @id @default(cuid())
+  tenantId       String
+  waJid          String
+  phoneE164      String?
+  lid            String?
+  name           String?
+  pushName       String?
+  notes          String?
   botPausedUntil DateTime?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
-  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  appointments Appointment[]
-  chatSessions ChatSession[]
-  chatMessages ChatMessage[]
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  appointments    Appointment[]
+  chatSessions    ChatSession[]
+  chatMessages    ChatMessage[]
   handoffRequests HandoffRequest[]
   waitlistEntries WaitlistEntry[]
 
@@ -523,40 +525,40 @@ enum AppointmentSource {
 }
 
 model Appointment {
-  id                String            @id @default(cuid())
-  tenantId          String
-  contactId         String
-  serviceId         String
-  professionalId    String
-  whatsappInstanceId String?
+  id                      String            @id @default(cuid())
+  tenantId                String
+  contactId               String
+  serviceId               String
+  professionalId          String
+  whatsappInstanceId      String?
   // timestamptz explícito: o EXCLUDE usa tstzrange(startsAt, blockEndsAt) e essa função só é
   // IMMUTABLE (exigido em índice) sobre timestamptz — timestamp "naive" force um cast implícito
   // dependente do TimeZone da sessão, e a criação da constraint falha.
-  startsAt          DateTime @db.Timestamptz
-  endsAt            DateTime @db.Timestamptz
+  startsAt                DateTime          @db.Timestamptz
+  endsAt                  DateTime          @db.Timestamptz
   // endsAt + Service.bufferAfterMin no momento da reserva — denormalizado de propósito: é o campo
   // usado no range do EXCLUDE (migration SQL manual, ver 0002_appointment_exclude_no_overlap).
-  blockEndsAt       DateTime @db.Timestamptz
-  status            AppointmentStatus @default(SCHEDULED)
-  source            AppointmentSource @default(WHATSAPP)
-  idempotencyKey    String?
+  blockEndsAt             DateTime          @db.Timestamptz
+  status                  AppointmentStatus @default(SCHEDULED)
+  source                  AppointmentSource @default(WHATSAPP)
+  idempotencyKey          String?
   // Lembrete de véspera já enviado (null = pendente). Zerar ao remarcar.
-  reminderSentAt    DateTime? @db.Timestamptz
+  reminderSentAt          DateTime?         @db.Timestamptz
   // Relatórios (item 8): fotografia dos valores NO MOMENTO em que o atendimento virou COMPLETED, para o
   // histórico não mudar quando o preço ou a comissão forem editados depois. NULO = atendimento concluído
   // antes desta versão (ou ainda não concluído): o relatório usa o preço/comissão atuais e marca como estimado.
   // Reabrir o atendimento zera os três campos.
   priceCentsSnapshot      Int?
-  commissionPctSnapshot   Decimal? @db.Decimal(5, 2)
+  commissionPctSnapshot   Decimal?          @db.Decimal(5, 2)
   commissionCentsSnapshot Int?
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
+  createdAt               DateTime          @default(now())
+  updatedAt               DateTime          @updatedAt
 
-  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  contact          Contact           @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  service          Service           @relation(fields: [serviceId], references: [id], onDelete: Cascade)
-  professional     Professional      @relation(fields: [professionalId], references: [id], onDelete: Cascade)
-  whatsappInstance WhatsappInstance? @relation(fields: [whatsappInstanceId], references: [id], onDelete: SetNull)
+  tenant           Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contact          Contact            @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  service          Service            @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  professional     Professional       @relation(fields: [professionalId], references: [id], onDelete: Cascade)
+  whatsappInstance WhatsappInstance?  @relation(fields: [whatsappInstanceId], references: [id], onDelete: SetNull)
   events           AppointmentEvent[]
   waitlistEntry    WaitlistEntry?
 
@@ -627,29 +629,29 @@ enum WhatsappInstanceStatus {
 }
 
 model WhatsappInstance {
-  id              String                  @id @default(cuid())
+  id              String                 @id @default(cuid())
   tenantId        String
-  instanceName    String                  @unique
+  instanceName    String                 @unique
   label           String
-  status          WhatsappInstanceStatus  @default(QRCODE)
+  status          WhatsappInstanceStatus @default(QRCODE)
   phoneE164       String?
-  webhookToken    String                  @unique
+  webhookToken    String                 @unique
   // true = instância de teste (nó 11 do workflow desvia o envio para /sandbox/outbox em vez da
   // Evolution real). Usada pela bateria de roteiros (§8) e para validar edições do dono no n8n.
-  sandbox         Boolean                 @default(false)
+  sandbox         Boolean                @default(false)
   lastConnectedAt DateTime?
   // Queda INESPERADA (CONNECTED → DISCONNECTED por evento/polling). Zera ao reconectar e ao
   // desconectar manualmente. Alimenta a notificação WHATSAPP_DISCONNECTED.
   disconnectedAt  DateTime?
   deletedAt       DateTime?
-  createdAt       DateTime                @default(now())
-  updatedAt       DateTime                @updatedAt
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
 
-  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  chatSessions ChatSession[]
-  inboundEvents InboundEvent[]
-  appointments Appointment[]
-  chatMessages ChatMessage[]
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  chatSessions    ChatSession[]
+  inboundEvents   InboundEvent[]
+  appointments    Appointment[]
+  chatMessages    ChatMessage[]
   handoffRequests HandoffRequest[]
 
   @@index([tenantId])
@@ -657,24 +659,24 @@ model WhatsappInstance {
 }
 
 model ChatSession {
-  id                 String   @id @default(cuid())
+  id                 String    @id @default(cuid())
   whatsappInstanceId String
   contactId          String
   // Estado da máquina do menu (§3) — de propriedade do n8n, não validado por enum no banco:
   // o Switch do workflow decide os valores válidos, e travar isso aqui obrigaria uma migration
   // toda vez que o dono adicionar um passo no fluxo do n8n.
   state              String
-  context            Json     @default("{}")
-  invalidCount       Int      @default(0)
-  version            Int      @default(0)
+  context            Json      @default("{}")
+  invalidCount       Int       @default(0)
+  version            Int       @default(0)
   lockToken          String?
   lockedUntil        DateTime?
-  lastInboundAt      DateTime @default(now())
+  lastInboundAt      DateTime  @default(now())
   humanUntil         DateTime?
   // Hashes + instante das últimas saídas (janela de ~2 min) para reconhecer o eco `fromMe` (§2.7).
-  recentOutbound     Json     @default("[]")
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  recentOutbound     Json      @default("[]")
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   whatsappInstance WhatsappInstance @relation(fields: [whatsappInstanceId], references: [id], onDelete: Cascade)
   contact          Contact          @relation(fields: [contactId], references: [id], onDelete: Cascade)
@@ -747,14 +749,14 @@ enum InboundIgnoreReason {
 // Dedupe + trilha de auditoria do webhook. Sem conteúdo de mensagem (LGPD, §11) — purga após 30
 // dias (job fora do escopo deste schema; ver PENDÊNCIAS no handoff).
 model InboundEvent {
-  id                 String              @id @default(cuid())
+  id                 String               @id @default(cuid())
   whatsappInstanceId String
   providerMessageId  String
   outcome            InboundOutcome
   reason             InboundIgnoreReason?
   stateBefore        String?
   stateAfter         String?
-  createdAt          DateTime            @default(now())
+  createdAt          DateTime             @default(now())
 
   whatsappInstance WhatsappInstance @relation(fields: [whatsappInstanceId], references: [id], onDelete: Cascade)
 
@@ -903,12 +905,12 @@ model Plan {
   code String @unique
   name String
 
-  priceCents Int
+  priceCents           Int
   // Preço do plano ANUAL, cobrado de uma vez a cada 12 meses (centavos). NULO = o plano não tem
   // opção anual. Preço explícito (e não % de desconto): o dono decide o número que o cliente vê, sem
   // arredondamento escondido; o desconto exibido ("2 meses grátis") é derivado de priceCents*12.
   // CHECK: > 0. MRR do anual = annualPriceCents / 12.
-  annualPriceCents Int?
+  annualPriceCents     Int?
   // Preços dos ciclos TRIMESTRAL (3 meses) e SEMESTRAL (6 meses), cobrados de uma vez, em centavos.
   // NULO = ciclo não oferecido pelo plano (mensal = priceCents; anual = annualPriceCents). CHECK: > 0.
   quarterlyPriceCents  Int?
@@ -960,7 +962,7 @@ model Subscription {
 
   // Trial de 1 dia (decisão do dono, 2026-09-28): preenchido no cadastro como `createdAt + 24h`.
   // Nulo depois que a assinatura sai de TRIALING (não volta a preencher em downgrade/reativação).
-  trialEndsAt DateTime?
+  trialEndsAt      DateTime?
   // Fim do período pago corrente. No cadastro, já nasce igual a `trialEndsAt` (o trial É o
   // primeiro período, e a primeira fatura — §7.3 — cobre esse mesmo ciclo). Avança em +1 mês a
   // cada pagamento confirmado (§7.1), mantendo o dia-âncora.
@@ -973,9 +975,9 @@ model Subscription {
   // `trialEndsAt` em teste), sem nova fatura; nessa data a assinatura vira CANCELED. `cancelRequestedAt`
   // e `cancelReason` (texto livre opcional, máx. 500) ficam gravados para o dono da plataforma
   // aprender; `canceledAt` só é preenchido quando o cancelamento de fato vale.
-  cancelAtPeriodEnd  Boolean   @default(false)
-  cancelRequestedAt  DateTime?
-  cancelReason       String?
+  cancelAtPeriodEnd Boolean   @default(false)
+  cancelRequestedAt DateTime?
+  cancelReason      String?
 
   // Marca de e-mail já enviado (Vega, Fase 7 — billing/tick): sem isto, rodar o tick de hora em
   // hora reenviaria o aviso de "atendimento suspenso" a cada rodada enquanto o tenant continuar
@@ -1008,10 +1010,10 @@ model Subscription {
   updatedAt DateTime @updatedAt
 
   coupon         Coupon?         @relation(fields: [couponId], references: [id], onDelete: Restrict)
-  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  plan        Plan      @relation("SubscriptionPlan", fields: [planId], references: [id])
-  pendingPlan Plan?     @relation("SubscriptionPendingPlan", fields: [pendingPlanId], references: [id])
-  invoices    Invoice[]
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  plan           Plan            @relation("SubscriptionPlan", fields: [planId], references: [id])
+  pendingPlan    Plan?           @relation("SubscriptionPendingPlan", fields: [pendingPlanId], references: [id])
+  invoices       Invoice[]
   billingNotices BillingNotice[]
   billingEvents  BillingEvent[]
 
@@ -1096,9 +1098,9 @@ model Invoice {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  subscription   Subscription    @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
-  billingNotices BillingNotice[]
-  billingEvents  BillingEvent[]
+  subscription      Subscription       @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  billingNotices    BillingNotice[]
+  billingEvents     BillingEvent[]
   couponRedemptions CouponRedemption[]
 
   // Uma fatura por ciclo de cobrança (§5): impede o billing/tick gerar duas faturas para o mesmo
@@ -1298,11 +1300,11 @@ model PlatformWhatsappConnection {
   // Só dígitos com DDI, preenchido ao conectar (ownerJid).
   phoneE164        String?
 
-  connectedAt    DateTime?
+  connectedAt     DateTime?
   // Queda inesperada; zera ao reconectar.
-  disconnectedAt DateTime?
-  activatedAt    DateTime?
-  retiredAt      DateTime?
+  disconnectedAt  DateTime?
+  activatedAt     DateTime?
+  retiredAt       DateTime?
   // REPLACED | DISCONNECTED_BY_ADMIN | ABANDONED_QR. Sem FK em `createdByUserId` (auditoria simples).
   retiredReason   String?
   createdByUserId String?
@@ -1489,18 +1491,18 @@ model BackupConfig {
 // DUMP...); `errorDetail` truncado, nunca com DATABASE_URL. `objectKey` = objeto (S3) ou id/nome do
 // arquivo (Drive). BigInt em `sizeBytes`.
 model BackupRun {
-  id             String    @id @default(cuid())
-  status         String    @default("RUNNING")
-  trigger        String    @default("SCHEDULED")
-  destination    String?
-  startedAt      DateTime  @default(now())
-  finishedAt     DateTime?
-  sizeBytes      BigInt?
-  tablesWithData Int?
-  objectKey      String?
-  errorCode      String?
-  errorDetail    String?
-  createdById    String?
+  id                       String    @id @default(cuid())
+  status                   String    @default("RUNNING")
+  trigger                  String    @default("SCHEDULED")
+  destination              String?
+  startedAt                DateTime  @default(now())
+  finishedAt               DateTime?
+  sizeBytes                BigInt?
+  tablesWithData           Int?
+  objectKey                String?
+  errorCode                String?
+  errorDetail              String?
+  createdById              String?
   // Impressão digital da chave com que a cópia foi cifrada (nulo = não cifrada: antigas e teste sem destino).
   encryptionKeyFingerprint String?
 
@@ -1547,23 +1549,26 @@ model TwoFactorRecoveryCode {
 // `ipTruncated` = IPv4 /24 ou IPv6 /48 (LGPD: dá região, não identifica o aparelho). Fora de
 // TENANT_SCOPED_MODELS: o Admin lê todas as empresas; as telas da empresa filtram por tenantId à mão.
 model AuditLog {
-  id          String   @id @default(cuid())
-  tenantId    String?
-  actorUserId String?
-  actorRole   String
-  action      String
-  targetType  String?
-  targetId    String?
-  summary     String
-  changes     Json?
-  ipTruncated String?
-  createdAt   DateTime @default(now())
+  id               String   @id @default(cuid())
+  tenantId         String?
+  actorUserId      String?
+  actorRole        String
+  action           String
+  targetType       String?
+  targetId         String?
+  summary          String
+  changes          Json?
+  ipTruncated      String?
+  supportSessionId String?
+  createdAt        DateTime @default(now())
 
-  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant         Tenant?         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  supportSession SupportSession? @relation(fields: [supportSessionId], references: [id], onDelete: SetNull)
 
   // Histórico da empresa (paginado, mais recente primeiro) e visão do Admin (todas).
   @@index([tenantId, createdAt])
   @@index([createdAt])
+  @@index([supportSessionId])
   @@map("audit_logs")
 }
 
@@ -1683,4 +1688,33 @@ model WaitlistEntry {
   // Job de expiração de oferta: status OFFERED vencido.
   @@index([status, offerExpiresAt])
   @@map("waitlist_entries")
+}
+
+// ---------------------------------------------------------------------------
+// Suporte — Impersonação de Admin (Onda 1)
+// ---------------------------------------------------------------------------
+
+enum SupportSessionCloseReason {
+  EXITED
+  EXPIRED
+  REVOKED
+}
+
+model SupportSession {
+  id          String                     @id @default(uuid())
+  tenantId    String
+  adminUserId String
+  reason      String                     @db.VarChar(500)
+  startedAt   DateTime                   @default(now())
+  expiresAt   DateTime
+  closedAt    DateTime?
+  closeReason SupportSessionCloseReason?
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  admin     User       @relation(fields: [adminUserId], references: [id], onDelete: Restrict)
+  auditLogs AuditLog[]
+
+  @@index([tenantId, closedAt])
+  @@index([adminUserId, closedAt])
+  @@map("support_sessions")
 }

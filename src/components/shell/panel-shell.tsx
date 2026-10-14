@@ -18,6 +18,7 @@ import { NeedsDocumentBanner, SubscriptionBanner } from "./subscription-banner";
 import { BillingPhonePrompt } from "./billing-phone-prompt";
 import { BillingWhatsappProblemBanner } from "./billing-whatsapp-problem-banner";
 import type { BillingBannerState } from "./billing-banner-state";
+import { SupportModeBanner } from "@/components/support/SupportModeBanner";
 
 type SubscriptionStatus = "TRIALING" | "ACTIVE" | "PAST_DUE" | "SUSPENDED" | "CANCELED" | null;
 
@@ -53,6 +54,11 @@ type PanelShellProps = {
   emailVerified?: boolean;
   /** 1º acesso deste usuário (`tourCompletedAt` nulo): o tour do Inno abre sozinho. */
   tourAutoStart?: boolean;
+  /** Se o acesso foi concedido via suporte / impersonação por admin da plataforma. */
+  supportSession?: {
+    expiresAtMs: number;
+    tenantId: string;
+  } | null;
   children: React.ReactNode;
 };
 
@@ -116,6 +122,7 @@ export function PanelShell({
   whatsappStatus = "none",
   emailVerified = true,
   tourAutoStart = false,
+  supportSession = null,
   children,
 }: PanelShellProps) {
   // Assinatura cancelada: o painel mostra só a tela de Assinatura (sidebar enxuta + `CanceledGate`).
@@ -123,6 +130,13 @@ export function PanelShell({
   return (
     <OnboardingTourProvider tenantSlug={tenantSlug} autoStart={tourAutoStart}>
     <NotificationCenterProvider tenantSlug={tenantSlug}>
+    {supportSession ? (
+      <SupportModeBanner
+        tenantName={tenantName}
+        expiresAtMs={supportSession.expiresAtMs}
+        tenantId={supportSession.tenantId}
+      />
+    ) : null}
     <div className="relative flex min-h-screen">
       <BackgroundGlow />
       <aside data-tour="sidebar" className="relative z-10 hidden w-64 shrink-0 flex-col panel-sidebar-surface px-4 py-6 lg:sticky! lg:top-0 lg:flex lg:h-screen lg:self-start">

@@ -23,5 +23,6 @@ export type {
   SubscriptionStatus,
   MercadoPagoEnvironment,
   PlatformSettings,
+  SupportSessionCloseReason,
   Prisma,
 } from "@prisma/client";

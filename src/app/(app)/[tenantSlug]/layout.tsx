@@ -4,6 +4,9 @@ import "@/app/globals.css";
 import { fontVariables } from "@/app/fonts";
 import { auth } from "@/lib/auth";
 import { getPrisma } from "@/lib/db/prisma";
+import type { MembershipRole } from "@/lib/db/types";
+import { clearSupportCookie, getSupportCookieValue } from "@/modules/support/cookie";
+import { validateSupportSession } from "@/modules/support/service";
 import { effectiveStatus, shouldAskForDocument } from "@/core/billing";
 import { resolveBillingBanner } from "@/components/shell/billing-banner-state";
 import { updateBillingContactAction } from "@/modules/billing/contact-actions";
@@ -49,7 +52,7 @@ export default async function TenantLayout({
     redirect("/login");
   }
 
-  const membership = await getPrisma().membership.findFirst({
+  let membership = await getPrisma().membership.findFirst({
     where: { userId: session.user.id, tenant: { slug: tenantSlug } },
     select: {
       role: true,
@@ -58,6 +61,42 @@ export default async function TenantLayout({
       },
     },
   });
+
+  let supportSessionData: { expiresAtMs: number; tenantId: string } | null = null;
+
+  if (!membership) {
+    const supportCookie = await getSupportCookieValue();
+    if (supportCookie) {
+      const userRecord = await getPrisma().user.findUnique({
+        where: { id: session.user.id },
+        select: { id: true, isPlatformAdmin: true, totpEnabledAt: true },
+      });
+
+      if (userRecord?.isPlatformAdmin && userRecord.totpEnabledAt) {
+        const supportValidation = await validateSupportSession({ cookieValue: supportCookie });
+        if (supportValidation.ok && supportValidation.adminUserId === session.user.id && supportValidation.tenantSlug === tenantSlug) {
+          const tenantRecord = await getPrisma().tenant.findUnique({
+            where: { slug: tenantSlug },
+            select: { id: true, name: true, theme: true, timezone: true, billingWhatsappE164: true, billingWhatsappOptOutAt: true, document: true },
+          });
+
+          if (tenantRecord) {
+            membership = {
+              role: "OWNER" as MembershipRole,
+              tenant: tenantRecord,
+            };
+            supportSessionData = {
+              expiresAtMs: supportValidation.expiresAt.getTime(),
+              tenantId: tenantRecord.id,
+            };
+          }
+        } else if (!supportValidation.ok && supportValidation.reason === "EXPIRED") {
+          await clearSupportCookie();
+          redirect(`/admin/empresas/${supportValidation.tenantId ?? ""}?expirou=1`);
+        }
+      }
+    }
+  }
 
   if (!membership) {
     notFound();
@@ -182,6 +221,7 @@ export default async function TenantLayout({
             whatsappStatus={whatsappStatus}
             emailVerified={emailVerified}
             tourAutoStart={tourAutoStart}
+            supportSession={supportSessionData}
           >
             {twoFactorGate ? (
               <TwoFactorCard status={twoFactorGate} forced />

@@ -7,6 +7,14 @@ Versão semântica (`MAJOR.MINOR.PATCH`), lida do `version` do `package.json` e 
 
 Toda publicação em produção sobe a versão e ganha uma entrada aqui.
 
+## v1.10.0 — 2026-10-14
+
+### Novidade: Suporte do admin com impersonação
+- O admin da plataforma agora entra na conta de uma empresa para dar suporte direto. O botão "Entrar como empresa" mora em Admin → Empresas → [detalhes da empresa] e exige motivo formal (15 a 500 letras) + 2FA ativa do admin.
+- A sessão de suporte dura 1 hora e morre sozinha, sem renovação. Em qualquer tela da empresa, aparece um banner de alto contraste com contagem regressiva e botão "Sair da conta e voltar ao Admin". Se a sessão expirar, o admin é devolvido para a tela da empresa no Admin com aviso.
+- Toda ação feita durante a sessão de suporte fica registrada na auditoria com o nome do admin, o papel "Suporte InnoChat" e o vínculo com a sessão. A empresa tem como ver quem acessou e o que fez.
+- Ações destrutivas (excluir empresa, mudar e-mail/senha/2FA do dono, excluir membros, desconectar WhatsApp) ficam bloqueadas para o suporte — só leitura nessas áreas. O resto o admin faz com os mesmos poderes do dono da empresa.
+
 ## v1.9.2 — 2026-10-14
 
 ### Correções

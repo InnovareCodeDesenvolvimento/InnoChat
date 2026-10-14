@@ -22,6 +22,8 @@ export type AuditInput = {
   changes?: AuditChanges | null;
   /** Normalmente omitido: lido do pedido atual (Server Action/rota) e truncado. Passe `null` em tarefas sem pedido. */
   ip?: string | null;
+  /** Se a ação foi executada durante uma sessão de suporte (impersonação do admin). */
+  supportSessionId?: string | null;
 };
 
 /** Qualquer coisa com `auditLog.create`: o client global ou o `tx` de uma transação já aberta. */
@@ -56,6 +58,7 @@ export async function recordAudit(input: AuditInput, db?: AuditDb): Promise<void
       targetId: input.targetId ?? null,
       summary: clampText(input.summary, MAX_SUMMARY_CHARS) || "Alteração registrada.",
       ipTruncated: await resolveIp(input.ip),
+      supportSessionId: input.supportSessionId ?? null,
       ...(changes ? { changes: changes as unknown as Prisma.InputJsonValue } : {}),
     };
     const target = db ?? (getPrisma() as unknown as AuditDb);

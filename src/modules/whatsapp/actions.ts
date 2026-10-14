@@ -3,6 +3,7 @@
 import { z } from "zod";
 import { requireTenantMember, requireVerifiedEmail } from "@/lib/auth/guards";
 import { runAction, type Result } from "@/lib/result";
+import { forbidDuringSupport } from "@/modules/support/forbid";
 import { assertTenantCanWrite } from "@/modules/billing/service";
 import { getWhatsappNumberUsage } from "@/modules/billing/plan-limits";
 import { getMergedBotTexts } from "@/modules/bot-texts/service";
@@ -76,9 +77,10 @@ export async function refreshConnectionStatusAction(tenantSlug: string, instance
 
 export async function disconnectWhatsappAction(tenantSlug: string, instanceId: string): Promise<Result<WhatsappInstanceView>> {
   return runAction(async () => {
-    const { tenant } = await requireTenantMember(tenantSlug, ["OWNER"]);
-    await assertTenantCanWrite(tenant.id);
-    return disconnectWhatsapp(tenant.id, instanceId);
+    const ctx = await requireTenantMember(tenantSlug, ["OWNER"]);
+    forbidDuringSupport(ctx, "whatsapp.disconnect");
+    await assertTenantCanWrite(ctx.tenant.id);
+    return disconnectWhatsapp(ctx.tenant.id, instanceId);
   });
 }
 

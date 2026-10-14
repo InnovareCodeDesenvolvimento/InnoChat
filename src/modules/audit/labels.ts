@@ -79,6 +79,8 @@ export const ACTION_LABELS: Record<string, string> = {
   "backup.run_manual": "Backup feito na hora",
   "backup.google_disconnected": "Google Drive do backup desconectado",
   "backup.key_generated": "Chave do backup gerada",
+  "support.session_started": "Sessão de suporte iniciada",
+  "support.session_closed": "Sessão de suporte encerrada",
 };
 
 export function actionLabel(action: string): string {
@@ -99,7 +101,7 @@ export const AUDIT_AREAS: readonly AuditArea[] = [
   { id: "seguranca", label: "Verificação em 2 etapas", prefixes: ["two_factor."] },
   { id: "empresas", label: "Suspensão e teste de empresas", prefixes: ["company."], platformOnly: true },
   { id: "planos", label: "Planos e cupons", prefixes: ["plan.", "coupon."], platformOnly: true },
-  { id: "plataforma", label: "Configurações da plataforma", prefixes: ["platform.", "platform_whatsapp.", "pixel."], platformOnly: true },
+  { id: "plataforma", label: "Configurações da plataforma", prefixes: ["platform.", "platform_whatsapp.", "pixel.", "support."], platformOnly: true },
   { id: "backup", label: "Backup", prefixes: ["backup."], platformOnly: true },
 ];
 

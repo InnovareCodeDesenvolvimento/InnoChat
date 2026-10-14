@@ -11,7 +11,7 @@ export default defineConfig({
     // `TEST_DATABASE_URL` apontando para um Postgres real — nunca no `npm test` padrão, que
     // precisa continuar verde sem depender de infraestrutura externa (CI sem Postgres, por
     // exemplo). Ver docs/arquitetura.md §8.
-    include: ["src/**/*.{test,spec}.{ts,tsx}"],
+    include: ["src/**/*.{test,spec}.{ts,tsx}", "tests/modules/**/*.{test,spec}.{ts,tsx}", "tests/components/**/*.{test,spec}.{ts,tsx}"],
     // DATABASE_URL fake por padrão: só precisa ser sintaticamente válida
     // para o PrismaClient instanciar (quando algum teste importar
     // getPrisma()). A maioria dos testes de unidade (core/, lib/db lógica

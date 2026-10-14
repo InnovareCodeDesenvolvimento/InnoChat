@@ -1140,6 +1140,21 @@ const HELP_ENTRIES = {
     tip: "Só entram atendimentos marcados como Concluído. Se algo ficou aberto na agenda, conclua lá para contar aqui.",
     warning: "Atendimentos concluídos antes desta tela existir usam o preço e a comissão de hoje, por isso aparecem como valores estimados.",
   },
+  "admin.modoSuporte": {
+    title: "Modo suporte da plataforma",
+    purpose: "Permite que a equipe de administração entre no painel da empresa para prestar auxílio técnico ou resolver problemas operacionais.",
+    steps: [
+      "Informe o motivo do atendimento (mínimo de 15 letras) para justificar a entrada.",
+      "A sessão vale por 1 hora e encerra sozinha no fim do tempo.",
+      "Todas as visualizações e mudanças são registradas com o seu nome para auditoria.",
+    ],
+    examples: [
+      "Ajuste na grade de horários a pedido da cliente Maria (chamado 1234).",
+      "Conferência de falha no agendamento relatada pelo suporte da empresa.",
+    ],
+    tip: "Ao terminar de ajudar, use \"Sair da conta e voltar ao Admin\" no topo para fechar a sessão.",
+    warning: "Apenas administradores com a verificação em duas etapas ativa no perfil podem usar o modo suporte.",
+  },
 } as const satisfies Record<string, HelpEntry>;
 
 export type HelpKey = keyof typeof HELP_ENTRIES;

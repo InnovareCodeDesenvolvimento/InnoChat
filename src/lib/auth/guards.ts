@@ -1,8 +1,11 @@
+import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { getPrisma } from "@/lib/db/prisma";
 import { forTenant } from "@/lib/db/tenant-client";
 import { DomainError } from "@/lib/errors";
 import type { MembershipRole } from "@/lib/db/types";
+import { clearSupportCookie, getSupportCookieValue } from "@/modules/support/cookie";
+import { validateSupportSession } from "@/modules/support/service";
 
 export type SessionUser = { id: string };
 
@@ -10,6 +13,10 @@ export type TenantContext = {
   tenant: { id: string; slug: string; name: string; timezone: string };
   membership: { id: string; role: MembershipRole };
   user: SessionUser;
+  /** Se o acesso foi concedido via impersonação de suporte por admin da plataforma. */
+  isSupportImpersonation?: boolean;
+  /** ID da sessão de suporte ativa (tabela `support_sessions`). */
+  supportSessionId?: string | null;
 };
 
 /**
@@ -88,6 +95,35 @@ export async function requireTenantMember(slug: string, roles?: MembershipRole[]
     where: { userId: sessionUser.id },
   });
   if (!membership) {
+    // Verifica se é impersonação válida de suporte por admin da plataforma
+    const supportCookie = await getSupportCookieValue();
+    if (supportCookie) {
+      const userRecord = await getPrisma().user.findUnique({
+        where: { id: sessionUser.id },
+        select: { id: true, isPlatformAdmin: true, totpEnabledAt: true },
+      });
+
+      if (userRecord?.isPlatformAdmin && userRecord.totpEnabledAt) {
+        const supportValidation = await validateSupportSession({ cookieValue: supportCookie });
+        if (supportValidation.ok) {
+          if (supportValidation.adminUserId === sessionUser.id && supportValidation.tenantSlug === slug) {
+            // Concede acesso como impersonador com papel virtual OWNER
+            return {
+              tenant,
+              membership: { id: "support-session", role: "OWNER" },
+              user: sessionUser,
+              isSupportImpersonation: true,
+              supportSessionId: supportValidation.sessionId,
+            };
+          }
+        } else if (supportValidation.reason === "EXPIRED") {
+          await clearSupportCookie();
+          const targetTenantId = supportValidation.tenantId ?? tenant.id;
+          redirect(`/admin/empresas/${targetTenantId}?expirou=1`);
+        }
+      }
+    }
+
     throw new DomainError("NOT_FOUND", "Empresa não encontrada.");
   }
 

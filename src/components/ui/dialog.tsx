@@ -11,10 +11,43 @@ export const DialogClose = RadixDialog.Close;
 export function DialogContent({
   className,
   children,
+  forceMount,
+  container,
   ...props
-}: React.ComponentProps<typeof RadixDialog.Content>) {
+}: React.ComponentProps<typeof RadixDialog.Content> & { container?: HTMLElement | null }) {
+  // Em SSR puro (renderToStaticMarkup), RadixDialog.Portal não renderiza filhos.
+  // Se container={null}, renderiza sem Portal (inline), viabilizando testes unitários sem browser DOM.
+  if (container === null) {
+    return (
+      <div className="fixed inset-0 z-50 bg-black/40">
+        <RadixDialog.Content
+          className={cn(
+            "dialog-content-centered fixed left-1/2 top-1/2 z-50 w-[min(28rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2",
+            "rounded-card border border-border bg-surface p-6 shadow-card",
+            "focus:outline-none",
+            className,
+          )}
+          forceMount={forceMount}
+          {...props}
+        >
+          {children}
+          <RadixDialog.Close
+            className={cn(
+              // 44×44 (alvo de toque); centro alinhado ao do selo do `DialogHeader` (p-6 + 22px).
+              "absolute right-3 top-6 flex h-11 w-11 items-center justify-center rounded-card text-text-secondary hover:bg-bg",
+              "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+            )}
+            aria-label="Fechar"
+          >
+            <X className="h-5 w-5" aria-hidden="true" />
+          </RadixDialog.Close>
+        </RadixDialog.Content>
+      </div>
+    );
+  }
+
   return (
-    <RadixDialog.Portal>
+    <RadixDialog.Portal forceMount={forceMount} container={container}>
       <RadixDialog.Overlay className="fixed inset-0 z-50 bg-black/40 data-[state=open]:animate-in data-[state=open]:fade-in" />
       <RadixDialog.Content
         className={cn(
@@ -23,6 +56,7 @@ export function DialogContent({
           "focus:outline-none",
           className,
         )}
+        forceMount={forceMount}
         {...props}
       >
         {children}

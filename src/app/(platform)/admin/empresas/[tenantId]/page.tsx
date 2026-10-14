@@ -18,6 +18,9 @@ import { listCompanyTwoFactorAction } from "@/modules/two-factor/actions";
 import { cycleLabel } from "@/core/billing";
 import { BillingContactCard } from "@/components/billing/billing-contact-card";
 import { getBillingContactAsAdminAction, updateBillingContactAsAdminAction } from "@/modules/billing/contact-actions";
+import { auth } from "@/lib/auth";
+import { getPrisma } from "@/lib/db/prisma";
+import { EntrarComoButton } from "./EntrarComoButton";
 import { CompanyInvoices } from "./company-invoices";
 import { CompanyTimeline } from "./company-timeline";
 
@@ -32,6 +35,15 @@ export default async function AdminEmpresaCobrancaPage({
   const sp = await searchParams;
   const page = parsePositiveInt(sp.pagina, 1);
   const pageSize = parsePageSize(sp.porPagina);
+  const session = await auth();
+  const currentAdmin = session?.user?.id
+    ? await getPrisma().user.findUnique({
+        where: { id: session.user.id },
+        select: { totpEnabledAt: true },
+      })
+    : null;
+  const adminHasTwoFactor = Boolean(currentAdmin?.totpEnabledAt);
+
   const [billing, timeline, team, contact] = await Promise.all([
     getCompanyBillingAction(tenantId),
     listCompanyBillingTimelineAction(tenantId, { page, pageSize }),
@@ -74,6 +86,11 @@ export default async function AdminEmpresaCobrancaPage({
         help="pagina.adminEmpresaCobranca"
         action={
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+            <EntrarComoButton
+              tenantId={company.id}
+              tenantName={company.name}
+              adminHasTwoFactor={adminHasTwoFactor}
+            />
             <Button asChild variant="secondary">
               <Link href="/admin/empresas">
                 <ArrowLeft className="h-4 w-4 shrink-0" aria-hidden="true" />
