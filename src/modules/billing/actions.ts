@@ -10,6 +10,7 @@ import { getPrisma } from "@/lib/db/prisma";
 import { memberActor, recordAudit } from "@/modules/audit/record";
 import { CANCEL_REASON_MAX_LENGTH, requestCancellation, startReactivation, undoCancellation, type CancelResult } from "./cancellation";
 import { updateTenantDocument } from "@/modules/tenant/service";
+import { forbidDuringSupport } from "@/modules/support/forbid";
 import { changePlan, findBillingRecipientEmail, findOwnInvoiceOrThrow, listActivePlans, regeneratePixForInvoice, type ChangePlanResult } from "./service";
 
 /**
@@ -57,6 +58,7 @@ const changePlanSchema = z.object({ planId: z.string().min(1) });
 export async function changePlanAction(tenantSlug: string, input: unknown): Promise<Result<ChangePlanResult>> {
   return runAction(async () => {
     const ctx = await requireTenantMember(tenantSlug, ["OWNER"]);
+    forbidDuringSupport(ctx, "subscription.change_plan");
     const { tenant } = ctx;
     // Troca de plano durante o teste anula e recria a fatura (cancela e gera Pix no Mercado Pago): mesmo limite da troca de ciclo.
     const planLimit = checkRateLimit(`change-plan:${tenant.id}`, 10, 10 * 60 * 1000);
@@ -80,6 +82,7 @@ export async function changePlanAction(tenantSlug: string, input: unknown): Prom
           ? `Trocou o plano de ${current?.plan.name ?? "?"} para ${target?.name ?? "?"}.`
           : `Pediu a troca do plano ${current?.plan.name ?? "?"} para ${target?.name ?? "?"} (vale na próxima renovação).`,
         changes: { plano: { de: current?.plan.name ?? null, para: target?.name ?? null }, aplicadoAgora: { de: null, para: result.appliedImmediately } },
+        supportSessionId: ctx.supportSessionId ?? null,
       });
     }
     return result;
@@ -170,6 +173,7 @@ export async function saveDocumentAndGeneratePixAction(tenantSlug: string, input
         targetId: tenant.id,
         summary: before?.document ? "Alterou o CPF ou CNPJ da empresa." : "Informou o CPF ou CNPJ da empresa.",
         changes: { documento: { de: before?.document ? `final ${before.document.slice(-2)}` : null, para: `final ${updated.document!.slice(-2)}` } },
+        supportSessionId: ctx.supportSessionId ?? null,
       });
     }
 
@@ -255,6 +259,7 @@ const CANCEL_WINDOW_MS = 10 * 60 * 1000;
 export async function cancelSubscriptionAction(tenantSlug: string, input: unknown): Promise<Result<CancelResult>> {
   return runAction(async () => {
     const ctx = await requireTenantMember(tenantSlug, ["OWNER"]);
+    forbidDuringSupport(ctx, "subscription.cancel");
     const { tenant } = ctx;
     const data = cancelSchema.parse(input ?? {});
     const rateLimit = checkRateLimit(`cancel-subscription:${tenant.id}`, CANCEL_LIMIT, CANCEL_WINDOW_MS);
@@ -271,6 +276,7 @@ export async function cancelSubscriptionAction(tenantSlug: string, input: unknow
         targetType: "subscription",
         summary: result.mode === "IMMEDIATE" ? "Cancelou a assinatura (valeu na hora)." : "Pediu o cancelamento da assinatura (vale ao fim do período pago).",
         changes: { acessoAte: { de: null, para: result.endsAt } },
+        supportSessionId: ctx.supportSessionId ?? null,
       });
     }
     return result;
@@ -288,7 +294,14 @@ export async function undoCancellationAction(tenantSlug: string): Promise<Result
     }
     const result = await undoCancellation(tenant.id);
     if (result.undone) {
-      await recordAudit({ tenantId: tenant.id, actor: memberActor(ctx), action: "subscription.cancel_undone", targetType: "subscription", summary: "Desfez o cancelamento da assinatura." });
+      await recordAudit({
+        tenantId: tenant.id,
+        actor: memberActor(ctx),
+        action: "subscription.cancel_undone",
+        targetType: "subscription",
+        summary: "Desfez o cancelamento da assinatura.",
+        supportSessionId: ctx.supportSessionId ?? null,
+      });
     }
     return result;
   });
@@ -311,6 +324,7 @@ export async function reactivateSubscriptionAction(tenantSlug: string): Promise<
       targetType: "subscription",
       targetId: result.invoiceId,
       summary: "Pediu a reativação da assinatura (fatura gerada para pagamento).",
+      supportSessionId: ctx.supportSessionId ?? null,
     });
     return result;
   });

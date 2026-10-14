@@ -72,6 +72,7 @@ export async function updateBillingContactAction(tenantSlug: string, input: unkn
         targetId: tenant.id,
         summary: "Mudou o contato de cobrança da empresa.",
         changes,
+        supportSessionId: ctx.supportSessionId ?? null,
       });
     }
     return updated;

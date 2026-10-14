@@ -21,6 +21,7 @@ import {
   Scissors,
   Send,
   Settings,
+  UserCheck,
   UserRound,
   TicketPercent,
   Users,
@@ -136,6 +137,7 @@ const ADMIN_GROUPS_DEF: { id: string; label: string; items: { label: string; hre
     label: "Operação",
     items: [
       { label: "Empresas", href: "/admin/empresas", icon: Building2 },
+      { label: "Resgate de leads", href: "/admin/resgate", icon: UserCheck },
     ],
   },
   {

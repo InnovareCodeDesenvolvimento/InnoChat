@@ -1255,6 +1255,53 @@ const HELP_ENTRIES = {
       "Filtre pelo profissional Bruno e situação Concluído para conferir a produção da semana.",
     ],
   },
+  "pagina.adminResgate": {
+    title: "Resgate de cadastros (leads)",
+    purpose: "Acompanha e gerencia os novos cadastros que ainda não acessaram o painel da empresa, acolhendo-os por mensagens de WhatsApp em 24h e 96h.",
+    steps: [
+      "Use os filtros para ver quem ainda está aguardando, quem já recebeu mensagem e quem converteu.",
+      "Clique no nome ou no botão de detalhes para ver o histórico completo do lead.",
+      "Se precisar pausar a régua para alguém específico, use a ação de pausa informando a justificativa.",
+    ],
+    examples: [
+      "Um cliente cadastrou ontem e não entrou no painel: ele recebe a mensagem do Passo 1 após 24h perguntando se precisa de ajuda.",
+      "Se ele responder ao WhatsApp ou fizer login no painel, o resgate marca a conversão e encerra os envios.",
+    ],
+    tip: "Quando o cliente responde qualquer dúvida pelo WhatsApp, uma notificação de atendimento prioritário é enviada ao administrador.",
+  },
+  "admin.resgateFiltros": {
+    title: "Filtros da lista de resgate",
+    purpose: "Facilita encontrar leads por situação, período de criação ou busca por nome, telefone e empresa.",
+    examples: [
+      "Filtre por situação 'Aguardando 1º envio' para ver os cadastros recentes.",
+      "Digite o DDD ou número de telefone para achar um lead específico.",
+    ],
+  },
+  "admin.resgateDetalhe": {
+    title: "Detalhe do lead em resgate",
+    purpose: "Exibe os dados de contato do responsável, a empresa cadastrada, a linha do tempo das mensagens enviadas e o histórico de auditoria.",
+    steps: [
+      "Acompanhe a linha do tempo com a data do cadastro, envios dos passos 1 e 2, respostas e conversão.",
+      "Use 'Pausar resgate' para interromper os envios com justificativa gravada.",
+      "Use 'Marcar como convertido' caso o cliente tenha começado a operar por outro canal.",
+    ],
+    examples: [
+      "O cliente ligou tirando dúvidas e você atendeu por telefone: marque como convertido manualmente com o motivo.",
+    ],
+  },
+  "admin.resgateKillSwitch": {
+    title: "Chave geral de resgate (Kill Switch)",
+    purpose: "Permite pausar ou ativar imediatamente todos os envios automáticos de mensagens de resgate por WhatsApp da plataforma.",
+    steps: [
+      "Ao desligar a chave, todas as mensagens automáticas de resgate param de ser enviadas.",
+      "Exige justificativa obrigatória e registro de auditoria com confirmação.",
+      "Apenas administradores com verificação em duas etapas ativa podem alternar o kill switch.",
+    ],
+    examples: [
+      "Desligue a chave temporariamente caso haja instabilidade no provedor de envio de WhatsApp.",
+    ],
+    warning: "Pausar o resgate global interrompe a régua de todas as empresas cadastradas até que a chave seja religada.",
+  },
 } as const satisfies Record<string, HelpEntry>;
 
 export type HelpKey = keyof typeof HELP_ENTRIES;

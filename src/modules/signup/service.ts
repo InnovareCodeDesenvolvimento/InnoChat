@@ -25,6 +25,7 @@ import {
 import type { MercadoPagoGateway } from "@/modules/billing/mercadopago";
 import { recordBillingEvent } from "@/modules/billing/dunning/events";
 import { maskEmail, recordInlineInvoiceNotice } from "@/modules/billing/dunning/outbox";
+import { ensureRescueLead } from "@/modules/rescue/service";
 
 /**
  * Cadastro público + conta (docs/arquitetura.md §7.3, docs/contratos.md). Separado de
@@ -383,6 +384,16 @@ async function createAccount(input: CreateAccountInput, gateway?: MercadoPagoGat
   }
 
   if (!input.emailVerified) await sendVerificationEmail(created.user.id, email);
+
+  if (input.billingWhatsappE164) {
+    await ensureRescueLead(created.user.id, created.tenant.id, input.billingWhatsappE164, now).catch((err) => {
+      logger.warn("signup.ensure_rescue_lead_failed", {
+        userId: created.user.id,
+        tenantId: created.tenant.id,
+        errorMessage: err instanceof Error ? err.message : String(err),
+      });
+    });
+  }
 
   logger.info("signup.completed", { tenantId: created.tenant.id, method: input.googleSub ? "google" : "password", hasDocument, couponDropped });
 

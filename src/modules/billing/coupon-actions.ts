@@ -106,6 +106,7 @@ export async function applyMyCouponAction(tenantSlug: string, input: unknown): P
       targetType: "subscription",
       summary: `Aplicou o cupom ${applied.coupon.code} na assinatura.`,
       changes: { cupom: { de: null, para: applied.coupon.code } },
+      supportSessionId: ctx.supportSessionId ?? null,
     });
     return applied;
   });

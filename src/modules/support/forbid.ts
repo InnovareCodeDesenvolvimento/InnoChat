@@ -7,11 +7,12 @@ export type SupportContext = {
 
 /**
  * Ações proibidas durante uma sessão de suporte (impersonação do admin da plataforma).
- * Definidas na arquitetura e decisão do dono (Onda 1):
+ * Definidas na arquitetura e decisão do dono (Onda 1 e Onda 5):
  * - Excluir empresa ou alterar slug
  * - Alterar e-mail, senha ou 2FA do owner
  * - Excluir membros da equipe
  * - Desconectar WhatsApp sem dupla confirmação
+ * - Assinatura / Cobrança: cancelar assinatura, trocar plano diretamente
  */
 export const FORBIDDEN_SUPPORT_ACTIONS = [
   "tenant.delete",
@@ -24,6 +25,8 @@ export const FORBIDDEN_SUPPORT_ACTIONS = [
   "membership.delete",
   "membership.remove",
   "whatsapp.disconnect",
+  "subscription.cancel",
+  "subscription.change_plan",
 ] as const;
 
 export type ForbiddenSupportAction = (typeof FORBIDDEN_SUPPORT_ACTIONS)[number];

@@ -7,6 +7,12 @@ Versão semântica (`MAJOR.MINOR.PATCH`), lida do `version` do `package.json` e 
 
 Toda publicação em produção sobe a versão e ganha uma entrada aqui.
 
+## v1.12.0 — 2026-10-14
+
+### Novidade
+- **Suporte do admin (Ondas 4 e 5):** o admin pode enviar mensagens no chat do cliente em nome da empresa, com selo visível `[Suporte InnoChat]`. Na área de assinatura e cobrança, agora é possível estender o trial, aplicar cupom e reenviar link de pagamento direto do painel da empresa. Tudo fica registrado no histórico com o nome do admin e o ID da sessão de suporte. A empresa tem o card "Acessos do Suporte" para ver quem acessou e por quê (transparência LGPD).
+- **Resgate de leads do Meta Ads (Fase 3):** tela de Admin → Resgate lista os leads que vieram do anúncio, com filtros por status e busca por nome/telefone. O detalhe mostra a timeline das mensagens, e dá para pausar/retomar ou marcar como convertido manualmente. A chave geral (Kill Switch) em Admin → Configurações → Marketing desliga a régua inteira em caso de instabilidade, com proteção de 2FA.
+
 ## v1.11.2 — 2026-10-14
 
 ### Correções

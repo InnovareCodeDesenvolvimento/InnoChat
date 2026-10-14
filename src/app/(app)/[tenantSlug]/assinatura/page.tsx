@@ -1,10 +1,10 @@
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { CreditCard } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { navIconFor } from "@/components/shell/nav-items";
 import { EmptyState } from "@/components/ui/empty-state";
 import { getPrisma } from "@/lib/db/prisma";
-import { auth } from "@/lib/auth";
+import { requireTenantMember } from "@/lib/auth/guards";
 import { accessEndsAt, asBillingCycle, buildCycleOptions, CANCELED_RETENTION_DAYS, effectiveStatus, type CouponKind } from "@/core/billing";
 import { addDays } from "date-fns";
 import { listActivePlansAction, type PlanListItem } from "@/modules/billing/actions";
@@ -43,14 +43,10 @@ export default async function AssinaturaPage({
   }
 
   // O layout já barra quem não é da empresa, mas a página também confere (defesa em profundidade: o `slug` da URL
-  // é dado externo e esta página lê a fatura, o Pix e o contato de cobrança). Sem vínculo = 404, como no layout.
-  const session = await auth();
-  if (!session?.user?.id) redirect("/login");
-  const membership = await getPrisma().membership.findFirst({
-    where: { userId: session.user.id, tenantId: tenant.id },
-    select: { role: true },
-  });
-  if (!membership) notFound();
+  // é dado externo e esta página lê a fatura, o Pix e o contato de cobrança). Aceita também sessão de suporte ativa.
+  const ctx = await requireTenantMember(tenantSlug).catch(() => null);
+  if (!ctx) notFound();
+  const membership = ctx.membership;
 
   const subscription = await getPrisma().subscription.findUnique({
     where: { tenantId: tenant.id },
