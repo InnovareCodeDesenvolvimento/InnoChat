@@ -7,6 +7,11 @@ Versão semântica (`MAJOR.MINOR.PATCH`), lida do `version` do `package.json` e 
 
 Toda publicação em produção sobe a versão e ganha uma entrada aqui.
 
+## v1.13.3 — 2026-10-14
+
+### Correções
+- Hotfix de build: o componente `SupportAttentionBanner` e o selo `SupportChatBadge` foram criados na v1.13.2 mas não entraram no commit (ficaram só no working tree, sem `git add`). O build Docker quebrava com "Module not found". Agora estão no commit `a1c9d91`.
+
 ## v1.13.2 — 2026-10-14
 
 ### Ajustes
