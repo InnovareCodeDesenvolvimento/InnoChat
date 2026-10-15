@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Link2Off, MessageCircle, QrCode, RefreshCw, Send, Smartphone } from "lucide-react";
+import { Link2Off, MessageCircle, QrCode, RefreshCw, Send, Smartphone, UserCheck } from "lucide-react";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -124,7 +124,6 @@ export type PlatformWhatsappCardProps = {
   disabledNotice?: string;
   emptyNotice?: string;
   emptyStateBox?: React.ReactNode;
-  icon?: typeof MessageCircle;
 };
 
 export function PlatformWhatsappCard({
@@ -140,9 +139,9 @@ export function PlatformWhatsappCard({
   disabledNotice = "Desligado: os avisos de cobrança vão só por e-mail e pelo painel.",
   emptyNotice = "Nenhum número conectado. Os avisos de cobrança estão indo só por e-mail e pelo painel.",
   emptyStateBox,
-  icon: HeaderIcon = MessageCircle,
 }: PlatformWhatsappCardProps) {
   const isRescue = purpose === "RESCUE";
+  const HeaderIcon = isRescue ? UserCheck : MessageCircle;
   const { notify } = useToast();
   const [state, setState] = useState<PlatformWhatsappState | null>(initialState);
   const [busy, setBusy] = useState(false);

@@ -2,7 +2,6 @@ import { getPlatformSettingsAction } from "@/modules/platform/actions";
 import { getPlatformWhatsappAction } from "@/modules/platform/platform-whatsapp-actions";
 import { EvolutionCard } from "@/components/admin/settings/evolution-card";
 import { PlatformWhatsappCard } from "@/components/admin/platform-whatsapp-card";
-import { UserCheck } from "lucide-react";
 import Link from "next/link";
 import { ConfigLoadError } from "../config-load-error";
 
@@ -28,7 +27,6 @@ export default async function ConfiguracoesWhatsappPage() {
         connectButtonLabel="Conectar WhatsApp de resgate"
         disabledNotice="Desligado: nenhuma mensagem de acolhimento é enviada aos novos cadastros."
         emptyNotice="Nenhum número conectado para o resgate. Os novos cadastros não recebem mensagens de acolhimento."
-        icon={UserCheck}
         emptyStateBox={
           <div className="rounded-card border border-border bg-bg p-4 text-sm text-text-secondary">
             Ligue a chave geral de resgate nas{" "}

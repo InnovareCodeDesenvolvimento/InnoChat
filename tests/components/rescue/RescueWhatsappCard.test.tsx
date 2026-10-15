@@ -1,7 +1,6 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { UserCheck } from "lucide-react";
 import { PlatformWhatsappCard } from "@/components/admin/platform-whatsapp-card";
 import type { PlatformWhatsappState } from "@/modules/platform/platform-whatsapp-actions-types";
 import { ToastProvider } from "@/components/ui/toast";
@@ -58,7 +57,6 @@ describe("PlatformWhatsappCard com purpose RESCUE", () => {
             "Desligado: nenhuma mensagem de acolhimento é enviada aos novos cadastros.",
           emptyNotice:
             "Nenhum número conectado para o resgate. Os novos cadastros não recebem mensagens de acolhimento.",
-          icon: UserCheck,
         })
       )
     );

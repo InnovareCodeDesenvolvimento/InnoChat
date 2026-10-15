@@ -7,6 +7,11 @@ Versão semântica (`MAJOR.MINOR.PATCH`), lida do `version` do `package.json` e 
 
 Toda publicação em produção sobe a versão e ganha uma entrada aqui.
 
+## v1.13.7 — 2026-10-14
+
+### Correções
+- **Card "WhatsApp de resgate" não quebrava mais em `/admin/configuracoes/whatsapp`.** A v1.13.6 passava o ícone `UserCheck` do `lucide-react` (forwardRef) como prop de Server Component para Client Component, e o serializador Flight do React 19/Next 16 rejeita. O card agora resolve o ícone internamente a partir da prop `purpose` — sem precisar do dono passar componente. Validação E2E em produção: APROVADO.
+
 ## v1.13.6 — 2026-10-14
 
 ### Novidade
