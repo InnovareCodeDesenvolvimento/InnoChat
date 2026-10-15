@@ -1302,6 +1302,22 @@ const HELP_ENTRIES = {
     ],
     warning: "Pausar o resgate global interrompe a régua de todas as empresas cadastradas até que a chave seja religada.",
   },
+  "admin.whatsappResgate": {
+    title: "WhatsApp de resgate",
+    purpose: "O número que envia mensagens automáticas de acolhimento a quem veio pelo Meta Ads e ainda não acessou o painel da empresa.",
+    steps: [
+      "Ligue a chave \"Mandar mensagens de resgate pelo WhatsApp\".",
+      "Clique em \"Conectar WhatsApp de resgate\", dê um nome ao número e leia o código com o aparelho escolhido.",
+      "Use \"Enviar teste\" para certificar o envio direto para o seu celular.",
+      "Para substituir o aparelho, clique em \"Trocar de número\": o aparelho atual segue enviando até o novo conectar.",
+    ],
+    examples: [
+      "Você separa um chip exclusivo de suporte e acolhimento para conversar com novos cadastros.",
+      "O cliente cadastrou a empresa mas teve dúvidas: ele recebe a mensagem automática vinda deste número.",
+    ],
+    tip: "Use um chip dedicado para o resgate de novos cadastros, separado do número de cobrança.",
+    warning: "Não utilize o número do robô de atendimento de uma empresa para o resgate.",
+  },
 
   // ───────────────────────────── Suporte em Cobrança e Assinatura ─────────────────────────────
   "suporte.acoesCobranca": {

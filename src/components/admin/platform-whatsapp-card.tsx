@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field } from "@/components/ui/field";
 import { HelpButton } from "@/components/help/help-button";
+import type { HelpKey } from "@/components/help/help-content";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/toast";
@@ -21,9 +22,13 @@ import {
   sendPlatformWhatsappTestAction,
   setPlatformWhatsappEnabledAction,
   startPlatformWhatsappConnectionAction,
-  type PlatformQrView,
-  type PlatformWhatsappState,
 } from "@/modules/platform/platform-whatsapp-actions";
+import type {
+  PlatformQrView,
+  PlatformWhatsappPurpose,
+  PlatformWhatsappState,
+} from "@/modules/platform/platform-whatsapp-actions-types";
+import { toggleRescueEnabledAction } from "@/modules/rescue/admin-actions";
 
 /**
  * Card "WhatsApp de cobrança" (Admin > Configurações; docs/regua-de-cobranca.md §2.4). Separado do card
@@ -106,12 +111,43 @@ function usePlatformQr(target: QrTarget | null, onConnected: (phoneDisplay: stri
   return { view: connectionId ? view : null, failed };
 }
 
-export function PlatformWhatsappCard({ initialState }: { initialState: PlatformWhatsappState | null }) {
+export type PlatformWhatsappCardProps = {
+  initialState: PlatformWhatsappState | null;
+  purpose?: PlatformWhatsappPurpose;
+  title?: string;
+  description?: string;
+  cardId?: string;
+  helpKey?: HelpKey;
+  labelDefault?: string;
+  enabledSwitchLabel?: string;
+  connectButtonLabel?: string;
+  disabledNotice?: string;
+  emptyNotice?: string;
+  emptyStateBox?: React.ReactNode;
+  icon?: typeof MessageCircle;
+};
+
+export function PlatformWhatsappCard({
+  initialState,
+  purpose = "BILLING",
+  title = "WhatsApp de cobrança",
+  description = "O número que avisa os assinantes sobre a mensalidade. Não é o WhatsApp comercial do site.",
+  cardId = "whatsapp-cobranca",
+  helpKey = "admin.whatsappCobranca",
+  labelDefault = "Cobrança",
+  enabledSwitchLabel = "Mandar avisos de cobrança pelo WhatsApp",
+  connectButtonLabel = "Conectar número",
+  disabledNotice = "Desligado: os avisos de cobrança vão só por e-mail e pelo painel.",
+  emptyNotice = "Nenhum número conectado. Os avisos de cobrança estão indo só por e-mail e pelo painel.",
+  emptyStateBox,
+  icon: HeaderIcon = MessageCircle,
+}: PlatformWhatsappCardProps) {
+  const isRescue = purpose === "RESCUE";
   const { notify } = useToast();
   const [state, setState] = useState<PlatformWhatsappState | null>(initialState);
   const [busy, setBusy] = useState(false);
   const [labelOpen, setLabelOpen] = useState(false);
-  const [label, setLabel] = useState("Cobrança");
+  const [label, setLabel] = useState(labelDefault);
   const [qrTarget, setQrTarget] = useState<QrTarget | null>(null);
   const [disconnectOpen, setDisconnectOpen] = useState(false);
   const [confirmText, setConfirmText] = useState("");
@@ -121,19 +157,22 @@ export function PlatformWhatsappCard({ initialState }: { initialState: PlatformW
 
   const router = useRouter();
   const refresh = useCallback(async () => {
-    const result = await getPlatformWhatsappAction();
+    const result = await getPlatformWhatsappAction(purpose);
     if (result.ok) {
       setState(result.data);
       // O ponto de atenção da aba (no layout) depende deste estado.
       router.refresh();
     }
-  }, [router]);
+  }, [router, purpose]);
 
   const qr = usePlatformQr(
     qrTarget,
     (phone) => {
       setQrTarget(null);
-      notify({ variant: "success", title: "Número conectado.", description: phone ? `Os avisos de cobrança saem por ${phone}.` : undefined });
+      const connectedDesc = isRescue
+        ? (phone ? `As mensagens automáticas de resgate saem por ${phone}.` : undefined)
+        : (phone ? `Os avisos de cobrança saem por ${phone}.` : undefined);
+      notify({ variant: "success", title: "Número conectado.", description: connectedDesc });
       void refresh();
     },
     (message) => {
@@ -160,6 +199,19 @@ export function PlatformWhatsappCard({ initialState }: { initialState: PlatformW
   }
 
   async function toggleEnabled(next: boolean) {
+    if (isRescue) {
+      const reason = next
+        ? "Ativação do WhatsApp de resgate pelo painel de configurações."
+        : "Desativação do WhatsApp de resgate pelo painel de configurações.";
+      await run(
+        () => toggleRescueEnabledAction(next, reason),
+        async () => {
+          notify({ variant: "success", title: next ? "Mensagens de resgate ligadas." : "Mensagens de resgate desligadas." });
+          await refresh();
+        },
+      );
+      return;
+    }
     await run(
       () => setPlatformWhatsappEnabledAction({ enabled: next }),
       async () => {
@@ -172,7 +224,7 @@ export function PlatformWhatsappCard({ initialState }: { initialState: PlatformW
   async function startConnection() {
     const swap = Boolean(state?.active);
     await run(
-      () => startPlatformWhatsappConnectionAction({ label }),
+      () => startPlatformWhatsappConnectionAction({ label, purpose }),
       async (data) => {
         setLabelOpen(false);
         setQrTarget({ connectionId: data.connectionId, kind: swap ? "swap" : "connect" });
@@ -194,11 +246,14 @@ export function PlatformWhatsappCard({ initialState }: { initialState: PlatformW
 
   async function disconnect() {
     await run(
-      () => disconnectPlatformWhatsappAction({ confirm: "DESCONECTAR" }),
+      () => disconnectPlatformWhatsappAction({ confirm: "DESCONECTAR", purpose }),
       async () => {
         setDisconnectOpen(false);
         setConfirmText("");
-        notify({ variant: "success", title: "Número desconectado.", description: "Os avisos passam a ir só por e-mail e pelo painel." });
+        const disconnectDesc = isRescue
+          ? "As mensagens de resgate ficam suspensas até você conectar outro número."
+          : "Os avisos passam a ir só por e-mail e pelo painel.";
+        notify({ variant: "success", title: "Número desconectado.", description: disconnectDesc });
         await refresh();
       },
     );
@@ -207,7 +262,7 @@ export function PlatformWhatsappCard({ initialState }: { initialState: PlatformW
   async function sendTest() {
     setTestResult(null);
     await run(
-      () => sendPlatformWhatsappTestAction({ toE164: testPhone }),
+      () => sendPlatformWhatsappTestAction({ toE164: testPhone, purpose }),
       (data) => {
         setTestResult(data.sent ? { ok: true, message: "Mensagem enviada. Confira o seu celular." } : { ok: false, message: TEST_ERROR[data.errorCode ?? "SEND_FAILED"] ?? "Não foi possível enviar." });
       },
@@ -218,7 +273,7 @@ export function PlatformWhatsappCard({ initialState }: { initialState: PlatformW
     return (
       <Card className="rounded-hero">
         <CardHeader>
-          <CardTitle>WhatsApp de cobrança</CardTitle>
+          <CardTitle>{title}</CardTitle>
           <CardDescription>Não deu para carregar agora. Atualize a página.</CardDescription>
         </CardHeader>
       </Card>
@@ -227,30 +282,39 @@ export function PlatformWhatsappCard({ initialState }: { initialState: PlatformW
 
   const { active, pending } = state;
   const qrOpen = qrTarget !== null;
-  const swapTitle = qrTarget?.kind === "swap" ? "Ler o QR do número novo" : qrTarget?.kind === "reconnect" ? "Reconectar o número de cobrança" : "Conectar o número de cobrança";
+  const targetLabel = isRescue ? "o número de resgate" : "o número de cobrança";
+  const swapTitle = qrTarget?.kind === "swap" ? "Ler o QR do número novo" : qrTarget?.kind === "reconnect" ? `Reconectar ${targetLabel}` : `Conectar ${targetLabel}`;
+
+  const showEmptyStateBox = emptyStateBox && !state.enabled && !active && !pending;
 
   return (
-    <Card id="whatsapp-cobranca" className="rounded-hero">
+    <Card id={cardId} className="rounded-hero">
       <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
         <div className="flex items-start gap-3">
-          <MessageCircle className="mt-1 h-5 w-5 text-primary" aria-hidden="true" />
+          <HeaderIcon className="mt-1 h-5 w-5 text-primary" aria-hidden="true" />
           <div>
             <CardTitle className="flex items-center gap-2">
-              WhatsApp de cobrança
-              <HelpButton helpKey="admin.whatsappCobranca" />
+              {title}
+              <HelpButton helpKey={helpKey} />
             </CardTitle>
-            <CardDescription>O número que avisa os assinantes sobre a mensalidade. Não é o WhatsApp comercial do site.</CardDescription>
+            <CardDescription>{description}</CardDescription>
           </div>
         </div>
         <div className="flex items-center gap-2">
           <Badge variant={state.enabled ? "success" : "neutral"}>{state.enabled ? "Ligado" : "Desligado"}</Badge>
-          <Switch checked={state.enabled} onCheckedChange={(next) => void toggleEnabled(next)} disabled={busy} aria-label="Mandar avisos de cobrança pelo WhatsApp" />
+          <Switch checked={state.enabled} onCheckedChange={(next) => void toggleEnabled(next)} disabled={busy} aria-label={enabledSwitchLabel} />
         </div>
       </CardHeader>
 
       <CardContent className="flex flex-col gap-4">
-        {state.enabled ? null : <p className="text-sm text-text-secondary">Desligado: os avisos de cobrança vão só por e-mail e pelo painel.</p>}
-        {state.enabled && !active ? <Alert variant="warning">Nenhum número conectado. Os avisos de cobrança estão indo só por e-mail e pelo painel.</Alert> : null}
+        {showEmptyStateBox ? (
+          emptyStateBox
+        ) : (
+          <>
+            {state.enabled ? null : <p className="text-sm text-text-secondary">{disabledNotice}</p>}
+            {state.enabled && !active ? <Alert variant="warning">{emptyNotice}</Alert> : null}
+          </>
+        )}
 
         {active ? (
           <div className="flex flex-col gap-3 rounded-card border border-border bg-bg p-4">
@@ -289,7 +353,7 @@ export function PlatformWhatsappCard({ initialState }: { initialState: PlatformW
               <Button type="button" size="sm" variant="secondary" onClick={() => { setTestResult(null); setTestOpen(true); }} disabled={busy || active.status !== "CONNECTED"}>
                 <Send className="h-4 w-4" aria-hidden="true" /> Enviar teste
               </Button>
-              <Button type="button" size="sm" variant="secondary" onClick={() => { setLabel("Cobrança"); setLabelOpen(true); }} disabled={busy || pending !== null}>
+              <Button type="button" size="sm" variant="secondary" onClick={() => { setLabel(labelDefault); setLabelOpen(true); }} disabled={busy || pending !== null}>
                 Trocar de número
               </Button>
               <Button type="button" size="sm" variant="ghost" onClick={() => { setConfirmText(""); setDisconnectOpen(true); }} disabled={busy}>
@@ -319,8 +383,8 @@ export function PlatformWhatsappCard({ initialState }: { initialState: PlatformW
 
         {!active && !pending ? (
           <div>
-            <Button type="button" onClick={() => { setLabel("Cobrança"); setLabelOpen(true); }} disabled={busy}>
-              <QrCode className="h-4 w-4" aria-hidden="true" /> Conectar número
+            <Button type="button" onClick={() => { setLabel(labelDefault); setLabelOpen(true); }} disabled={busy}>
+              <QrCode className="h-4 w-4" aria-hidden="true" /> {connectButtonLabel}
             </Button>
           </div>
         ) : null}
@@ -345,12 +409,17 @@ export function PlatformWhatsappCard({ initialState }: { initialState: PlatformW
       <Dialog open={labelOpen} onOpenChange={(next) => (busy ? undefined : setLabelOpen(next))}>
         <DialogContent>
           <DialogHeader icon={Smartphone}>
-            <DialogTitle>{active ? "Trocar de número" : "Conectar número"}</DialogTitle>
+            <DialogTitle>{active ? "Trocar de número" : connectButtonLabel}</DialogTitle>
             <DialogDescription>
-              {active ? "O número atual continua enviando até o novo conectar." : "Use um chip só para os avisos de cobrança."} Dê um nome para reconhecer depois.
+              {active
+                ? "O número atual continua enviando até o novo conectar."
+                : isRescue
+                ? "Use um chip dedicado para as mensagens automáticas de resgate."
+                : "Use um chip só para os avisos de cobrança."}{" "}
+              Dê um nome para reconhecer depois.
             </DialogDescription>
           </DialogHeader>
-          <Field label="Nome do número" hint="Por exemplo: Cobrança ou Cobrança (chip novo).">
+          <Field label="Nome do número" hint={`Por exemplo: ${labelDefault} ou ${labelDefault} (chip novo).`}>
             {(fieldProps) => <Input {...fieldProps} value={label} maxLength={40} onChange={(e) => setLabel(e.target.value)} />}
           </Field>
           <DialogFooter>
@@ -370,7 +439,7 @@ export function PlatformWhatsappCard({ initialState }: { initialState: PlatformW
             {qr.view?.qrBase64 ? (
               <div className="rounded-hero border border-border bg-white p-4 shadow-card">
                 {/* eslint-disable-next-line @next/next/no-img-element -- QR em base64 gerado em runtime pela Evolution */}
-                <img src={qr.view.qrBase64} alt="QR code para conectar o WhatsApp de cobrança" width={256} height={256} className="h-64 w-64" />
+                <img src={qr.view.qrBase64} alt={`QR code para conectar o ${title.toLowerCase()}`} width={256} height={256} className="h-64 w-64" />
               </div>
             ) : (
               <p className="text-sm text-text-secondary" role="status">{qr.failed ? "Não deu para atualizar o QR agora. Tentando de novo…" : "Gerando o QR…"}</p>
@@ -390,8 +459,12 @@ export function PlatformWhatsappCard({ initialState }: { initialState: PlatformW
       <Dialog open={disconnectOpen} onOpenChange={(next) => (busy ? undefined : setDisconnectOpen(next))}>
         <DialogContent>
           <DialogHeader icon={Link2Off} tone="danger">
-            <DialogTitle>Desconectar o número de cobrança?</DialogTitle>
-            <DialogDescription>Os avisos passam a ir só por e-mail e pelo painel, até você conectar outro número.</DialogDescription>
+            <DialogTitle>{isRescue ? "Desconectar o WhatsApp de resgate?" : "Desconectar o número de cobrança?"}</DialogTitle>
+            <DialogDescription>
+              {isRescue
+                ? "As mensagens de resgate ficam suspensas até você conectar outro número."
+                : "Os avisos passam a ir só por e-mail e pelo painel, até você conectar outro número."}
+            </DialogDescription>
           </DialogHeader>
           <Field label="Para confirmar, digite DESCONECTAR">
             {(fieldProps) => <Input {...fieldProps} value={confirmText} autoComplete="off" onChange={(e) => setConfirmText(e.target.value)} />}
@@ -407,7 +480,11 @@ export function PlatformWhatsappCard({ initialState }: { initialState: PlatformW
         <DialogContent>
           <DialogHeader icon={Send}>
             <DialogTitle>Enviar mensagem de teste</DialogTitle>
-            <DialogDescription>Manda uma mensagem curta do número de cobrança para o celular que você digitar.</DialogDescription>
+            <DialogDescription>
+              {isRescue
+                ? "Manda uma mensagem curta do número de resgate para o celular que você digitar."
+                : "Manda uma mensagem curta do número de cobrança para o celular que você digitar."}
+            </DialogDescription>
           </DialogHeader>
           <Field label="Seu celular com DDD" hint="Exemplo: (84) 99999-8888.">
             {(fieldProps) => <Input {...fieldProps} inputMode="tel" value={testPhone} onChange={(e) => setTestPhone(e.target.value)} />}

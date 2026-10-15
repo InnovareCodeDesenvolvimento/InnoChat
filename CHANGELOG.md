@@ -7,6 +7,11 @@ Versão semântica (`MAJOR.MINOR.PATCH`), lida do `version` do `package.json` e 
 
 Toda publicação em produção sobe a versão e ganha uma entrada aqui.
 
+## v1.13.6 — 2026-10-14
+
+### Novidade
+- **Card "WhatsApp de resgate" na aba Admin → Configurações → WhatsApp:** o admin agora vê dois cards lado a lado — "WhatsApp de cobrança" (já existente) e "WhatsApp de resgate" (novo). O card de resgate tem o mesmo fluxo de QR Code e pareamento, mas o chip conectado é o que envia as mensagens de acolhimento da régua de leads do Meta Ads. O kill switch pode ser alternado tanto pela aba Marketing quanto pelo próprio card. Texto humanizado conforme o guia de voz.
+
 ## v1.13.5 — 2026-10-14
 
 ### Correções

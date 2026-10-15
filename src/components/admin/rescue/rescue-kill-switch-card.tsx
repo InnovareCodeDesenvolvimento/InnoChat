@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { CheckCircle2, Power, ShieldAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Alert } from "@/components/ui/alert";
@@ -96,6 +97,16 @@ export function RescueKillSwitchCard({ initialEnabled, onToggleSuccess }: Rescue
           {enabled
             ? "A régua está em funcionamento normal. O sistema avalia os cadastros periodicamente e dispara pelo número dedicado de suporte/resgate nos horários permitidos (fora da janela de silêncio)."
             : "Atenção: o kill switch global está acionado. Nenhum envio de resgate é feito enquanto a régua estiver desligada. Os cadastros continuam sendo registrados para você poder retomar quando desejar."}
+        </p>
+        <p className="text-xs text-text-muted">
+          Para conectar o chip, vá em{" "}
+          <Link
+            href="/admin/configuracoes/whatsapp#whatsapp-resgate"
+            className="text-primary underline hover:text-primary-hover font-medium"
+          >
+            Admin → Configurações → WhatsApp → WhatsApp de resgate → Conectar
+          </Link>
+          .
         </p>
       </CardContent>
 
