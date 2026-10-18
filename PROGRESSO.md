@@ -5,6 +5,29 @@ para clínicas, salões e qualquer negócio de serviços com horário marcado.
 Repositório: https://github.com/InnovareCodeDesenvolvimento/InnoChat (branch `main`; o antigo é o remote `antigo`).
 Decisões do dono: memória `decisoes-iniciais-innochat` e `docs/arquitetura.md` §15.
 
+## Atualização (2026-10-14): v1.12.0 no ar
+
+**Publicado desde a v1.7.5:**
+
+*Suporte do admin (impersonar + auditoria + banner):*
+- v1.10.0 — Onda 1: cookie de suporte paralelo (HMAC-SHA256, AUTH_SECRET), banner de 1h, banner persistente com countdown e auto-exit, auditoria `PLATFORM_ADMIN` com `supportSessionId`, `forbidDuringSupport` aplicado em `whatsapp.disconnect`, filtro `isBrowserNoiseError` (iabjs + Load failed) em duas camadas.
+- v1.10.1 — Onda 2: plug de `supportSessionId` em todas as actions de catálogo (`createService`/`updateService`/`deleteService`/`createProfessional`/`updateProfessional`/...), comissões (`auditCommissionChange`), agendamento (`auditAppointmentAction`) e `recordAudit` estendido.
+- v1.11.0 — Onda 2 UI + Fase 2 do Resgate (Meta Ads): badge inline contextual em 5 telas de catálogo, 14 chaves de ajuda ⓘ, paginação 10/25/50/100, motor de `runRescueTick` (planner puro + executor com advisory lock), `ensureRescueLead` no signup, webhook de opt-out (`STOP`/`SAIR`/`PARAR` → `OPTED_OUT`), `RESPONDED` gera notificação no sino do Admin.
+- v1.11.1 — Auto-reparo de migrations no boot: detecta coluna/tabela ausente e aplica o SQL embarcado idempotente (corrige incidente de imagem Docker publicada sem a migration).
+- v1.11.2 — Pixel do Meta no `/cadastro` carrega direto sem banner de consentimento (decisão do dono: a pergunta travava o cadastro). Auto-reparo: checksum do `_prisma_migrations` cabe no VARCHAR(64).
+- v1.12.0 — Onda 4 e 5 do suporte + Fase 3 do Resgate:
+  - **Onda 4:** `sendSupportMessageAction` com prefixo `[Suporte InnoChat]`, envio pela instância da empresa, idempotência de 1 min, auditoria com `supportSessionId`.
+  - **Onda 5:** `extendTrialAction` (até 30 dias, motivo obrigatório), `applySupportCouponAction` (reusa `applyCoupon`), `resendPaymentLinkAction` (regenera Pix e reenvia), card "Acessos do Suporte" visível para a empresa (LGPD).
+  - **Fase 3 do Resgate:** `/admin/resgate` (lista paginada com filtros e busca), `/admin/resgate/[leadId]` (timeline + ações pausar/retomar/marcar convertido/reenviar), Kill Switch em `/admin/configuracoes/marketing/resgate` (gate de 2FA), exportação CSV, auto-criação de `RescueLead` no signup.
+
+**Pendente para o roadmap completo:**
+
+- **Onda 3 do Suporte — Catálogo Avançado:** modelar `ServiceAddon` (adicionais), `ServiceBundle`/`ServiceComponent` (compostos) e `PricingRule` (regras de preço dinâmico) — esses models ainda não existem. Comissões JÁ foram feitas na Onda 2.
+- **Polimento visual** (Lyra) das Ondas 4/5 do suporte e da Fase 3 do Resgate: ⓘ, paginação, voz humana. Decidido consolidar entrega primeiro.
+- **3 gatilhos extras do Resgate** ("entrou mas não configurou", "configurou mas não conectou WA", "conectou WA mas ninguém mandou mensagem"): nenhuma missão aberta.
+
+**Pendências do dono (configuração):** nenhuma nova.
+
 ## Atualização (2026-10-03): v1.7.5 no ar
 
 **Publicado (v1.7.0 a v1.7.4):** pacote das 8 melhorias (monitor de erros próprio, backup cifrado no Drive, 2 etapas, auditoria 5 anos, Pixel + páginas por nicho, plano anual + cupons, lista de espera no bot, relatórios com comissões), fluxo do bot versionado (2.1.0, publicado), resposta automática do WhatsApp de cobrança corrigida, contato de cobrança fácil de corrigir, Configurações do Admin em abas com rota própria, recarga automática após publicação.
@@ -160,6 +183,8 @@ Validado pelo dono em produção: bot WhatsApp, Pix real baixado, e-mail real en
 - Rate limit distribuído.
 
 ## Decisões em aberto (dono)
+
+- **Restore pelo painel (Onda 3), adiado em 2026-10-18:** a v1.14.0 lista, baixa e testa as cópias; restaurar de verdade continua pelo `scripts/restore-db.sh`. Para retomar: reauth de 2FA na hora da operação + salvaguardas do Órion (`docs/plano-restore-admin.md` §5). Decisão do dono se e quando.
 
 - Texto próprio "Confirma a remarcação?"?
 - Card "Adicionar número" escondido quando o plano está no limite?
