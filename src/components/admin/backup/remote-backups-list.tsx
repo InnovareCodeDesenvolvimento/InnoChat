@@ -1,7 +1,7 @@
 "use client";
 
-import { useTransition } from "react";
-import { Download, Cloud, HardDrive, Shield } from "lucide-react";
+import { useState, useTransition } from "react";
+import { Download, Cloud, HardDrive, Shield, ShieldCheck } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -9,23 +9,12 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Pagination } from "@/components/ui/pagination";
 import { Table, TableBody, TableCell, TableHead, TableHeadCell, TableRow } from "@/components/ui/table";
 import { formatTimeLabel } from "@/components/lib/format-date";
+import { formatBytes } from "@/components/lib/format-bytes";
 import { formatDateBR } from "@/modules/billing/format";
+import { ProbeBackupDialog } from "./probe-backup-dialog";
 import type { ListRemoteBackupsResult, RemoteBackupItem } from "@/modules/backup/restore-types";
 
 const TZ = "America/Sao_Paulo";
-
-function formatBytes(bytes: number | null | undefined): string {
-  if (bytes === null || bytes === undefined) return "-";
-  if (bytes < 1024) return `${bytes} B`;
-  const units = ["KB", "MB", "GB", "TB"];
-  let value = bytes / 1024;
-  let i = 0;
-  while (value >= 1024 && i < units.length - 1) {
-    value /= 1024;
-    i += 1;
-  }
-  return `${value.toFixed(value >= 100 ? 0 : 1).replace(".", ",")} ${units[i]}`;
-}
 
 function RemoteWhen({ iso }: { iso: string }) {
   const d = new Date(iso);
@@ -56,6 +45,7 @@ export function RemoteBackupsList({
 }: RemoteBackupsListProps) {
   const [internalPending, startTransition] = useTransition();
   const isPending = externalPending || internalPending;
+  const [probeTarget, setProbeTarget] = useState<RemoteBackupItem | null>(null);
 
   function handlePage(page: number) {
     if (onPageChange) {
@@ -143,16 +133,26 @@ export function RemoteBackupsList({
                         <Badge variant="success">Disponível</Badge>
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button
-                          asChild
-                          variant="secondary"
-                          aria-label={`Baixar arquivo ${backup.name}`}
-                        >
-                          <a href={downloadHref} download={backup.name} className="inline-flex items-center gap-1.5">
-                            <Download className="h-4 w-4 shrink-0" aria-hidden="true" />
-                            <span>Baixar</span>
-                          </a>
-                        </Button>
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            variant="secondary"
+                            icon={ShieldCheck}
+                            aria-label={`Testar integridade do arquivo ${backup.name}`}
+                            onClick={() => setProbeTarget(backup)}
+                          >
+                            Testar integridade
+                          </Button>
+                          <Button
+                            asChild
+                            variant="secondary"
+                            aria-label={`Baixar arquivo ${backup.name}`}
+                          >
+                            <a href={downloadHref} download={backup.name} className="inline-flex items-center gap-1.5">
+                              <Download className="h-4 w-4 shrink-0" aria-hidden="true" />
+                              <span>Baixar</span>
+                            </a>
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   );
@@ -174,6 +174,13 @@ export function RemoteBackupsList({
           </div>
         )}
       </CardContent>
+      <ProbeBackupDialog
+        backup={probeTarget}
+        open={probeTarget !== null}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) setProbeTarget(null);
+        }}
+      />
     </Card>
   );
 }

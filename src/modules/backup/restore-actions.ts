@@ -5,7 +5,8 @@ import { requirePlatformAdmin } from "@/lib/auth/guards";
 import { runAction, type Result } from "@/lib/result";
 import { pagingInputShape, type PageSize } from "@/modules/billing/paging";
 import { platformAdminActor, recordAudit } from "@/modules/audit/record";
-import { listRemoteBackups, probeBackup } from "./restore-service";
+import { listRemoteBackupsCached, probeBackup } from "./restore-service";
+import { shouldAuditRemoteListing } from "./restore-cache";
 import type {
   ListRemoteBackupsResult,
   ProbeBackupResult,
@@ -35,13 +36,13 @@ const probeBackupSchema = z.object({
  */
 export async function listRemoteBackupsAction(
   input?: unknown,
-  deps: Parameters<typeof listRemoteBackups>[1] = {},
+  deps: Parameters<typeof listRemoteBackupsCached>[1] = {},
 ): Promise<Result<ListRemoteBackupsResult>> {
   return runAction(async () => {
     const admin = await requirePlatformAdmin();
     const parsed = listRemoteBackupsSchema.parse(input ?? {});
 
-    const result = await listRemoteBackups(
+    const { result, servedFromCache } = await listRemoteBackupsCached(
       {
         page: parsed.page,
         pageSize: parsed.pageSize as PageSize | undefined,
@@ -49,13 +50,17 @@ export async function listRemoteBackupsAction(
       deps,
     );
 
-    await recordAudit({
-      tenantId: null,
-      actor: platformAdminActor(admin.id),
-      action: "backup.remote_listed",
-      targetType: "backup",
-      summary: `Listou backups remotos disponíveis: ${result.totalItems} cópia(s) encontrada(s) (página ${result.page}/${result.totalPages}).`,
-    });
+    // Cache de 30s + audit no máximo 1x/5min por admin quando repetir (F5, troca de página):
+    // evita bater Drive/S3 e poluir a auditoria a cada carregamento da tela.
+    if (shouldAuditRemoteListing(admin.id, servedFromCache)) {
+      await recordAudit({
+        tenantId: null,
+        actor: platformAdminActor(admin.id),
+        action: "backup.remote_listed",
+        targetType: "backup",
+        summary: `Listou backups remotos disponíveis: ${result.totalItems} cópia(s) encontrada(s) (página ${result.page}/${result.totalPages}).`,
+      });
+    }
 
     return result;
   });

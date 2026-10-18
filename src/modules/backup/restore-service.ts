@@ -32,6 +32,7 @@ import {
 } from "./backup-crypto";
 import { readEncryptedSecret } from "@/modules/platform/secrets";
 import { listDriveDumps, type TokenGetter } from "./drive";
+import { getCachedRemoteList, remoteListCacheKey, setCachedRemoteList } from "./restore-cache";
 import type {
   ListRemoteBackupsResult,
   ProbeBackupInput,
@@ -200,6 +201,36 @@ export async function listRemoteBackups(
     items,
     ...pageInfoOf(paged),
   };
+}
+
+/**
+ * Mesma listagem de `listRemoteBackups`, mas com cache em memória de 30s (chave: destino+página+tamanho)
+ * para não bater no Drive/S3 a cada F5/paginação da tela de Restore. Usada pela Server Action;
+ * `listRemoteBackups` em si continua sem cache (é o que os testes unitários exercitam direto).
+ */
+export async function listRemoteBackupsCached(
+  opts: { page?: number; pageSize?: number } = {},
+  deps: ListRemoteDeps = {},
+  now: number = Date.now(),
+): Promise<{ result: ListRemoteBackupsResult; servedFromCache: boolean }> {
+  const config = await (deps.configLoader ?? loadBackupConfig)();
+  const destination = activeDestination(config);
+  const page = opts.page ?? 1;
+  const pageSize = opts.pageSize ?? 25;
+
+  if (destination) {
+    const key = remoteListCacheKey(destination, page, pageSize);
+    const cached = getCachedRemoteList(key, now);
+    if (cached) return { result: cached, servedFromCache: true };
+
+    const result = await listRemoteBackups(opts, { ...deps, configLoader: async () => config });
+    setCachedRemoteList(key, result, now);
+    return { result, servedFromCache: false };
+  }
+
+  // Sem destino ativo: listRemoteBackups vai lançar o erro de configuração; nada para cachear.
+  const result = await listRemoteBackups(opts, { ...deps, configLoader: async () => config });
+  return { result, servedFromCache: false };
 }
 
 export type RemoteStreamResult = {
@@ -549,6 +580,9 @@ export async function probeBackup(
     if (workDir) {
       await fs.rm(workDir, { recursive: true, force: true }).catch(() => undefined);
     }
+    // A chave (do sistema ou customizada) só vive nesta função; zera o Buffer para não deixar
+    // os bytes da chave na memória do processo depois que o probe termina.
+    key.fill(0);
   }
 }
 

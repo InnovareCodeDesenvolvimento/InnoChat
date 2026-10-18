@@ -7,6 +7,19 @@ Versão semântica (`MAJOR.MINOR.PATCH`), lida do `version` do `package.json` e 
 
 Toda publicação em produção sobe a versão e ganha uma entrada aqui.
 
+## v1.14.0 — 2026-10-18
+
+### Novidade: cópias de segurança no Admin
+- Em Admin → Backup, a lista das cópias guardadas no Google Drive (ou S3), com paginação e botão para baixar o arquivo cifrado.
+- Botão "Testar integridade" em cada cópia: confere se a chave (a salva no sistema ou uma antiga digitada) abre o arquivo e se ele está inteiro, mostrando tamanho, tabelas com dados e a impressão digital da chave. O teste não altera nem restaura nada no banco.
+- Trava contra duas restaurações ao mesmo tempo, preparando a etapa de restauração pelo painel.
+
+### Segurança
+- A lista do Drive fica guardada por 30 segundos e a auditoria registra a consulta no máximo uma vez a cada 5 minutos por admin; a chave usada no teste é apagada da memória do servidor logo em seguida.
+
+### Correções
+- A tabela do Resgate de Leads passou a ter a sua migration no repositório (antes dependia do auto-reparo do boot).
+
 ## v1.13.7 — 2026-10-14
 
 ### Correções

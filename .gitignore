@@ -53,3 +53,4 @@ backups/
 *.dump
 *.dump.enc
 chave-backup-*.txt
+.missoes-eta.json

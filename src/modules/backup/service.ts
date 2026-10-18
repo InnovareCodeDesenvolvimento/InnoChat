@@ -15,6 +15,7 @@ import { tryGetPublicBaseUrl } from "@/lib/public-url";
 import { encryptSecret } from "@/lib/crypto";
 import { readEncryptedSecret } from "@/modules/platform/secrets";
 import { checkS3EndpointResolved, checkS3EndpointShape, createGuardedLookup } from "./s3-endpoint";
+import { invalidateRemoteBackupsCache } from "./restore-cache";
 import { pageInfoOf, resolvePage, type PageInfo, type PageSize } from "@/modules/billing/paging";
 import {
   DriveFailure,
@@ -686,6 +687,8 @@ export async function runBackup(opts: { trigger: BackupTrigger; createdById?: st
       ...(objectKey ? [prisma.backupConfig.update({ where: { id: 1 }, data: { lastSuccessAt: new Date() } })] : []),
     ]);
     logger.info("backup.completed", { runId: run.id, bytes: size, tables, destination, encrypted: encryption !== null });
+    // Um backup novo saiu para o destino remoto: a listagem cacheada de Restore ficaria mentindo por até 30s.
+    if (objectKey) invalidateRemoteBackupsCache();
     return { runId: run.id, sizeBytes: size, tablesWithData: tables, objectKey, destination };
   } catch (raw) {
     const error = asBackupError(raw);

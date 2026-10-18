@@ -164,7 +164,10 @@ describe("ações do painel da empresa", () => {
     const created = await createServiceAction(w.tenant.slug, { name: "Barba", durationMin: 30, priceCents: 3000 });
     expect(created.ok).toBe(true);
 
-    const price = await updateServiceAction(w.tenant.slug, w.service.id, { priceCents: 6500 });
+    const price = await updateServiceAction(w.tenant.slug, w.service.id, {
+      priceCents: 6500,
+      priceChangeReason: "Ajuste de preço combinado com o dono em reunião mensal.",
+    });
     expect(price.ok).toBe(true);
     const rename = await updateServiceAction(w.tenant.slug, w.service.id, { name: "Corte masculino" });
     expect(rename.ok).toBe(true);
