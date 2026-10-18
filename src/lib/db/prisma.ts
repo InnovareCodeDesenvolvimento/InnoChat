@@ -25,6 +25,8 @@ declare global {
  *   TrialClaim, AuthToken) → `getPrisma()` direto, só em código que já
  *   validou o escopo certo (ex.: rotas que checam `isPlatformAdmin`).
  */
+export type RawPrismaClient = PrismaClient;
+
 export function getPrisma(): PrismaClient {
   if (!globalThis.__innochatPrisma__) {
     globalThis.__innochatPrisma__ = new PrismaClient({

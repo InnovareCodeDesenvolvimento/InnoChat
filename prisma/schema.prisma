@@ -1609,6 +1609,24 @@ model BackupRun {
   @@map("backup_runs")
 }
 
+// Lock de concorrência e estado da operação de Restore pelo Admin (singleton, id = 1).
+// Garante execução única (acquire/release atômicos) e guarda o caminho do safety pre-dump.
+enum RestoreLockStatus {
+  IDLE
+  RESTORING
+}
+
+model RestoreLock {
+  id             Int               @id @default(1)
+  status         RestoreLockStatus @default(IDLE)
+  lockedBy       String?
+  lockedAt       DateTime?
+  safetyDumpPath String?
+  updatedAt      DateTime          @updatedAt
+
+  @@map("restore_locks")
+}
+
 // `state` de uso único do OAuth do Drive (o callback chega pelo navegador, sem sessão de API).
 model BackupDriveOauthNonce {
   id        String   @id @default(cuid())

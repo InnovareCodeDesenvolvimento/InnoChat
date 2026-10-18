@@ -33,6 +33,8 @@ import {
 } from "@/modules/backup/actions";
 import { REPLACE_KEY_CONFIRMATION } from "@/modules/backup/policy";
 import type { BackupRunView, GeneratedBackupKey, VerifyResult } from "@/modules/backup/service";
+import type { ListRemoteBackupsResult } from "@/modules/backup/restore-types";
+import { RemoteBackupsList } from "@/components/admin/backup/remote-backups-list";
 
 const TZ = "America/Sao_Paulo";
 
@@ -95,7 +97,15 @@ function RunStatus({ run }: { run: BackupRunView }) {
   return run.objectKey ? <Badge variant="success">Enviado</Badge> : <Badge variant="warning">Só teste</Badge>;
 }
 
-export function BackupClient({ data, google }: { data: BackupPanelData; google: { ok: true } | { ok: false; reason: string } | null }) {
+export function BackupClient({
+  data,
+  google,
+  remoteBackups,
+}: {
+  data: BackupPanelData;
+  google: { ok: true } | { ok: false; reason: string } | null;
+  remoteBackups?: ListRemoteBackupsResult;
+}) {
   const { config, status, runs } = data;
   const { notify } = useToast();
   const router = useRouter();
@@ -284,6 +294,10 @@ export function BackupClient({ data, google }: { data: BackupPanelData; google: 
 
   function goToPage(page: number, pageSize: number) {
     startNavigation(() => router.push(`${pathname}?pagina=${page}&porPagina=${pageSize}`));
+  }
+
+  function goToRemotePage(page: number, pageSize: number) {
+    startNavigation(() => router.push(`${pathname}?remotoPagina=${page}&remotoPorPagina=${pageSize}`));
   }
 
   const anyBusy = busy !== null;
@@ -721,6 +735,23 @@ export function BackupClient({ data, google }: { data: BackupPanelData; google: 
           )}
         </CardContent>
       </Card>
+
+      <RemoteBackupsList
+        data={
+          remoteBackups ?? {
+            items: [],
+            page: 1,
+            pageSize: 10,
+            totalItems: 0,
+            totalPages: 0,
+          }
+        }
+        destinationReady={config.destinationReady}
+        destinationName={config.destination === "DRIVE" ? "Google Drive" : config.destination === "S3" ? "Bucket S3" : "armazenamento remoto"}
+        onPageChange={(p) => goToRemotePage(p, remoteBackups?.pageSize ?? 10)}
+        onPageSizeChange={(size) => goToRemotePage(1, size)}
+        isPending={isNavigating}
+      />
 
       <p className="mt-4 flex items-center gap-2 text-xs text-text-secondary">
         <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />

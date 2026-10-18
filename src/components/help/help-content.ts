@@ -546,6 +546,34 @@ const HELP_ENTRIES = {
     tip: "Uma vez por semana o sistema confere sozinho e avisa por e-mail se a cópia não abrir.",
     warning: "Conferir prova que o arquivo abre e está inteiro, mas não restaura nada. Para treinar uma restauração de verdade, use um banco descartável, como o passo a passo do runbook mostra.",
   },
+  "backup.copiasRemotas": {
+    title: "Cópias no armazenamento remoto",
+    purpose: "Lista todos os arquivos de backup salvos no seu disco virtual ou nuvem, prontos para download ou restauração.",
+    steps: [
+      "Confira a data da cópia, o tamanho e a impressão digital da chave que a gerou.",
+      "Use Baixar para guardar uma cópia no seu computador ou preparar uma recuperação.",
+      "Use Testar integridade para inspecionar o conteúdo do arquivo e verificar se a chave é válida antes de qualquer restauração.",
+    ],
+    examples: [
+      "Você precisa baixar o backup de ontem para analisar um dado: clique no botão de download ao lado do arquivo.",
+      "A chave atual tem a mesma impressão digital da cópia: significa que ela pode ser aberta com a chave guardada.",
+    ],
+    tip: "Os arquivos possuem extensão .dump.enc e só podem ser lidos com a respectiva chave de segurança.",
+  },
+  "backup.probeIntegridade": {
+    title: "Teste de integridade do backup",
+    purpose: "Baixa temporariamente o backup para a memória do servidor, descriptografa com a chave escolhida e roda a leitura do catálogo do Postgres sem alterar nenhuma tabela do banco.",
+    steps: [
+      "Escolha se deseja usar a chave atual salva no sistema ou digitar uma chave antiga manualmente.",
+      "O sistema valida a marca do arquivo, decifra o fluxo e confere a integridade criptográfica (autenticação AES-256-GCM).",
+      "Ao final, o arquivo temporário é apagado imediatamente e o resumo de tabelas com dados é exibido.",
+    ],
+    examples: [
+      "Se a chave informada for incorreta, o teste avisa que a chave não abre o backup sem tocar no banco.",
+      "Se o arquivo estiver truncado ou alterado, a verificação acusa falha de autenticação.",
+    ],
+    tip: "Este teste é 100% seguro: nenhuma linha do banco de produção é alterada ou sobrescrita.",
+  },
   "admin.saudeCobranca": {
     title: "Cobrança na Saúde",
     purpose: "Mostra se a cobrança das assinaturas está andando: quando foi a última rodada, quantos avisos saíram, quantos falharam e se algum ficou parado na fila.",

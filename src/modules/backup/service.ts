@@ -363,7 +363,7 @@ function secretOrThrow(enc: string | null, field: string, what: string, code: Ba
 }
 
 /** Token getter + pasta do modo ativo do Drive. */
-function driveAccess(config: BackupConfigRow): { getToken: TokenGetter; folderId: string } {
+export function driveAccess(config: BackupConfigRow): { getToken: TokenGetter; folderId: string } {
   if (config.driveMode === "OAUTH") {
     if (!config.driveOauthRefreshTokenEnc || !config.driveOauthFolderId || !config.driveOauthClientId) {
       throw new BackupError("Não há conta Google conectada. Conecte em Admin > Backup.", "OAUTH_DISCONNECTED");
@@ -378,7 +378,7 @@ function driveAccess(config: BackupConfigRow): { getToken: TokenGetter; folderId
 }
 
 /** Cliente do S3, só depois de conferir o endereço (https, fora de rede interna) com o DNS de agora. */
-async function s3Client(config: BackupConfigRow): Promise<S3Client> {
+export async function s3Client(config: BackupConfigRow): Promise<S3Client> {
   const refusal = await checkS3EndpointResolved(config.s3Endpoint ?? "");
   if (refusal) throw new BackupError(`Endereço do bucket recusado. ${refusal}`, "CONFIG");
   const secretAccessKey = secretOrThrow(config.s3SecretKeyEnc, "backup.s3SecretKey", "o segredo do bucket", "CREDENTIAL");
@@ -392,7 +392,7 @@ async function s3Client(config: BackupConfigRow): Promise<S3Client> {
   });
 }
 
-function s3Prefix(config: BackupConfigRow): string {
+export function s3Prefix(config: BackupConfigRow): string {
   return (config.s3Prefix || "").replace(/^\/+|\/+$/g, "");
 }
 
@@ -514,7 +514,7 @@ async function sendToDrive(config: BackupConfigRow, file: string, name: string, 
 export type CommandRunner = (command: string, args: string[], env: Record<string, string>) => Promise<string>;
 
 /** `shell: false`: nada que venha da configuração vira comando. Erro inclui o stderr, onde o Postgres explica. */
-const runCommand: CommandRunner = (command, args, env) =>
+export const runCommand: CommandRunner = (command, args, env) =>
   new Promise((resolve, reject) => {
     const proc = spawn(command, args, { env: { ...process.env, ...env } });
     let out = "";
