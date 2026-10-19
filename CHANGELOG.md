@@ -7,6 +7,11 @@ Versão semântica (`MAJOR.MINOR.PATCH`), lida do `version` do `package.json` e 
 
 Toda publicação em produção sobe a versão e ganha uma entrada aqui.
 
+## v1.14.1 — 2026-10-19
+
+### Melhorias
+- Admin → Backup reorganizado no mesmo layout do painel do TRM Outlet: 4 cartões de resumo (última cópia, próxima cópia, retenção e situação), painéis de Agendamento e Destino, Chave do backup com etiqueta de estado, Execuções em linhas com etiquetas coloridas e as cópias remotas no mesmo estilo. Aviso novo quando o backup está atrasado.
+
 ## v1.14.0 — 2026-10-18
 
 ### Novidade: cópias de segurança no Admin

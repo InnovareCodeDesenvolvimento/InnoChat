@@ -2,22 +2,32 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { CheckCircle2, ClipboardCopy, DatabaseBackup, Download, KeyRound, Link2, PlayCircle, Plug, Save, ShieldCheck, Unlink } from "lucide-react";
+import {
+  CheckCircle2,
+  Clock,
+  ClipboardCopy,
+  DatabaseBackup,
+  Download,
+  HardDrive,
+  KeyRound,
+  Link2,
+  PlayCircle,
+  Plug,
+  Save,
+  ShieldCheck,
+  Unlink,
+} from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { navIconFor } from "@/components/shell/nav-items";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Field } from "@/components/ui/field";
-import { Badge } from "@/components/ui/badge";
 import { Alert } from "@/components/ui/alert";
 import { HelpButton } from "@/components/help/help-button";
-import { EmptyState } from "@/components/ui/empty-state";
 import { Pagination } from "@/components/ui/pagination";
-import { Table, TableBody, TableCell, TableHead, TableHeadCell, TableRow } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
 import { formatTimeLabel } from "@/components/lib/format-date";
 import { formatDateBR } from "@/modules/billing/format";
@@ -35,6 +45,7 @@ import { REPLACE_KEY_CONFIRMATION } from "@/modules/backup/policy";
 import type { BackupRunView, GeneratedBackupKey, VerifyResult } from "@/modules/backup/service";
 import type { ListRemoteBackupsResult } from "@/modules/backup/restore-types";
 import { RemoteBackupsList } from "@/components/admin/backup/remote-backups-list";
+import { Panel, RowShell, StatusPill, StatCard, PanelEmptyState, type PillTone } from "@/components/admin/backup/admin-ui";
 
 const TZ = "America/Sao_Paulo";
 
@@ -79,22 +90,18 @@ function formatBytes(bytes: number | null): string {
   return `${value.toFixed(value >= 100 ? 0 : 1).replace(".", ",")} ${units[i]}`;
 }
 
-function When({ iso }: { iso: string }) {
+function formatWhen(iso: string): string {
   const d = new Date(iso);
-  return (
-    <>
-      <span className="block font-medium tabular-nums text-text">{formatDateBR(d, TZ)}</span>
-      <span className="block text-xs tabular-nums text-text-secondary">{formatTimeLabel(d, TZ)}</span>
-    </>
-  );
+  return `${formatDateBR(d, TZ)} às ${formatTimeLabel(d, TZ)}`;
 }
 
-function RunStatus({ run }: { run: BackupRunView }) {
-  if (run.status === "RUNNING") return <Badge variant="primary">Em andamento</Badge>;
-  if (run.status === "FAILED") return <Badge variant="danger">{run.trigger === "VERIFY" ? "Reprovou" : "Falhou"}</Badge>;
-  if (run.trigger === "VERIFY") return <Badge variant="success">Conferida</Badge>;
+/** Selo + rótulo da execução, equivalente ao `STATUS_META` do painel de referência. */
+function runStatusMeta(run: BackupRunView): { label: string; tone: PillTone } {
+  if (run.status === "RUNNING") return { label: "Em andamento", tone: "primary" };
+  if (run.status === "FAILED") return { label: run.trigger === "VERIFY" ? "Reprovou" : "Falhou", tone: "danger" };
+  if (run.trigger === "VERIFY") return { label: "Conferida", tone: "success" };
   // Sucesso sem destino: o dump foi conferido, mas não saiu do servidor.
-  return run.objectKey ? <Badge variant="success">Enviado</Badge> : <Badge variant="warning">Só teste</Badge>;
+  return run.objectKey ? { label: "Enviado", tone: "success" } : { label: "Só teste", tone: "warning" };
 }
 
 export function BackupClient({
@@ -303,21 +310,15 @@ export function BackupClient({
   const anyBusy = busy !== null;
   const lastSuccess = status.lastSuccessAt ? new Date(status.lastSuccessAt) : null;
   const nextRun = status.nextRunAt ? new Date(status.nextRunAt) : null;
+  const cifraTone: PillTone = config.hasEncryptionKey ? "success" : "warning";
 
   return (
     <div>
-      <PageHeader
-        icon={navIconFor("admin/backup")}
-        title="Backup do banco"
-        description="Cópia diária do banco fora do servidor, com aviso se atrasar."
-        help="pagina.adminBackup"
-        action={
-          <Button type="button" icon={PlayCircle} onClick={handleRunNow} isLoading={busy === "run"} loadingText="Copiando o banco…" disabled={anyBusy}>
-            Fazer backup agora
-          </Button>
-        }
-      />
+      {/* 1. Cabeçalho — sem ação aqui: "Fazer backup agora" mora no painel de Agendamento,
+          junto do botão de ligar/desligar o automático, como no projeto de referência. */}
+      <PageHeader icon={navIconFor("admin/backup")} title="Backup do banco" description="Cópia diária do banco fora do servidor, com aviso se atrasar." help="pagina.adminBackup" />
 
+      {/* 2. Avisos — nesta ordem: volta do Google, atraso, destino incompleto. */}
       {google ? (
         google.ok ? (
           <Alert variant="success" className="mb-4">
@@ -336,406 +337,393 @@ export function BackupClient({
         </Alert>
       ) : null}
 
-      <Card className="mb-4">
-        <CardContent className="grid gap-4 p-5 sm:grid-cols-3">
-          <div>
-            <p className="text-xs text-text-secondary">Última cópia enviada</p>
-            <p className="mt-1 font-medium text-text">{lastSuccess ? `${formatDateBR(lastSuccess, TZ)} às ${formatTimeLabel(lastSuccess, TZ)}` : "Nenhuma ainda"}</p>
-          </div>
-          <div>
-            <p className="text-xs text-text-secondary">Próxima cópia automática</p>
-            <p className="mt-1 font-medium text-text">{nextRun ? `${formatDateBR(nextRun, TZ)} às ${formatTimeLabel(nextRun, TZ)}` : "Automático desligado"}</p>
-          </div>
-          <div>
-            <p className="text-xs text-text-secondary">Situação</p>
-            <p className="mt-1">
-              {status.running ? (
-                <Badge variant="primary">Copiando agora</Badge>
-              ) : status.late ? (
-                <Badge variant="danger">{status.never ? "Ligado, mas nunca rodou" : "Atrasado"}</Badge>
-              ) : config.enabled ? (
-                <Badge variant="success">Em dia</Badge>
-              ) : (
-                <Badge variant="warning">Desligado</Badge>
-              )}
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-
-      <div className="mb-4 grid gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader help="backup.criptografia">
-            <CardTitle>Chave do backup</CardTitle>
-            <CardDescription>As cópias saem do servidor trancadas com uma chave que só você guarda.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4 p-5">
-            {revealed ? (
-              <div className="space-y-3">
-                <Alert variant="warning" title="Guarde fora do servidor. Sem ela os backups não abrem.">
-                  Esta é a única vez que a chave aparece inteira. Se fechar esta tela sem guardar, só dá para gerar outra, e as cópias feitas com esta ficam sem como abrir.
-                </Alert>
-                <div>
-                  <p className="text-xs text-text-secondary">Chave (impressão digital {revealed.fingerprint})</p>
-                  <code data-testid="backup-key" className="mt-1 block break-all rounded-card border border-border bg-bg p-3 font-mono text-sm text-text select-all">
-                    {revealed.key}
-                  </code>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button type="button" variant="secondary" icon={ClipboardCopy} onClick={handleCopyKey}>
-                    Copiar chave
-                  </Button>
-                  <Button type="button" variant="secondary" icon={Download} onClick={handleDownloadKey}>
-                    Baixar arquivo .txt
-                  </Button>
-                  <Button type="button" variant="ghost" onClick={() => setRevealed(null)}>
-                    Já guardei, esconder
-                  </Button>
-                </div>
-              </div>
-            ) : config.hasEncryptionKey ? (
-              <div className="space-y-3">
-                <div>
-                  <p className="text-xs text-text-secondary">Impressão digital da chave atual</p>
-                  <p className="mt-1 font-mono text-lg font-medium text-text" data-testid="backup-key-fingerprint">
-                    {config.encryptionKeyFingerprint}
-                  </p>
-                  <p className="mt-1 text-xs text-text-secondary">
-                    {config.encryptionKeyCreatedAt
-                      ? `Gerada em ${formatDateBR(new Date(config.encryptionKeyCreatedAt), TZ)} às ${formatTimeLabel(new Date(config.encryptionKeyCreatedAt), TZ)}. `
-                      : ""}
-                    Confira se é a mesma do arquivo que você guardou. A chave em si não aparece de novo.
-                  </p>
-                </div>
-                {replacing ? (
-                  <div className="space-y-3 rounded-card border border-danger/40 bg-danger-bg p-4">
-                    <p className="text-sm text-text">
-                      Uma chave nova não abre as cópias que já existem: elas continuam precisando da chave antiga, e o sistema não guarda a antiga. Só troque se a chave atual vazou ou se você já tem as duas guardadas.
-                    </p>
-                    <Field label={`Para confirmar, digite ${REPLACE_KEY_CONFIRMATION}`}>
-                      {(p) => <Input {...p} value={confirmText} onChange={(e) => setConfirmText(e.target.value)} autoComplete="off" />}
-                    </Field>
-                    <p className="text-sm text-text">Para garantir que é você, informe sua senha ou um código do app de verificação em 2 etapas.</p>
-                    <Field label="Sua senha">
-                      {(p) => <Input {...p} type="password" value={proofPassword} onChange={(e) => setProofPassword(e.target.value)} autoComplete="current-password" />}
-                    </Field>
-                    <Field label="Ou o código do app (6 dígitos)">
-                      {(p) => <Input {...p} value={proofCode} onChange={(e) => setProofCode(e.target.value)} autoComplete="one-time-code" inputMode="numeric" />}
-                    </Field>
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        type="button"
-                        variant="danger"
-                        icon={KeyRound}
-                        onClick={handleGenerateKey}
-                        isLoading={busy === "key"}
-                        loadingText="Gerando…"
-                        disabled={anyBusy || confirmText.trim() !== REPLACE_KEY_CONFIRMATION || (!proofPassword && !proofCode)}
-                      >
-                        Trocar a chave
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        onClick={() => {
-                          setReplacing(false);
-                          setConfirmText("");
-                          setProofPassword("");
-                          setProofCode("");
-                        }}
-                        disabled={anyBusy}
-                      >
-                        Cancelar
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <Button type="button" variant="secondary" icon={KeyRound} onClick={() => setReplacing(true)} disabled={anyBusy}>
-                    Gerar nova chave
-                  </Button>
-                )}
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <Alert variant="warning">Ainda não há chave. Sem ela o backup não sai do servidor e o automático não liga.</Alert>
-                <Button type="button" icon={KeyRound} onClick={handleGenerateKey} isLoading={busy === "key"} loadingText="Gerando…" disabled={anyBusy}>
-                  Gerar chave
-                </Button>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader help="backup.conferir">
-            <CardTitle>Conferir backup</CardTitle>
-            <CardDescription>Baixa a cópia mais recente, abre com a chave e lê o conteúdo. Não mexe no banco.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4 p-5">
-            <Button type="button" variant="secondary" icon={ShieldCheck} onClick={handleVerify} isLoading={busy === "verify"} loadingText="Conferindo a cópia…" disabled={anyBusy || !config.destinationReady}>
-              Conferir backup
-            </Button>
-            {!config.destinationReady ? <p className="text-xs text-text-secondary">Complete o destino para poder conferir.</p> : null}
-            {verifyResult ? (
-              <Alert variant="success" aria-live="polite" title="A cópia está íntegra">
-                {`A cópia de ${formatDateBR(new Date(verifyResult.fileCreatedAt), TZ)} às ${formatTimeLabel(new Date(verifyResult.fileCreatedAt), TZ)} (${formatBytes(verifyResult.sizeBytes)}) foi baixada, ${
-                  verifyResult.encrypted ? `abriu com a chave ${verifyResult.keyFingerprint}, a verificação de integridade passou` : "estava sem cifra (é de antes da criptografia)"
-                } e o dump lista ${verifyResult.tablesWithData} tabelas com dados. Nada foi restaurado.`}
-              </Alert>
-            ) : null}
-            <p className="text-xs text-text-secondary">Uma vez por semana o sistema faz isso sozinho e avisa por e-mail se a cópia não abrir.</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {!config.destinationReady ? (
-        <Alert variant="warning" className="mb-4">
-          Enquanto o destino não estiver completo, o automático não liga e Fazer backup agora só gera um teste: a cópia é conferida e descartada, não vale como backup.
+      {status.late ? (
+        <Alert variant="danger" className="mb-4" title={status.never ? "O backup está ligado, mas nunca rodou até o fim." : "Sem backup bem-sucedido há tempo demais."}>
+          O limite configurado é {config.alertAfterHours}h. Use Fazer backup agora e confira o destino abaixo.
         </Alert>
       ) : null}
 
+      {!config.destinationReady ? (
+        <Alert variant="warning" className="mb-4">
+          <strong>Um dump guardado no mesmo servidor do banco morre junto com ele.</strong> Enquanto o destino não estiver completo, o automático não liga e Fazer backup agora só gera um teste: a cópia é conferida e descartada, não vale como backup.
+        </Alert>
+      ) : null}
+
+      {/* 3. Grade de 4 cartões de resumo. */}
+      <div className="mb-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatCard
+          icon={Clock}
+          label="Última cópia enviada"
+          value={lastSuccess ? `${formatDateBR(lastSuccess, TZ)} às ${formatTimeLabel(lastSuccess, TZ)}` : "Nenhuma ainda"}
+          tone={status.late ? "danger" : lastSuccess ? "success" : "neutral"}
+        />
+        <StatCard
+          icon={DatabaseBackup}
+          label="Próxima cópia automática"
+          value={nextRun ? `${formatDateBR(nextRun, TZ)} às ${formatTimeLabel(nextRun, TZ)}` : "Automático desligado"}
+          tone={config.enabled ? "primary" : "neutral"}
+        />
+        <StatCard icon={HardDrive} label="Retenção" value={`${config.retentionDays} dias`} hint="apaga do destino o que passar disso" tone="neutral" />
+        <StatCard
+          icon={CheckCircle2}
+          label="Situação"
+          value={
+            status.running ? (
+              <StatusPill tone="primary">Copiando agora</StatusPill>
+            ) : status.late ? (
+              <StatusPill tone="danger">{status.never ? "Ligado, mas nunca rodou" : "Atrasado"}</StatusPill>
+            ) : config.enabled ? (
+              <StatusPill tone="success">Em dia</StatusPill>
+            ) : (
+              <StatusPill tone="warning">Desligado</StatusPill>
+            )
+          }
+          tone={status.running ? "primary" : status.late ? "danger" : config.enabled ? "success" : "warning"}
+        />
+      </div>
+
+      {/* 4. Agendamento e Destino, no mesmo formulário (como no projeto de referência, onde
+          "Salvar configuração" fica ao final do painel de Destino). */}
       <form onSubmit={handleSave}>
-        <div className="grid gap-4 lg:grid-cols-2">
-          <Card>
-            <CardHeader help="backup.agendamento">
-              <CardTitle>Agendamento</CardTitle>
-              <CardDescription>Uma cópia por dia, no horário de Brasília.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4 p-5">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <p id="backup-enabled-label" className="text-sm font-medium text-text">
-                    Backup automático
-                  </p>
-                  <p id="backup-enabled-hint" className="text-xs text-text-secondary">
-                    Desligado, só o botão Fazer backup agora copia o banco.
-                  </p>
-                </div>
+        <div className="grid gap-4">
+          <Panel title="Agendamento" description="Uma cópia por dia, no horário de Brasília." help="backup.agendamento">
+            <div className="flex flex-wrap items-center gap-3">
+              <StatusPill tone={enabled ? "success" : "neutral"}>{enabled ? "Automático ligado" : "Automático desligado"}</StatusPill>
+              {status.running ? <StatusPill tone="warning">Backup em andamento</StatusPill> : null}
+              <div className="ml-auto flex flex-wrap items-center gap-3">
                 <Switch checked={enabled} onCheckedChange={setEnabled} aria-labelledby="backup-enabled-label" aria-describedby="backup-enabled-hint" />
+                <Button type="button" icon={PlayCircle} onClick={handleRunNow} isLoading={busy === "run"} loadingText="Copiando o banco…" disabled={anyBusy}>
+                  Fazer backup agora
+                </Button>
               </div>
-              <div className="grid gap-4 sm:grid-cols-3">
-                <Field label="Hora" hint="De 0 a 23, Brasília.">
-                  {(p) => <Input {...p} type="number" min={0} max={23} value={hourLocal} onChange={(e) => setHourLocal(e.target.value)} />}
-                </Field>
-                <Field label="Guardar por (dias)" hint="As mais antigas são apagadas.">
-                  {(p) => <Input {...p} type="number" min={1} max={365} value={retentionDays} onChange={(e) => setRetentionDays(e.target.value)} />}
-                </Field>
-                <Field label="Avisar após (horas)" hint="Sem cópia nova, de 6 a 720.">
-                  {(p) => <Input {...p} type="number" min={6} max={720} value={alertAfterHours} onChange={(e) => setAlertAfterHours(e.target.value)} />}
-                </Field>
-              </div>
-            </CardContent>
-          </Card>
+            </div>
+            <p id="backup-enabled-label" className="sr-only">
+              Backup automático
+            </p>
+            <p id="backup-enabled-hint" className="mt-1 text-xs text-text-secondary">
+              Desligado, só o botão Fazer backup agora copia o banco.
+            </p>
 
-          <Card>
-            <CardHeader help="backup.destino">
-              <CardTitle>Destino</CardTitle>
-              <CardDescription>Onde as cópias ficam guardadas, fora do servidor do banco.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4 p-5">
-              <Field label="Guardar em">
-                {(p) => (
-                  <Select {...p} value={destination} onChange={(e) => setDestination(e.target.value as "" | "S3" | "DRIVE")}>
-                    <option value="">Escolha um destino</option>
-                    <option value="S3">Bucket S3 (R2, Backblaze, AWS)</option>
-                    <option value="DRIVE">Google Drive</option>
-                  </Select>
-                )}
+            <div className="mt-5 grid gap-4 sm:grid-cols-3">
+              <Field label="Hora" hint="De 0 a 23, Brasília.">
+                {(p) => <Input {...p} type="number" min={0} max={23} value={hourLocal} onChange={(e) => setHourLocal(e.target.value)} />}
               </Field>
+              <Field label="Guardar por (dias)" hint="As mais antigas são apagadas.">
+                {(p) => <Input {...p} type="number" min={1} max={365} value={retentionDays} onChange={(e) => setRetentionDays(e.target.value)} />}
+              </Field>
+              <Field label="Avisar após (horas)" hint="Sem cópia nova, de 6 a 720.">
+                {(p) => <Input {...p} type="number" min={6} max={720} value={alertAfterHours} onChange={(e) => setAlertAfterHours(e.target.value)} />}
+              </Field>
+            </div>
+          </Panel>
 
-              {destination === "S3" ? (
-                <div className="space-y-4">
-                  <Field label="Endereço do bucket" hint="Ex.: https://SEU-ID.r2.cloudflarestorage.com">
-                    {(p) => <Input {...p} value={s3Endpoint} onChange={(e) => setS3Endpoint(e.target.value)} placeholder="https://" autoComplete="off" />}
+          <Panel title="Destino" description="Onde as cópias ficam guardadas, fora do servidor do banco." help="backup.destino">
+            <Field label="Guardar em">
+              {(p) => (
+                <Select {...p} value={destination} onChange={(e) => setDestination(e.target.value as "" | "S3" | "DRIVE")}>
+                  <option value="">Escolha um destino</option>
+                  <option value="S3">Bucket S3 (R2, Backblaze, AWS)</option>
+                  <option value="DRIVE">Google Drive</option>
+                </Select>
+              )}
+            </Field>
+
+            {destination === "S3" ? (
+              <div className="mt-4 space-y-4">
+                <Field label="Endereço do bucket" hint="Ex.: https://SEU-ID.r2.cloudflarestorage.com">
+                  {(p) => <Input {...p} value={s3Endpoint} onChange={(e) => setS3Endpoint(e.target.value)} placeholder="https://" autoComplete="off" />}
+                </Field>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="Bucket">{(p) => <Input {...p} value={s3Bucket} onChange={(e) => setS3Bucket(e.target.value)} autoComplete="off" />}</Field>
+                  <Field label="Região" hint="No R2, use auto.">
+                    {(p) => <Input {...p} value={s3Region} onChange={(e) => setS3Region(e.target.value)} placeholder="auto" autoComplete="off" />}
                   </Field>
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <Field label="Bucket">{(p) => <Input {...p} value={s3Bucket} onChange={(e) => setS3Bucket(e.target.value)} autoComplete="off" />}</Field>
-                    <Field label="Região" hint="No R2, use auto.">
-                      {(p) => <Input {...p} value={s3Region} onChange={(e) => setS3Region(e.target.value)} placeholder="auto" autoComplete="off" />}
-                    </Field>
-                  </div>
-                  <Field label="Pasta dentro do bucket (opcional)">
-                    {(p) => <Input {...p} value={s3Prefix} onChange={(e) => setS3Prefix(e.target.value)} placeholder="banco" autoComplete="off" />}
+                </div>
+                <Field label="Pasta dentro do bucket (opcional)">
+                  {(p) => <Input {...p} value={s3Prefix} onChange={(e) => setS3Prefix(e.target.value)} placeholder="banco" autoComplete="off" />}
+                </Field>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="Chave de acesso">{(p) => <Input {...p} value={s3AccessKey} onChange={(e) => setS3AccessKey(e.target.value)} autoComplete="off" />}</Field>
+                  <Field label="Segredo" hint={config.hasS3Secret ? "Salvo e escondido. Deixe em branco para manter." : undefined}>
+                    {(p) => (
+                      <Input
+                        {...p}
+                        type="password"
+                        value={s3SecretKey}
+                        onChange={(e) => setS3SecretKey(e.target.value)}
+                        placeholder={config.hasS3Secret ? "••••••••" : ""}
+                        autoComplete="new-password"
+                      />
+                    )}
                   </Field>
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <Field label="Chave de acesso">{(p) => <Input {...p} value={s3AccessKey} onChange={(e) => setS3AccessKey(e.target.value)} autoComplete="off" />}</Field>
-                    <Field label="Segredo" hint={config.hasS3Secret ? "Salvo e escondido. Deixe em branco para manter." : undefined}>
+                </div>
+              </div>
+            ) : null}
+
+            {destination === "DRIVE" ? (
+              <div className="mt-4 space-y-4">
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium text-text">Como acessar o Drive</p>
+                  <HelpButton helpKey="backup.drive" placement="inline" />
+                </div>
+                <Field label="Acesso">
+                  {(p) => (
+                    <Select {...p} value={driveMode} onChange={(e) => setDriveMode(e.target.value as "SERVICE_ACCOUNT" | "OAUTH")}>
+                      <option value="OAUTH">Conectar com Google (Gmail pessoal)</option>
+                      <option value="SERVICE_ACCOUNT">Conta de serviço (Google Workspace)</option>
+                    </Select>
+                  )}
+                </Field>
+
+                {driveMode === "OAUTH" ? (
+                  <div className="space-y-4">
+                    <Field label="Client ID">{(p) => <Input {...p} value={oauthClientId} onChange={(e) => setOauthClientId(e.target.value)} autoComplete="off" />}</Field>
+                    <Field label="Client Secret" hint={config.hasDriveOauthClientSecret ? "Salvo e escondido. Deixe em branco para manter." : undefined}>
                       {(p) => (
                         <Input
                           {...p}
                           type="password"
-                          value={s3SecretKey}
-                          onChange={(e) => setS3SecretKey(e.target.value)}
-                          placeholder={config.hasS3Secret ? "••••••••" : ""}
+                          value={oauthClientSecret}
+                          onChange={(e) => setOauthClientSecret(e.target.value)}
+                          placeholder={config.hasDriveOauthClientSecret ? "••••••••" : ""}
                           autoComplete="new-password"
                         />
                       )}
                     </Field>
-                  </div>
-                </div>
-              ) : null}
-
-              {destination === "DRIVE" ? (
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm font-medium text-text">Como acessar o Drive</p>
-                    <HelpButton helpKey="backup.drive" placement="inline" />
-                  </div>
-                  <Field label="Acesso">
-                    {(p) => (
-                      <Select {...p} value={driveMode} onChange={(e) => setDriveMode(e.target.value as "SERVICE_ACCOUNT" | "OAUTH")}>
-                        <option value="OAUTH">Conectar com Google (Gmail pessoal)</option>
-                        <option value="SERVICE_ACCOUNT">Conta de serviço (Google Workspace)</option>
-                      </Select>
+                    {config.driveOauthConnected ? (
+                      <Alert variant="success">
+                        Conectado como <strong>{config.driveOauthEmail}</strong>. As cópias vão para a pasta &quot;Backups InnoChat&quot; do Drive dessa conta.
+                      </Alert>
+                    ) : (
+                      <Alert variant="info">
+                        Ainda não conectado. No Google Cloud, cadastre este endereço de retorno no app: <code className="break-all">/api/admin/backup/google/callback</code> (com o endereço público do sistema na frente).
+                      </Alert>
                     )}
-                  </Field>
-
-                  {driveMode === "OAUTH" ? (
-                    <div className="space-y-4">
-                      <Field label="Client ID">
-                        {(p) => <Input {...p} value={oauthClientId} onChange={(e) => setOauthClientId(e.target.value)} autoComplete="off" />}
-                      </Field>
-                      <Field label="Client Secret" hint={config.hasDriveOauthClientSecret ? "Salvo e escondido. Deixe em branco para manter." : undefined}>
-                        {(p) => (
-                          <Input
-                            {...p}
-                            type="password"
-                            value={oauthClientSecret}
-                            onChange={(e) => setOauthClientSecret(e.target.value)}
-                            placeholder={config.hasDriveOauthClientSecret ? "••••••••" : ""}
-                            autoComplete="new-password"
-                          />
-                        )}
-                      </Field>
+                    <div className="flex flex-wrap gap-2">
+                      <Button type="button" variant="secondary" icon={Link2} onClick={handleConnect} isLoading={busy === "connect"} loadingText="Abrindo o Google…" disabled={anyBusy}>
+                        {config.driveOauthConnected ? "Reconectar com Google" : "Conectar com Google"}
+                      </Button>
                       {config.driveOauthConnected ? (
-                        <Alert variant="success">
-                          Conectado como <strong>{config.driveOauthEmail}</strong>. As cópias vão para a pasta &quot;Backups InnoChat&quot; do Drive dessa conta.
-                        </Alert>
-                      ) : (
-                        <Alert variant="info">
-                          Ainda não conectado. No Google Cloud, cadastre este endereço de retorno no app: <code className="break-all">/api/admin/backup/google/callback</code> (com o endereço público do sistema na frente).
-                        </Alert>
-                      )}
-                      <div className="flex flex-wrap gap-2">
-                        <Button type="button" variant="secondary" icon={Link2} onClick={handleConnect} isLoading={busy === "connect"} loadingText="Abrindo o Google…" disabled={anyBusy}>
-                          {config.driveOauthConnected ? "Reconectar com Google" : "Conectar com Google"}
+                        <Button type="button" variant="ghost" icon={Unlink} onClick={handleDisconnect} isLoading={busy === "disconnect"} loadingText="Desconectando…" disabled={anyBusy}>
+                          Desconectar
                         </Button>
-                        {config.driveOauthConnected ? (
-                          <Button type="button" variant="ghost" icon={Unlink} onClick={handleDisconnect} isLoading={busy === "disconnect"} loadingText="Desconectando…" disabled={anyBusy}>
-                            Desconectar
-                          </Button>
-                        ) : null}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      <Field label="Pasta do Drive" hint="Cole o link da pasta ou o id dela. Compartilhe a pasta como Editor com o e-mail abaixo.">
-                        {(p) => <Input {...p} value={driveFolderId} onChange={(e) => setDriveFolderId(e.target.value)} placeholder="https://drive.google.com/drive/folders/..." autoComplete="off" />}
-                      </Field>
-                      <Field label="Arquivo de chave da conta de serviço" hint={config.hasDriveServiceAccount ? "Salvo e escondido. Deixe em branco para manter." : "Cole o conteúdo inteiro do arquivo baixado no Google Cloud."}>
-                        {(p) => (
-                          <Textarea
-                            {...p}
-                            rows={4}
-                            value={driveServiceAccountKey}
-                            onChange={(e) => setDriveServiceAccountKey(e.target.value)}
-                            placeholder={config.hasDriveServiceAccount ? "••••••••" : '{ "type": "service_account", ... }'}
-                            autoComplete="off"
-                            spellCheck={false}
-                          />
-                        )}
-                      </Field>
-                      {config.driveClientEmail ? (
-                        <Alert variant="info">
-                          Compartilhe a pasta, como Editor, com: <strong className="break-all">{config.driveClientEmail}</strong>
-                        </Alert>
                       ) : null}
                     </div>
-                  )}
-                </div>
-              ) : null}
-            </CardContent>
-            <CardFooter className="flex flex-wrap gap-2 p-5">
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <Field label="Pasta do Drive" hint="Cole o link da pasta ou o id dela. Compartilhe a pasta como Editor com o e-mail abaixo.">
+                      {(p) => <Input {...p} value={driveFolderId} onChange={(e) => setDriveFolderId(e.target.value)} placeholder="https://drive.google.com/drive/folders/..." autoComplete="off" />}
+                    </Field>
+                    <Field
+                      label="Arquivo de chave da conta de serviço"
+                      hint={config.hasDriveServiceAccount ? "Salvo e escondido. Deixe em branco para manter." : "Cole o conteúdo inteiro do arquivo baixado no Google Cloud."}
+                    >
+                      {(p) => (
+                        <Textarea
+                          {...p}
+                          rows={4}
+                          value={driveServiceAccountKey}
+                          onChange={(e) => setDriveServiceAccountKey(e.target.value)}
+                          placeholder={config.hasDriveServiceAccount ? "••••••••" : '{ "type": "service_account", ... }'}
+                          autoComplete="off"
+                          spellCheck={false}
+                        />
+                      )}
+                    </Field>
+                    {config.driveClientEmail ? (
+                      <Alert variant="info">
+                        Compartilhe a pasta, como Editor, com: <strong className="break-all">{config.driveClientEmail}</strong>
+                      </Alert>
+                    ) : null}
+                  </div>
+                )}
+              </div>
+            ) : null}
+
+            <div className="mt-5 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-4">
               <Button type="button" variant="secondary" icon={Plug} onClick={handleTest} isLoading={busy === "test"} loadingText="Testando…" disabled={anyBusy || destination === ""}>
                 Testar conexão
               </Button>
-            </CardFooter>
-          </Card>
-        </div>
-
-        <div className="mt-4 flex justify-end">
-          <Button type="submit" icon={Save} isLoading={busy === "save"} loadingText="Salvando…" disabled={anyBusy}>
-            Salvar configuração
-          </Button>
+              <Button type="submit" icon={Save} isLoading={busy === "save"} loadingText="Salvando…" disabled={anyBusy}>
+                Salvar configuração
+              </Button>
+            </div>
+          </Panel>
         </div>
       </form>
 
-      <Card className="mt-6">
-        <CardHeader help="backup.historico">
-          <CardTitle>Histórico</CardTitle>
-          <CardDescription>Cada cópia feita ou tentada. As que falharam mostram o motivo.</CardDescription>
-        </CardHeader>
-        <CardContent className="p-0">
-          {runs.totalItems === 0 ? (
-            <div className="p-5">
-              <EmptyState icon={DatabaseBackup} title="Nenhuma cópia ainda" description="Clique em Fazer backup agora para provar o caminho inteiro antes de ligar o automático." />
+      {/* 5. Cifra: mostrada sempre, em qualquer estado da chave — backup em claro é
+          o banco inteiro legível para quem alcançar o destino. */}
+      <Panel className="mt-4" title="Chave do backup" description="As cópias saem do servidor trancadas com uma chave que só você guarda." help="backup.criptografia" action={<StatusPill tone={cifraTone}>{config.hasEncryptionKey ? "Cifrados" : "Sem cifra"}</StatusPill>}>
+        {revealed ? (
+          <div className="space-y-3">
+            <Alert variant="warning" title="Guarde fora do servidor. Sem ela os backups não abrem.">
+              Esta é a única vez que a chave aparece inteira. Se fechar esta tela sem guardar, só dá para gerar outra, e as cópias feitas com esta ficam sem como abrir.
+            </Alert>
+            <div>
+              <p className="text-xs text-text-secondary">Chave (impressão digital {revealed.fingerprint})</p>
+              <code data-testid="backup-key" className="mt-1 block break-all rounded-card border border-border bg-bg p-3 font-mono text-sm text-text select-all">
+                {revealed.key}
+              </code>
             </div>
-          ) : (
-            <div className={isNavigating ? "opacity-60 transition-opacity" : "transition-opacity"} aria-busy={isNavigating || undefined}>
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableHeadCell>Quando</TableHeadCell>
-                    <TableHeadCell>Situação</TableHeadCell>
-                    <TableHeadCell>Origem</TableHeadCell>
-                    <TableHeadCell>Destino</TableHeadCell>
-                    <TableHeadCell>Tamanho</TableHeadCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {runs.items.map((run) => (
-                    <TableRow key={run.id}>
-                      <TableCell>
-                        <When iso={run.startedAt} />
-                      </TableCell>
-                      <TableCell>
-                        <RunStatus run={run} />
-                        {run.status === "FAILED" ? (
-                          <div className="mt-1 max-w-md">
-                            <p className="text-xs font-medium text-danger">{ERROR_LABELS[run.errorCode ?? "UNKNOWN"] ?? ERROR_LABELS.UNKNOWN}</p>
-                            {run.errorDetail ? <p className="break-words text-xs text-text-secondary">{run.errorDetail}</p> : null}
-                          </div>
-                        ) : null}
-                        {run.status === "SUCCESS" && run.trigger !== "VERIFY" && !run.objectKey ? <p className="mt-1 text-xs text-text-secondary">Conferida, mas não enviada: sem destino.</p> : null}
-                      </TableCell>
-                      <TableCell>{run.trigger === "SCHEDULED" ? "Automática" : run.trigger === "VERIFY" ? "Conferência" : "Manual"}</TableCell>
-                      <TableCell>{run.destination === "S3" ? "Bucket S3" : run.destination === "DRIVE" ? "Google Drive" : "Nenhum"}</TableCell>
-                      <TableCell className="tabular-nums">
-                        {formatBytes(run.sizeBytes)}
-                        {run.tablesWithData !== null ? <span className="block text-xs text-text-secondary">{run.tablesWithData} tabelas</span> : null}
-                        {run.keyFingerprint ? <span className="block text-xs text-text-secondary">Cifrada, chave {run.keyFingerprint}</span> : null}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-              <div className="p-4">
-                <Pagination
-                  label="Paginação do histórico de backups"
-                  page={runs.page}
-                  pageSize={runs.pageSize}
-                  totalItems={runs.totalItems}
-                  totalPages={runs.totalPages}
-                  isPending={isNavigating}
-                  onPageChange={(p) => goToPage(p, runs.pageSize)}
-                  onPageSizeChange={(size) => goToPage(1, size)}
-                />
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="secondary" icon={ClipboardCopy} onClick={handleCopyKey}>
+                Copiar chave
+              </Button>
+              <Button type="button" variant="secondary" icon={Download} onClick={handleDownloadKey}>
+                Baixar arquivo .txt
+              </Button>
+              <Button type="button" variant="ghost" onClick={() => setRevealed(null)}>
+                Já guardei, esconder
+              </Button>
+            </div>
+          </div>
+        ) : config.hasEncryptionKey ? (
+          <div className="space-y-3">
+            <div>
+              <p className="text-xs text-text-secondary">Impressão digital da chave atual</p>
+              <p className="mt-1 font-mono text-lg font-medium text-text" data-testid="backup-key-fingerprint">
+                {config.encryptionKeyFingerprint}
+              </p>
+              <p className="mt-1 text-xs text-text-secondary">
+                {config.encryptionKeyCreatedAt
+                  ? `Gerada em ${formatDateBR(new Date(config.encryptionKeyCreatedAt), TZ)} às ${formatTimeLabel(new Date(config.encryptionKeyCreatedAt), TZ)}. `
+                  : ""}
+                Confira se é a mesma do arquivo que você guardou. A chave em si não aparece de novo.
+              </p>
+            </div>
+            {replacing ? (
+              <div className="space-y-3 rounded-card border border-danger/40 bg-danger-bg p-4">
+                <p className="text-sm text-text">
+                  Uma chave nova não abre as cópias que já existem: elas continuam precisando da chave antiga, e o sistema não guarda a antiga. Só troque se a chave atual vazou ou se você já tem as duas guardadas.
+                </p>
+                <Field label={`Para confirmar, digite ${REPLACE_KEY_CONFIRMATION}`}>
+                  {(p) => <Input {...p} value={confirmText} onChange={(e) => setConfirmText(e.target.value)} autoComplete="off" />}
+                </Field>
+                <p className="text-sm text-text">Para garantir que é você, informe sua senha ou um código do app de verificação em 2 etapas.</p>
+                <Field label="Sua senha">
+                  {(p) => <Input {...p} type="password" value={proofPassword} onChange={(e) => setProofPassword(e.target.value)} autoComplete="current-password" />}
+                </Field>
+                <Field label="Ou o código do app (6 dígitos)">
+                  {(p) => <Input {...p} value={proofCode} onChange={(e) => setProofCode(e.target.value)} autoComplete="one-time-code" inputMode="numeric" />}
+                </Field>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="danger"
+                    icon={KeyRound}
+                    onClick={handleGenerateKey}
+                    isLoading={busy === "key"}
+                    loadingText="Gerando…"
+                    disabled={anyBusy || confirmText.trim() !== REPLACE_KEY_CONFIRMATION || (!proofPassword && !proofCode)}
+                  >
+                    Trocar a chave
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => {
+                      setReplacing(false);
+                      setConfirmText("");
+                      setProofPassword("");
+                      setProofCode("");
+                    }}
+                    disabled={anyBusy}
+                  >
+                    Cancelar
+                  </Button>
+                </div>
               </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+            ) : (
+              <Button type="button" variant="secondary" icon={KeyRound} onClick={() => setReplacing(true)} disabled={anyBusy}>
+                Gerar nova chave
+              </Button>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <Alert variant="warning">Ainda não há chave. Sem ela o backup não sai do servidor e o automático não liga.</Alert>
+            <Button type="button" icon={KeyRound} onClick={handleGenerateKey} isLoading={busy === "key"} loadingText="Gerando…" disabled={anyBusy}>
+              Gerar chave
+            </Button>
+          </div>
+        )}
+      </Panel>
 
+      {/* 6. Conferir backup: sem equivalente direto no projeto de referência — função própria
+          do InnoChat, mantida no mesmo estilo de painel. */}
+      <Panel className="mt-4" title="Conferir backup" description="Baixa a cópia mais recente, abre com a chave e lê o conteúdo. Não mexe no banco." help="backup.conferir">
+        <Button type="button" variant="secondary" icon={ShieldCheck} onClick={handleVerify} isLoading={busy === "verify"} loadingText="Conferindo a cópia…" disabled={anyBusy || !config.destinationReady}>
+          Conferir backup
+        </Button>
+        {!config.destinationReady ? <p className="mt-2 text-xs text-text-secondary">Complete o destino para poder conferir.</p> : null}
+        {verifyResult ? (
+          <Alert variant="success" className="mt-3" aria-live="polite" title="A cópia está íntegra">
+            {`A cópia de ${formatDateBR(new Date(verifyResult.fileCreatedAt), TZ)} às ${formatTimeLabel(new Date(verifyResult.fileCreatedAt), TZ)} (${formatBytes(verifyResult.sizeBytes)}) foi baixada, ${
+              verifyResult.encrypted ? `abriu com a chave ${verifyResult.keyFingerprint}, a verificação de integridade passou` : "estava sem cifra (é de antes da criptografia)"
+            } e o dump lista ${verifyResult.tablesWithData} tabelas com dados. Nada foi restaurado.`}
+          </Alert>
+        ) : null}
+        <p className="mt-3 text-xs text-text-secondary">Uma vez por semana o sistema faz isso sozinho e avisa por e-mail se a cópia não abrir.</p>
+      </Panel>
+
+      {/* 7. Execuções — inclui as que falharam, é nelas que está a informação útil. */}
+      <Panel className="mt-4" title="Execuções" description="Cada cópia feita ou tentada. As que falharam mostram o motivo." help="backup.historico" bodyClassName="p-0">
+        {runs.totalItems === 0 ? (
+          <PanelEmptyState icon={DatabaseBackup} title="Nenhuma cópia ainda" description="Clique em Fazer backup agora para provar o caminho inteiro antes de ligar o automático." />
+        ) : (
+          <div className={isNavigating ? "opacity-60 transition-opacity" : "transition-opacity"} aria-busy={isNavigating || undefined}>
+            <div className="divide-y divide-border" role="list" aria-label="Execuções de backup">
+              {runs.items.map((run) => {
+                const meta = runStatusMeta(run);
+                return (
+                  <RowShell
+                    key={run.id}
+                    actions={
+                      <span className="font-mono text-sm tabular-nums text-text">
+                        {formatBytes(run.sizeBytes)}
+                        {run.tablesWithData !== null ? <span className="ml-2 text-xs text-text-secondary">{run.tablesWithData} tabelas</span> : null}
+                      </span>
+                    }
+                  >
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <StatusPill tone={meta.tone}>{meta.label}</StatusPill>
+                        <StatusPill tone={run.trigger === "SCHEDULED" ? "neutral" : "info"}>{run.trigger === "SCHEDULED" ? "Automática" : run.trigger === "VERIFY" ? "Conferência" : "Manual"}</StatusPill>
+                        {run.destination ? <StatusPill tone="neutral">{run.destination === "DRIVE" ? "Google Drive" : "Bucket S3"}</StatusPill> : null}
+                        {run.keyFingerprint ? <StatusPill tone="success">Cifrada · {run.keyFingerprint}</StatusPill> : null}
+                      </div>
+                      <p className="mt-1 text-xs tabular-nums text-text-secondary">{formatWhen(run.startedAt)}</p>
+                      {run.status === "FAILED" ? (
+                        <div className="mt-1 max-w-md">
+                          <p className="text-xs font-medium text-danger">{ERROR_LABELS[run.errorCode ?? "UNKNOWN"] ?? ERROR_LABELS.UNKNOWN}</p>
+                          {run.errorDetail ? <p className="break-words text-xs text-text-secondary">{run.errorDetail}</p> : null}
+                        </div>
+                      ) : null}
+                      {run.status === "SUCCESS" && run.trigger !== "VERIFY" && !run.objectKey ? <p className="mt-1 text-xs text-text-secondary">Conferida, mas não enviada: sem destino.</p> : null}
+                    </div>
+                  </RowShell>
+                );
+              })}
+            </div>
+            <div className="border-t border-border p-4">
+              <Pagination
+                label="Paginação do histórico de backups"
+                page={runs.page}
+                pageSize={runs.pageSize}
+                totalItems={runs.totalItems}
+                totalPages={runs.totalPages}
+                isPending={isNavigating}
+                onPageChange={(p) => goToPage(p, runs.pageSize)}
+                onPageSizeChange={(size) => goToPage(1, size)}
+              />
+            </div>
+          </div>
+        )}
+      </Panel>
+
+      {/* 8. Cópias remotas — mesmo padrão de painel/linha. */}
       <RemoteBackupsList
         data={
           remoteBackups ?? {
