@@ -7,6 +7,12 @@ Versão semântica (`MAJOR.MINOR.PATCH`), lida do `version` do `package.json` e 
 
 Toda publicação em produção sobe a versão e ganha uma entrada aqui.
 
+## v1.14.2 — 2026-10-19
+
+### Correções
+- Depois da troca de servidor o site passou a ficar atrás do Cloudflare. A URL pública do painel não era detectada (e o "Sincronizar n8n" falhava por isso): agora o sistema reconhece o acesso https que chega pelo Cloudflare.
+- O limite de tentativas de cadastro e login passou a enxergar todos os visitantes como um só (o IP do Cloudflare). Agora usa o IP real de cada visitante, aceito só quando o acesso vem mesmo de um servidor do Cloudflare.
+
 ## v1.14.1 — 2026-10-19
 
 ### Melhorias

@@ -56,6 +56,53 @@ describe("getPublicBaseUrl — a base gravada pelo admin vence qualquer cabeçal
     await expect(getPublicBaseUrl()).rejects.toMatchObject({ code: "PUBLIC_URL_UNKNOWN" });
   });
 
+  it("Cloudflare em SSL Flexible (CF→origem sem TLS): x-forwarded-proto=http, mas cf-visitor diz https E o hop é da borda da Cloudflare — grava https", async () => {
+    findUniqueMock.mockResolvedValue(null);
+    headersMock.mockResolvedValue(
+      headerMap({
+        "x-forwarded-proto": "http",
+        "x-forwarded-host": "painel.innovarecode.com.br",
+        host: "painel.innovarecode.com.br",
+        "x-forwarded-for": "172.64.0.1", // faixa oficial da Cloudflare
+        "cf-visitor": '{"scheme":"https"}',
+      }),
+    );
+    await expect(getPublicBaseUrl()).resolves.toBe("https://painel.innovarecode.com.br");
+  });
+
+  it("ANTI-SPOOF: cf-visitor forjado (bateu direto na origem, sem passar pela Cloudflare) é ignorado — usa x-forwarded-proto", async () => {
+    findUniqueMock.mockResolvedValue(null);
+    headersMock.mockResolvedValue(
+      headerMap({
+        "x-forwarded-proto": "http",
+        "x-forwarded-host": "painel.innovarecode.com.br",
+        host: "painel.innovarecode.com.br",
+        "x-forwarded-for": "203.0.113.9", // IP comum, NÃO é da Cloudflare
+        "cf-visitor": '{"scheme":"https"}',
+      }),
+    );
+    await expect(getPublicBaseUrl()).rejects.toMatchObject({ code: "PUBLIC_URL_UNKNOWN" });
+  });
+
+  it("cf-visitor com JSON malformado é ignorado e cai para x-forwarded-proto normalmente", async () => {
+    findUniqueMock.mockResolvedValue(null);
+    headersMock.mockResolvedValue(
+      headerMap({
+        "x-forwarded-proto": "https",
+        "x-forwarded-host": "painel.innovarecode.com.br",
+        "x-forwarded-for": "172.64.0.1",
+        "cf-visitor": "não é json",
+      }),
+    );
+    await expect(getPublicBaseUrl()).resolves.toBe("https://painel.innovarecode.com.br");
+  });
+
+  it("sem Cloudflare (sem cf-visitor): x-forwarded-proto=http fora de localhost continua recusado", async () => {
+    findUniqueMock.mockResolvedValue(null);
+    headersMock.mockResolvedValue(headerMap({ "x-forwarded-proto": "http", "x-forwarded-host": "app.innochat.com.br" }));
+    await expect(getPublicBaseUrl()).rejects.toMatchObject({ code: "PUBLIC_URL_UNKNOWN" });
+  });
+
   it("sem headers() (fora de uma requisição) usa a base gravada", async () => {
     headersMock.mockRejectedValue(new Error("headers() foi chamado fora de uma requisição"));
     findUniqueMock.mockResolvedValue({ publicBaseUrl: "https://salvo-antes.example.com" });

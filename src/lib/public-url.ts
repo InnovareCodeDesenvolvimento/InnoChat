@@ -2,6 +2,7 @@ import { headers } from "next/headers";
 import { getPrisma } from "@/lib/db/prisma";
 import { DomainError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
+import { extractEdgeHop, isFromCloudflareEdge } from "@/lib/http/client-ip";
 
 /**
  * URL pública do painel — decisão do dono (2026-09-28): nenhuma URL/credencial solta em env
@@ -73,16 +74,47 @@ export function normalizeBaseUrl(raw: string): string | null {
 // Host de cabeçalho: nome DNS/IPv4 + porta opcional. Recusa espaços, barras, `@`, etc.
 const PLAUSIBLE_HOST = /^[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?(:\d{1,5})?$/i;
 
+/**
+ * Cloudflare grava `CF-Visitor: {"scheme":"https"|"http"}` com o esquema que o VISITANTE usou até
+ * a borda da Cloudflare — e sobrescreve qualquer valor que o cliente tente mandar nesse cabeçalho
+ * (igual ao `CF-Connecting-IP`, nunca repassa o que chegou). É por isso que ele é mais confiável que
+ * `x-forwarded-proto` quando a Cloudflare está na frente: se o modo de SSL da Cloudflare for
+ * "Flexible" (ou a conexão Cloudflare → Traefik/origem não usa TLS), o hop que chega até o Next.js
+ * traz `x-forwarded-proto: http` mesmo com o visitante em `https://...` — sem isso, `getPublicBaseUrl`
+ * nunca grava a URL automaticamente (bug relatado pelo dono, 2026-10-19: troca de servidor passou a
+ * ficar atrás da Cloudflare, "URL pública... Ainda não detectada").
+ *
+ * ANTI-SPOOF (revisão do Órion): `cf-visitor` só é confiável se a requisição REALMENTE passou pela
+ * Cloudflare — senão qualquer um bateria direto na origem com `CF-Visitor: {"scheme":"https"}`
+ * forjado. Por isso só vale quando o hop que de fato conectou no nosso proxy confiável
+ * (`extractEdgeHop`, o mesmo usado por `CF-Connecting-IP` em `src/lib/http/client-ip.ts`) é uma
+ * faixa oficial da Cloudflare (`isFromCloudflareEdge`) — a MESMA checagem dos dois headers.
+ */
+function cloudflareVisitorScheme(raw: string | null): "https" | "http" | null {
+  if (!raw) return null;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    const scheme = (parsed as { scheme?: unknown } | null)?.scheme;
+    if (scheme === "https" || scheme === "http") return scheme;
+  } catch {
+    // JSON malformado (ou de alguém fingindo ser a Cloudflare sem ela na frente) — ignora e cai
+    // no `x-forwarded-proto` normal, não derruba a detecção da URL pública por isso.
+  }
+  return null;
+}
+
 async function tryBaseUrlFromRequestHeaders(): Promise<string | null> {
   try {
     const h = await headers();
     const host = h.get("x-forwarded-host") ?? h.get("host");
     if (!host) return null;
-    const proto = h.get("x-forwarded-proto") ?? "https";
     // `x-forwarded-proto`/`x-forwarded-host` podem vir com múltiplos valores separados por
     // vírgula quando há mais de um proxy na cadeia — o mais próximo do cliente vem primeiro.
     const firstHost = host.split(",")[0]!.trim();
-    const firstProto = proto.split(",")[0]!.trim().toLowerCase();
+    const headerProto = (h.get("x-forwarded-proto") ?? "https").split(",")[0]!.trim().toLowerCase();
+    const edgeHop = extractEdgeHop(h.get("x-forwarded-for"), h.get("x-real-ip"));
+    const cfVisitorProto = edgeHop && isFromCloudflareEdge(edgeHop) ? cloudflareVisitorScheme(h.get("cf-visitor")) : null;
+    const firstProto = cfVisitorProto ?? headerProto;
     if (!PLAUSIBLE_HOST.test(firstHost)) return null;
     if (firstProto !== "https" && firstProto !== "http") return null;
     return normalizeBaseUrl(`${firstProto}://${firstHost}`);
