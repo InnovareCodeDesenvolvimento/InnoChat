@@ -11,6 +11,10 @@ const STALE_BUILD_MESSAGES = [
   /Failed to fetch dynamically imported module/i, // Chrome
   /error loading dynamically imported module/i, // Firefox
   /Importing a module script failed/i, // Safari
+  // Aba aberta antes de uma publicação tenta chamar uma Server Action que só existia no build
+  // anterior (o id é um hash do código/rota, muda a cada build). Recarregar busca o bundle novo,
+  // que tem o id certo — não é defeito do sistema (relatado pelo dono em produção, 2026-10-19).
+  /Failed to find Server Action/i,
 ];
 
 export function isStaleBuildError(type: string | null | undefined, message: string | null | undefined): boolean {

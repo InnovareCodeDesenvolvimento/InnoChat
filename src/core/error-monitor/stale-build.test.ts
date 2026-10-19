@@ -14,6 +14,12 @@ describe("isStaleBuildError", () => {
     expect(isStaleBuildError("TypeError", "Importing a module script failed.")).toBe(true);
   });
 
+  it("reconhece 'Failed to find Server Action' (aba aberta antes de uma publicação, caso relatado em produção 2026-10-19)", () => {
+    expect(
+      isStaleBuildError("Error", 'Failed to find Server Action "4027c1a2b3d4e5f6". This request might be from an older or newer deployment.'),
+    ).toBe(true);
+  });
+
   it("não confunde erro comum com versão antiga", () => {
     expect(isStaleBuildError("TypeError", "Cannot read properties of undefined (reading 'id')")).toBe(false);
     expect(isStaleBuildError("Error", "Failed to fetch")).toBe(false);

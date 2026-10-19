@@ -7,6 +7,13 @@ Versão semântica (`MAJOR.MINOR.PATCH`), lida do `version` do `package.json` e 
 
 Toda publicação em produção sobe a versão e ganha uma entrada aqui.
 
+## v1.14.3 — 2026-10-19
+
+### Correções
+- Admin → Configurações → Geral: quando o endereço público do painel não é detectado sozinho, aparece um aviso e um campo para definir o endereço na hora (já sugerido com o endereço do navegador). Com ele gravado, o "Sincronizar n8n" volta a funcionar.
+- Uma aba aberta antes de uma publicação recarrega sozinha ao salvar, em vez de falhar calada ("Failed to find Server Action").
+- Quando a detecção automática do endereço falha, o motivo fica registrado nos logs (public_url.detect_failed), sem expor o IP inteiro.
+
 ## v1.14.2 — 2026-10-19
 
 ### Correções

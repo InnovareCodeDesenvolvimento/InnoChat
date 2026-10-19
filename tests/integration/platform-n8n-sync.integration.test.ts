@@ -307,6 +307,28 @@ describe("syncN8n — sincronização idempotente com o n8n (instância moderna:
     expect(settings?.n8nWorkflowBotId).toBe("levHnMSXf1dOR3gS");
   });
 
+  it("após o admin salvar a URL pública manualmente (setPublicBaseUrl), 'Sincronizar n8n' usa esse endereço no painelUrl do bot", async () => {
+    // Item 4 do /corrigir (2026-10-19): confirma que o campo manual (`setPublicBaseUrlAction`) não
+    // fica isolado — `syncN8n` lê `getPublicBaseUrl()`, que devolve a `publicBaseUrl` GRAVADA antes
+    // de qualquer cabeçalho (ver `src/lib/public-url.ts`), então o valor digitado pelo admin chega
+    // de fato ao nó "Config" do workflow do bot.
+    const { syncN8n } = await import("@/modules/platform/n8n-sync");
+    const { setPublicBaseUrl } = await import("@/lib/public-url");
+    const admin = await makeAdminUser();
+    const server = createFakeN8nServer({ supportsCredentialPatch: true, supportsPublish: true });
+    vi.stubGlobal("fetch", server.fetchMock);
+
+    await setPublicBaseUrl("https://painel-definido-manualmente.example.test");
+    const summary = await syncN8n(admin.id);
+
+    expect(summary.painelUrl).toBe("https://painel-definido-manualmente.example.test/api/internal/v1");
+    const botWorkflow = server.workflows.get("levHnMSXf1dOR3gS")!;
+    const configNode = botWorkflow.nodes.find((n) => n.name === "Config")!;
+    const painelUrlAssignment = (configNode.parameters as { assignments: { assignments: Array<{ name: string; value: unknown }> } }).assignments
+      .assignments.find((a) => a.name === "painelUrl")!;
+    expect(String(painelUrlAssignment.value)).toBe("https://painel-definido-manualmente.example.test/api/internal/v1");
+  });
+
   it("rodar 2x não duplica credencial — a 2ª sync usa PATCH (mesmo id, sem criar nem deletar)", async () => {
     const { syncN8n } = await import("@/modules/platform/n8n-sync");
     const admin = await makeAdminUser();

@@ -103,6 +103,45 @@ function cloudflareVisitorScheme(raw: string | null): "https" | "http" | null {
   return null;
 }
 
+/** Só os dois primeiros blocos do IP — o resto nunca vai para o log (diagnóstico, não auditoria de IP). */
+function maskIpForLog(ip: string | null): string | null {
+  if (!ip) return null;
+  if (ip.includes(".")) {
+    const parts = ip.split(".");
+    return parts.length === 4 ? `${parts[0]}.${parts[1]}.x.x` : "x";
+  }
+  if (ip.includes(":")) {
+    const parts = ip.split(":").filter(Boolean);
+    return parts.length > 0 ? `${parts.slice(0, 2).join(":")}:x` : "x";
+  }
+  return "x";
+}
+
+/**
+ * Diagnóstico de produção (dono pediu, 2026-10-19): quando a detecção automática não grava nada,
+ * registra quais cabeçalhos chegaram — sem nenhum IP completo (`maskIpForLog`) — para o próximo
+ * teste em produção mostrar a causa real nos logs do Easypanel, em vez de só "Ainda não detectada"
+ * na tela. Só é chamado quando `tryBaseUrlFromRequestHeaders` já falhou.
+ */
+async function logPublicUrlDetectionFailure(): Promise<void> {
+  try {
+    const h = await headers();
+    const host = h.get("x-forwarded-host") ?? h.get("host");
+    const cfVisitorRaw = h.get("cf-visitor");
+    const edgeHop = extractEdgeHop(h.get("x-forwarded-for"), h.get("x-real-ip"));
+    logger.warn("public_url.detect_failed", {
+      host: host ?? null,
+      xForwardedProto: h.get("x-forwarded-proto"),
+      cfVisitorPresent: cfVisitorRaw != null,
+      cfVisitorValue: cfVisitorRaw,
+      edgeHopIsCloudflare: edgeHop ? isFromCloudflareEdge(edgeHop) : false,
+      edgeHopMasked: maskIpForLog(edgeHop),
+    });
+  } catch {
+    logger.warn("public_url.detect_failed", { reason: "headers_unavailable_outside_request_scope" });
+  }
+}
+
 async function tryBaseUrlFromRequestHeaders(): Promise<string | null> {
   try {
     const h = await headers();
@@ -159,7 +198,10 @@ export function clearTrustedPublicBaseUrlCache(): void {
  */
 export async function ensurePublicBaseUrlFromCurrentRequest(): Promise<void> {
   const candidate = await tryBaseUrlFromRequestHeaders();
-  if (!candidate) return;
+  if (!candidate) {
+    await logPublicUrlDetectionFailure();
+    return;
+  }
 
   const prisma = getPrisma();
   const current = await prisma.platformSettings.findUnique({ where: { id: 1 }, select: { publicBaseUrl: true } });

@@ -320,6 +320,21 @@ const HELP_ENTRIES = {
   },
 
   // ───────────────────────────── Configurações: cartões ─────────────────────────────
+  "config.urlPublica": {
+    title: "URL pública do painel",
+    purpose: "É o endereço que o WhatsApp e os bastidores do sistema usam para chamar de volta o seu painel, e o que entra nos links de e-mail (confirmação, redefinir senha, convite, cobrança). Normalmente o servidor detecta sozinho; este campo é a saída de reserva, para quando a detecção automática falha.",
+    steps: [
+      "Deixe em branco e salve qualquer outra configuração uma vez: na maioria dos casos o servidor detecta e preenche sozinho.",
+      "Se o cartão continuar mostrando \"Ainda não detectada\", digite aqui o endereço completo, com https e sem caminho no final.",
+      "Clique em \"Salvar endereço\".",
+    ],
+    examples: [
+      "https://painel.suaempresa.com.br",
+      "https://innochat-xyz123.easypanel.host (o endereço que o provedor de hospedagem deu antes de você apontar um domínio próprio)",
+    ],
+    tip: "Deixamos sugerido o endereço que o navegador está usando agora — confira se é o mesmo que seus clientes e a equipe usam para acessar o painel antes de salvar.",
+    warning: "Depois de salvo, só muda de novo digitando aqui — trocar de domínio sem atualizar este campo quebra os links dos e-mails já enviados.",
+  },
   "config.cobranca": {
     title: "Dados para cobrança",
     purpose: "Informe o CPF ou CNPJ da empresa. Ele é exigido para gerar o Pix da mensalidade: sem ele, a cobrança não é criada.",

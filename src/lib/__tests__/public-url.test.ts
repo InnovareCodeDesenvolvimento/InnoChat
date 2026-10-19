@@ -9,6 +9,9 @@ vi.mock("@/lib/db/prisma", () => ({
   getPrisma: () => ({ platformSettings: { findUnique: findUniqueMock, upsert: upsertMock } }),
 }));
 
+const loggerWarnMock = vi.fn();
+vi.mock("@/lib/logger", () => ({ logger: { warn: loggerWarnMock, info: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
+
 const { getPublicBaseUrl, tryGetPublicBaseUrl, ensurePublicBaseUrlFromCurrentRequest, normalizeBaseUrl, setPublicBaseUrl, getTrustedPublicBaseUrlCached, clearTrustedPublicBaseUrlCache } =
   await import("../public-url");
 
@@ -164,6 +167,44 @@ describe("ensurePublicBaseUrlFromCurrentRequest — só preenche quando vazia", 
     await ensurePublicBaseUrlFromCurrentRequest();
 
     expect(upsertMock).not.toHaveBeenCalled();
+  });
+
+  it("diagnóstico (2026-10-19): quando não consegue extrair candidato, loga os headers relevantes sem IP completo", async () => {
+    headersMock.mockResolvedValue(
+      headerMap({
+        "x-forwarded-proto": "http", // sem cf-visitor válido: proto http fora de localhost é recusado
+        "x-forwarded-host": "app.innochat.com.br",
+        host: "app.innochat.com.br",
+        "x-forwarded-for": "203.0.113.9", // IP comum, não é da Cloudflare
+        "cf-visitor": '{"scheme":"https"}',
+      }),
+    );
+    findUniqueMock.mockResolvedValue({ publicBaseUrl: null });
+
+    await ensurePublicBaseUrlFromCurrentRequest();
+
+    expect(upsertMock).not.toHaveBeenCalled();
+    expect(loggerWarnMock).toHaveBeenCalledWith(
+      "public_url.detect_failed",
+      expect.objectContaining({
+        host: "app.innochat.com.br",
+        xForwardedProto: "http",
+        cfVisitorPresent: true,
+        cfVisitorValue: '{"scheme":"https"}',
+        edgeHopIsCloudflare: false,
+        edgeHopMasked: "203.0.x.x",
+      }),
+    );
+  });
+
+  it("diagnóstico: fora de uma requisição (headers() lança), loga um motivo sem quebrar", async () => {
+    headersMock.mockRejectedValue(new Error("headers() foi chamado fora de uma requisição"));
+    findUniqueMock.mockResolvedValue({ publicBaseUrl: null });
+
+    await ensurePublicBaseUrlFromCurrentRequest();
+
+    expect(upsertMock).not.toHaveBeenCalled();
+    expect(loggerWarnMock).toHaveBeenCalledWith("public_url.detect_failed", expect.objectContaining({ reason: "headers_unavailable_outside_request_scope" }));
   });
 });
 
