@@ -43,7 +43,7 @@ export function UrlsCard({ settings }: { settings: PlatformSettingsView }) {
       <CardHeader>
         <CardTitle>URLs do painel</CardTitle>
         <CardDescription>
-          O servidor tenta detectar o endereço público sozinho. Quando não consegue, defina-o manualmente abaixo — é a forma garantida de resolver.
+          O servidor tenta detectar o endereço público sozinho. Quando não consegue, defina-o manualmente abaixo: é a forma garantida de resolver.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">

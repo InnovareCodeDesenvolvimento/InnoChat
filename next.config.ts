@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import type { NextConfig } from "next";
+import { SITE_URL } from "./src/lib/site";
 
 /**
  * Cabeçalhos de segurança (revisão 2026-09-28, achado ALTA — nenhum configurado antes).
@@ -65,6 +66,23 @@ const nextConfig: NextConfig = {
   // Exigido pelo Dockerfile (build standalone) — gera .next/standalone com o server mínimo para
   // rodar sem o node_modules completo na imagem final.
   output: "standalone",
+
+  experimental: {
+    serverActions: {
+      // Bug real de produção (2026-10-19): toda submissão de Server Action (login, salvar
+      // configurações, etc.) vinha com 500 — "Minified React error #441" no navegador,
+      // `Invalid Server Actions request` (digest `...@E80`) no log do servidor. Causa: desde a
+      // troca de servidor no Easypanel, a cadeia Cloudflare → Traefik não garante que o `host`/
+      // `x-forwarded-host` que chega ao Next bata com o `Origin` que o navegador manda — Next
+      // trata qualquer divergência como possível CSRF e recusa a ação (comportamento correto
+      // dele; o problema é confiar SÓ em cabeçalho de proxy numa cadeia com mais de um hop).
+      // `allowedOrigins` é a defesa recomendada pelo próprio Next para "reverse proxy in frente
+      // do app" — trata o domínio público oficial (`SITE_URL`, `src/lib/site.ts`) como seguro
+      // mesmo que o `host` detectado não bata. `localhost`/`127.0.0.1` continuam liberados pelo
+      // Next automaticamente fora de produção, sem precisar listar aqui.
+      allowedOrigins: [new URL(SITE_URL).host],
+    },
+  },
 
   async headers() {
     return [
