@@ -10,9 +10,11 @@ import { GetObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { DomainError } from "@/lib/errors";
 import { pageInfoOf, resolvePage, type PageSize } from "@/modules/billing/paging";
 import {
+  asBackupError,
   driveAccess,
   loadBackupConfig,
   s3Client,
+  s3Failure,
   s3Prefix,
   runCommand,
   type BackupConfigRow,
@@ -104,6 +106,23 @@ export function parseBackupRef(ref: string): ParsedBackupRef {
   );
 }
 
+/**
+ * Falha ao falar com o Google Drive durante a listagem vira `DomainError` sempre: a tela de
+ * Restore/Backup não pode cair por uma credencial vencida, só mostrar o card remoto com o problema.
+ */
+function driveListingFailure(error: unknown): DomainError {
+  if (error instanceof DomainError) return error;
+  const backupError = asBackupError(error);
+  return new DomainError(`BACKUP_${backupError.code}`, backupError.message);
+}
+
+/** Mesma ideia, para o S3: o SDK lança erros próprios que `s3Failure` já sabe classificar. */
+function s3ListingFailure(error: unknown): DomainError {
+  if (error instanceof DomainError) return error;
+  const backupError = s3Failure(error, "Ao listar os backups no bucket");
+  return new DomainError(`BACKUP_${backupError.code}`, backupError.message);
+}
+
 export type ListRemoteDeps = {
   configLoader?: () => Promise<BackupConfigRow>;
   driveAccessGetter?: (config: BackupConfigRow) => { getToken: TokenGetter; folderId: string };
@@ -132,9 +151,14 @@ export async function listRemoteBackups(
   const allItems: RemoteBackupItem[] = [];
 
   if (destination === "DRIVE") {
-    const { getToken, folderId } = (deps.driveAccessGetter ?? driveAccess)(config);
-    const lister = deps.driveLister ?? listDriveDumps;
-    const files = await lister(getToken, folderId);
+    let files: Array<{ id: string; name: string; createdAt: Date; size: number | null }>;
+    try {
+      const { getToken, folderId } = (deps.driveAccessGetter ?? driveAccess)(config);
+      const lister = deps.driveLister ?? listDriveDumps;
+      files = await lister(getToken, folderId);
+    } catch (error) {
+      throw driveListingFailure(error);
+    }
     for (const f of files) {
       if (!isBackupFileName(f.name)) continue;
       allItems.push({
@@ -147,47 +171,51 @@ export async function listRemoteBackups(
       });
     }
   } else if (destination === "S3") {
-    if (deps.s3Lister) {
-      const items = await deps.s3Lister(config);
-      for (const item of items) {
-        const name = item.key.split("/").pop() ?? item.key;
-        if (!isBackupFileName(name)) continue;
-        allItems.push({
-          ref: `s3:${item.key}`,
-          name,
-          sizeBytes: item.size,
-          createdAt: item.at.toISOString(),
-          keyFingerprint: null,
-          source: "S3",
-        });
-      }
-    } else {
-      const s3 = await s3Client(config);
-      const prefix = s3Prefix(config);
-      let token: string | undefined;
-      do {
-        const page = await s3.send(
-          new ListObjectsV2Command({
-            Bucket: config.s3Bucket!,
-            Prefix: prefix ? `${prefix}/` : undefined,
-            ContinuationToken: token,
-          }),
-        );
-        for (const o of page.Contents ?? []) {
-          if (!o.Key || !o.LastModified) continue;
-          const name = o.Key.split("/").pop() ?? o.Key;
+    try {
+      if (deps.s3Lister) {
+        const items = await deps.s3Lister(config);
+        for (const item of items) {
+          const name = item.key.split("/").pop() ?? item.key;
           if (!isBackupFileName(name)) continue;
           allItems.push({
-            ref: `s3:${o.Key}`,
+            ref: `s3:${item.key}`,
             name,
-            sizeBytes: o.Size ?? null,
-            createdAt: o.LastModified.toISOString(),
+            sizeBytes: item.size,
+            createdAt: item.at.toISOString(),
             keyFingerprint: null,
             source: "S3",
           });
         }
-        token = page.IsTruncated ? page.NextContinuationToken : undefined;
-      } while (token);
+      } else {
+        const s3 = await s3Client(config);
+        const prefix = s3Prefix(config);
+        let token: string | undefined;
+        do {
+          const page = await s3.send(
+            new ListObjectsV2Command({
+              Bucket: config.s3Bucket!,
+              Prefix: prefix ? `${prefix}/` : undefined,
+              ContinuationToken: token,
+            }),
+          );
+          for (const o of page.Contents ?? []) {
+            if (!o.Key || !o.LastModified) continue;
+            const name = o.Key.split("/").pop() ?? o.Key;
+            if (!isBackupFileName(name)) continue;
+            allItems.push({
+              ref: `s3:${o.Key}`,
+              name,
+              sizeBytes: o.Size ?? null,
+              createdAt: o.LastModified.toISOString(),
+              keyFingerprint: null,
+              source: "S3",
+            });
+          }
+          token = page.IsTruncated ? page.NextContinuationToken : undefined;
+        } while (token);
+      }
+    } catch (error) {
+      throw s3ListingFailure(error);
     }
   }
 

@@ -108,10 +108,12 @@ export function BackupClient({
   data,
   google,
   remoteBackups,
+  remoteBackupsError,
 }: {
   data: BackupPanelData;
   google: { ok: true } | { ok: false; reason: string } | null;
   remoteBackups?: ListRemoteBackupsResult;
+  remoteBackupsError?: string | null;
 }) {
   const { config, status, runs } = data;
   const { notify } = useToast();
@@ -739,6 +741,7 @@ export function BackupClient({
         onPageChange={(p) => goToRemotePage(p, remoteBackups?.pageSize ?? 10)}
         onPageSizeChange={(size) => goToRemotePage(1, size)}
         isPending={isNavigating}
+        error={remoteBackupsError}
       />
 
       <p className="mt-4 flex items-center gap-2 text-xs text-text-secondary">

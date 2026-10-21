@@ -7,6 +7,13 @@ Versão semântica (`MAJOR.MINOR.PATCH`), lida do `version` do `package.json` e 
 
 Toda publicação em produção sobe a versão e ganha uma entrada aqui.
 
+## v1.14.4 — 2026-10-21
+
+### Correções
+- Admin → Backup não cai mais quando o Google recusa a credencial do Drive: só o quadro das cópias remotas mostra o aviso, e o resto da tela continua funcionando para corrigir a credencial ali mesmo.
+- Quando o app do Google (Client ID ou Client Secret) é trocado ou apagado, a mensagem agora diz para conferir esses dois valores e clicar em Conectar com Google de novo, em vez de falar de conta de serviço.
+- Proteção extra para salvar configurações atrás do Cloudflare (origens permitidas das ações do servidor).
+
 ## v1.14.3 — 2026-10-19
 
 ### Correções

@@ -17,6 +17,8 @@ import {
   keyFingerprint,
 } from "./backup-crypto";
 import { encryptSecret } from "@/lib/crypto";
+import { DriveFailure } from "./drive";
+import { DomainError } from "@/lib/errors";
 
 function makeConfig(overrides: Partial<BackupConfigRow> = {}): BackupConfigRow {
   return {
@@ -180,6 +182,42 @@ describe("listRemoteBackups", () => {
     expect(result.items[0].ref).toBe("s3:backups/backup-innochat-2026-10-18-03h00m00s.dump.enc");
     expect(result.items[0].source).toBe("S3");
     expect(result.items[0].sizeBytes).toBe(6000);
+  });
+
+  it("falha de credencial do Drive (ex.: OAuth com client secret trocado) vira DomainError, nunca escapa crua", async () => {
+    // Bug real (produção, 2026-10-21): DriveFailure escapava sem converter, derrubando a tela inteira
+    // (Admin > Backup) com "Algo deu errado nesta tela" em vez de mostrar o card com o motivo.
+    const config = makeConfig({ destination: "DRIVE" });
+    const err = await listRemoteBackups(
+      {},
+      {
+        configLoader: async () => config,
+        driveAccessGetter: mockDriveAccess,
+        driveLister: async () => {
+          throw new DriveFailure("O Google recusou renovar o acesso: invalid_client: The provided client secret is invalid.", "oauth_client_invalid", 401);
+        },
+      },
+    ).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(DomainError);
+    expect((err as DomainError).code).toBe("BACKUP_OAUTH_CLIENT_INVALID");
+    expect((err as Error).message).toMatch(/Client ID ou o Client Secret/);
+  });
+
+  it("falha do SDK do S3 na listagem também vira DomainError, nunca escapa crua", async () => {
+    const config = makeConfig({ destination: "S3", s3Endpoint: "https://s3.example.com", s3Bucket: "my-bucket", s3AccessKey: "key", s3SecretKeyEnc: "enc:v1:secret" });
+    const err = await listRemoteBackups(
+      {},
+      {
+        configLoader: async () => config,
+        s3Lister: async () => {
+          const e = new Error("The request signature we calculated does not match.");
+          e.name = "SignatureDoesNotMatch";
+          throw e;
+        },
+      },
+    ).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(DomainError);
+    expect((err as DomainError).code).toBe("BACKUP_CREDENTIAL");
   });
 
   it("devolve lista vazia se não há arquivos no destino", async () => {

@@ -31,12 +31,14 @@ const JSON_TIMEOUT_MS = 30_000;
 const UPLOAD_TIMEOUT_MS = 5 * 60_000;
 const MAX_BODY_CHARS = 64 * 1024;
 
-export type FailureCategory = "credential" | "folder" | "quota" | "network" | "oauth_disconnected" | "unknown";
+export type FailureCategory = "credential" | "oauth_client_invalid" | "folder" | "quota" | "network" | "oauth_disconnected" | "unknown";
 
 /** O que fazer, por causa. Vai no e-mail de alerta e no histórico da tela. */
 export const ACTION_BY_CATEGORY: Record<FailureCategory, string> = {
   credential:
     "O Google recusou a chave da conta de serviço. Gere uma chave nova no Google Cloud (IAM, Contas de serviço, Chaves) e cole em Admin > Backup. Se a chave é recente, confira o relógio do servidor: alguns minutos de desvio invalidam a assinatura.",
+  oauth_client_invalid:
+    "O Google recusou o Client ID ou o Client Secret do app conectado. Confira esses dois valores em Admin > Backup (eles vêm do Google Cloud Console, em APIs e serviços, Credenciais) e clique em Conectar com Google de novo.",
   oauth_disconnected:
     "A conta Google conectada não autoriza mais o backup (acesso revogado, senha trocada ou app do Google Cloud de volta ao modo de teste). Abra Admin > Backup e clique em Conectar com Google de novo.",
   folder:

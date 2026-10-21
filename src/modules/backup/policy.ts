@@ -12,6 +12,7 @@ export type DriveMode = (typeof DRIVE_MODES)[number];
 /** Códigos de causa gravados em `BackupRun.errorCode`. */
 export type BackupErrorCode =
   | "CREDENTIAL"
+  | "OAUTH_CLIENT_INVALID"
   | "FOLDER"
   | "QUOTA"
   | "NETWORK"
@@ -250,6 +251,7 @@ function mailOf(subject: string, paragraphs: string[], adminUrl: string | null):
 
 const FAILURE_SUBJECT: Partial<Record<BackupErrorCode, string>> = {
   CREDENTIAL: "O backup parou: a chave do Google Drive não é mais aceita",
+  OAUTH_CLIENT_INVALID: "O backup parou: o Client ID ou o Client Secret do Google não são mais aceitos",
   FOLDER: "O backup parou: a pasta do Google Drive não está acessível",
   QUOTA: "O backup parou: não há espaço no Google Drive",
   NETWORK: "O backup falhou ao falar com o destino",

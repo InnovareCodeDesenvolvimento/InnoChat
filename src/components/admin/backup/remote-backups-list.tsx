@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Download, Cloud, HardDrive, Shield, ShieldCheck } from "lucide-react";
+import { AlertTriangle, Download, Cloud, HardDrive, Shield, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Pagination } from "@/components/ui/pagination";
 import { formatTimeLabel } from "@/components/lib/format-date";
@@ -25,6 +25,8 @@ export type RemoteBackupsListProps = {
   destinationReady?: boolean;
   destinationName?: string;
   isPending?: boolean;
+  /** Mensagem já pronta para leitura humana, quando a listagem não deu para fazer (ex.: credencial recusada). */
+  error?: string | null;
 };
 
 export function RemoteBackupsList({
@@ -34,6 +36,7 @@ export function RemoteBackupsList({
   destinationReady = true,
   destinationName = "armazenamento remoto",
   isPending: externalPending = false,
+  error = null,
 }: RemoteBackupsListProps) {
   const [internalPending, startTransition] = useTransition();
   const isPending = externalPending || internalPending;
@@ -63,7 +66,9 @@ export function RemoteBackupsList({
       help="backup.copiasRemotas"
       bodyClassName="p-0"
     >
-      {!destinationReady ? (
+      {error ? (
+        <PanelEmptyState icon={AlertTriangle} title="Não deu para listar as cópias remotas" description={error} />
+      ) : !destinationReady ? (
         <PanelEmptyState
           icon={Cloud}
           title="Destino ainda não configurado"

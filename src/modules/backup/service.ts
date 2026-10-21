@@ -104,6 +104,7 @@ export class BackupError extends Error {
 
 const CATEGORY_TO_CODE: Record<FailureCategory, BackupErrorCode> = {
   credential: "CREDENTIAL",
+  oauth_client_invalid: "OAUTH_CLIENT_INVALID",
   folder: "FOLDER",
   quota: "QUOTA",
   network: "NETWORK",
@@ -111,7 +112,8 @@ const CATEGORY_TO_CODE: Record<FailureCategory, BackupErrorCode> = {
   unknown: "UNKNOWN",
 };
 
-function asBackupError(error: unknown): BackupError {
+/** Exportada para quem converte falha de destino (Drive/S3) num `BackupError` fora deste módulo (ex.: listagem do Restore). */
+export function asBackupError(error: unknown): BackupError {
   if (error instanceof BackupError) return error;
   if (error instanceof DriveFailure) return new BackupError(error.message, CATEGORY_TO_CODE[error.category]);
   return new BackupError(error instanceof Error ? error.message : String(error), "UNKNOWN");
@@ -403,7 +405,7 @@ function s3Key(config: BackupConfigRow, fileName: string): string {
 }
 
 /** Traduz o erro do SDK do S3 numa causa que a pessoa consegue agir. */
-function s3Failure(error: unknown, doing: string): BackupError {
+export function s3Failure(error: unknown, doing: string): BackupError {
   const name = error instanceof Error ? error.name : "";
   const message = error instanceof Error ? error.message : String(error);
   // O detalhe cru do SDK fica só no log: ele pode trazer pedaços da resposta do servidor de destino (e, num endereço

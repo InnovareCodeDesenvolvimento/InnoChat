@@ -81,6 +81,9 @@ export async function exchangeCodeForTokens(opts: { clientId: string; clientSecr
   if (!res.ok) {
     const { error, description } = rawTokenError(res.text);
     const raw = [error, description].filter(Boolean).join(": ").slice(0, 400) || `HTTP ${res.status}`;
+    if (error === "invalid_client") {
+      throw new DriveFailure(`O Google recusou a conexão: ${raw}.`, "oauth_client_invalid", res.status);
+    }
     throw new DriveFailure(`O Google recusou a conexão: ${raw}.`, classifyDriveFailure(res.status, res.text), res.status);
   }
   let data: { access_token?: string; refresh_token?: string; expires_in?: number };
@@ -113,6 +116,10 @@ export async function refreshAccessToken(opts: { clientId: string; clientSecret:
       );
     }
     const raw = [error, description].filter(Boolean).join(": ").slice(0, 400) || `HTTP ${res.status}`;
+    // invalid_client aqui é o Client ID/Secret do app OAuth, não a chave de conta de serviço: mensagem própria.
+    if (error === "invalid_client") {
+      throw new DriveFailure(`O Google recusou renovar o acesso: ${raw}.`, "oauth_client_invalid", res.status);
+    }
     throw new DriveFailure(`O Google recusou renovar o acesso: ${raw}.`, classifyDriveFailure(res.status, res.text), res.status);
   }
   let data: { access_token?: string; expires_in?: number };

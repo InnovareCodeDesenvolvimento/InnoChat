@@ -38,6 +38,9 @@ export default async function AdminBackupPage({ searchParams }: { searchParams: 
   const remotoPage = parsePositiveInt(sp.remotoPagina, 1);
   const remotoPageSize = parsePageSize(sp.remotoPorPagina) as 10 | 25 | 50 | 100;
 
+  // Falha no destino (credencial recusada, pasta sumiu, etc.) não pode derrubar a tela inteira: o
+  // resto do painel (agendamento, destino, chave, execuções) continua funcionando, e o card de cópias
+  // remotas mostra o motivo em vez da lista.
   const remoteResult = await listRemoteBackupsAction({ page: remotoPage, pageSize: remotoPageSize });
   const initialRemoteBackups: ListRemoteBackupsResult = remoteResult.ok
     ? remoteResult.data
@@ -48,7 +51,8 @@ export default async function AdminBackupPage({ searchParams }: { searchParams: 
         totalItems: 0,
         totalPages: 0,
       };
+  const remoteBackupsError = remoteResult.ok ? null : remoteResult.error.message;
 
   const google = sp.google === "conectado" ? { ok: true as const } : sp.google === "erro" ? { ok: false as const, reason: (sp.motivo ?? "desconhecido").slice(0, 40) } : null;
-  return <BackupClient data={result.data} google={google} remoteBackups={initialRemoteBackups} />;
+  return <BackupClient data={result.data} google={google} remoteBackups={initialRemoteBackups} remoteBackupsError={remoteBackupsError} />;
 }
